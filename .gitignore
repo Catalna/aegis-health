@@ -1,0 +1,32 @@
+# Python / Backend
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.log
+
+# Node.js / Frontend
+node_modules/
+dist/
+build/
+.npm/
+
+# Environment Variables
+.env
+.env.local
+
+# Databases / Data
+pgvector_build/
+lancedb_data/
+backend/app/lancedb_data/
+models_trained/
+ground_truth_anomalies.json
+
+# IDE / Editor
+.vscode/
+.idea/
+.DS_Store
+
+# Tooling
+.playwright-mcp/
