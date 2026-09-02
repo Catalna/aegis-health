@@ -160,11 +160,13 @@ export default function ClaimIntake() {
       </div>
 
       <div className="grid-2" style={{ gap: '1.5rem' }}>
-        <div>
-          {viewMode === 'form' ? (
-            <div className="card">
-              <div className="card-title">Data Klaim</div>
+        <div className="card">
+          <div className="card-title">
+            {viewMode === 'form' ? 'Data Klaim' : 'Raw JSON — ClaimInput'}
+          </div>
 
+          {viewMode === 'form' ? (
+            <div>
               <div className="grid-2">
                 <div className="form-group">
                   <label className="form-label">Claim ID *</label>
@@ -240,32 +242,29 @@ export default function ClaimIntake() {
               </div>
             </div>
           ) : (
-            <div className="card">
-              <div className="card-title">Raw JSON — ClaimInput</div>
-              <pre className="form-textarea" style={{ display: 'block', overflow: 'auto', fontSize: '0.72rem', lineHeight: 1.7, padding: '1rem' }}>
-                {JSON.stringify(buildClaimPayload(), null, 2)}
-              </pre>
-            </div>
+            <pre className="form-textarea" style={{ display: 'block', overflow: 'auto', fontSize: '0.72rem', lineHeight: 1.7, padding: '1rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' }}>
+              {JSON.stringify(buildClaimPayload(), null, 2)}
+            </pre>
           )}
 
           {/* Validasi klien real-time */}
           {blockingErrors.length > 0 && (
-            <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: 'var(--risk-high)', fontSize: '0.8rem' }}>
+            <div style={{ marginTop: '1.25rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 8, color: 'var(--risk-high)', fontSize: '0.8rem' }}>
               {blockingErrors.map((err, i) => <div key={i}>⚠ {err}</div>)}
             </div>
           )}
           {warnings.length > 0 && (
-            <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, color: 'var(--warning)', fontSize: '0.8rem' }}>
+            <div style={{ marginTop: '1.25rem', padding: '0.75rem 1rem', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 8, color: 'var(--warning)', fontSize: '0.8rem' }}>
               {warnings.map((w, i) => <div key={i}>ⓘ {w}</div>)}
             </div>
           )}
           {error && (
-            <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: 'var(--risk-high)', fontSize: '0.8rem' }}>
+            <div style={{ marginTop: '1.25rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 8, color: 'var(--risk-high)', fontSize: '0.8rem' }}>
               ⚠ {error}
             </div>
           )}
 
-          <div style={{ marginTop: '1rem' }}>
+          <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.25rem' }}>
             <button
               className="btn btn-primary"
               style={{ width: '100%', padding: '0.8rem', fontSize: '0.9rem', opacity: blockingErrors.length ? 0.5 : 1 }}

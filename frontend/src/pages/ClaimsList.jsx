@@ -15,11 +15,11 @@ function RiskBadge({ tier }) {
 function ScoreBar({ score, tier }) {
   const colors = { high: 'var(--risk-high)', medium: 'var(--risk-medium)', low: 'var(--risk-low)' }
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-      <div className="progress-bar" style={{ width: 80, height: 5 }}>
-        <div className="progress-fill" style={{ width: `${score}%`, background: colors[tier] || 'var(--text-muted)' }} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+      <div className="progress-bar" style={{ width: 80, height: 6, background: 'var(--bg-primary)', overflow: 'hidden', borderRadius: '4px', border: '1px solid var(--border)' }}>
+        <div className="progress-fill" style={{ width: `${score}%`, background: colors[tier] || 'var(--text-muted)', height: '100%', borderRadius: '4px' }} />
       </div>
-      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: colors[tier] || 'var(--text-muted)', minWidth: 28 }}>{score ?? '—'}</span>
+      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: colors[tier] || 'var(--text-muted)', minWidth: 28, fontFamily: 'JetBrains Mono, monospace' }}>{score ?? '—'}</span>
     </div>
   )
 }
@@ -186,11 +186,11 @@ export default function ClaimsList() {
                   <td>
                     {c.status === 'verified'
                       ? <div>
-                          <span className="badge" style={{ background: 'var(--success)', color: 'white', fontSize: '0.65rem' }}>✓ Selesai</span>
+                          <span className="badge" style={{ background: 'var(--risk-low-bg)', color: 'var(--risk-low)', border: '1px solid rgba(16, 185, 129, 0.15)', fontSize: '0.68rem' }}>✓ Selesai</span>
                           <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>{c.human_decision}</div>
                         </div>
                       : c.status === 'processed'
-                        ? <span className="badge" style={{ background: 'var(--warning)', color: 'white', fontSize: '0.65rem' }}>Menunggu Verifikasi</span>
+                        ? <span className="badge" style={{ background: 'var(--risk-medium-bg)', color: 'var(--warning)', border: '1px solid rgba(245, 158, 11, 0.15)', fontSize: '0.68rem' }}>Menunggu Verifikasi</span>
                         : <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>
                     }
                   </td>

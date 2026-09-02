@@ -46,10 +46,10 @@ export default function Dashboard() {
   ]
 
   const statCards = [
-    { label: 'Total Klaim', value: stats?.total_claims || 0, icon: <FileText size={20} />, color: 'var(--text-primary)' },
-    { label: 'Menunggu Analisis', value: stats?.pending_claims ?? 0, icon: <Clock size={20} />, color: 'var(--warning)' },
-    { label: 'Risiko Tinggi', value: stats?.high_risk_claims || 0, icon: <AlertCircle size={20} />, color: 'var(--risk-high)' },
-    { label: 'Sudah Diverifikasi', value: stats?.verified_claims || 0, icon: <CheckCircle size={20} />, color: 'var(--success)' },
+    { label: 'Total Klaim', value: stats?.total_claims || 0, icon: <FileText size={22} />, color: 'var(--text-primary)', bgGlow: 'rgba(15, 23, 42, 0.05)' },
+    { label: 'Menunggu Analisis', value: stats?.pending_claims ?? 0, icon: <Clock size={22} />, color: 'var(--warning)', bgGlow: 'rgba(245, 158, 11, 0.08)' },
+    { label: 'Risiko Tinggi', value: stats?.high_risk_claims || 0, icon: <AlertCircle size={22} />, color: 'var(--risk-high)', bgGlow: 'rgba(239, 68, 68, 0.08)' },
+    { label: 'Sudah Diverifikasi', value: stats?.verified_claims || 0, icon: <CheckCircle size={22} />, color: 'var(--success)', bgGlow: 'rgba(16, 185, 129, 0.08)' },
   ]
 
   return (
@@ -64,15 +64,27 @@ export default function Dashboard() {
 
       {error && <div className="alert-disclaimer mb-3" style={{ color: 'var(--risk-high)' }}>⚠ {error} — menampilkan data terakhir.</div>}
 
-      <div className="grid-4 mb-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+      <div className="grid-4 mb-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
         {statCards.map((card, i) => (
-          <div className="card" key={i} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="card-title" style={{ marginBottom: 0 }}>{card.label}</div>
-              <div style={{ color: card.color }}>{card.icon}</div>
+          <div className="card" key={i} style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', padding: '1.5rem' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '48px',
+              height: '48px',
+              borderRadius: '12px',
+              backgroundColor: card.bgGlow,
+              color: card.color,
+              flexShrink: 0
+            }}>
+              {card.icon}
             </div>
-            <div style={{ fontSize: '2.5rem', fontWeight: 800 }}>
-              {(card.value || 0).toLocaleString('id-ID')}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+              <div className="card-title" style={{ marginBottom: 0, fontSize: '0.72rem', letterSpacing: '0.5px' }}>{card.label}</div>
+              <div style={{ fontSize: '2rem', fontWeight: 800, lineHeight: 1.1 }}>
+                {(card.value || 0).toLocaleString('id-ID')}
+              </div>
             </div>
           </div>
         ))}
@@ -87,25 +99,53 @@ export default function Dashboard() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
+                  <defs>
+                    <linearGradient id="gradHigh" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#fca5a5" />
+                      <stop offset="100%" stopColor="#ef4444" />
+                    </linearGradient>
+                    <linearGradient id="gradMedium" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#fde047" />
+                      <stop offset="100%" stopColor="#eab308" />
+                    </linearGradient>
+                    <linearGradient id="gradLow" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#6ee7b7" />
+                      <stop offset="100%" stopColor="#10b981" />
+                    </linearGradient>
+                    <linearGradient id="gradPending" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#cbd5e1" />
+                      <stop offset="100%" stopColor="#94a3b8" />
+                    </linearGradient>
+                  </defs>
                   <Pie
                     data={riskData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={5}
+                    innerRadius={65}
+                    outerRadius={95}
+                    paddingAngle={4}
                     dataKey="value"
                   >
-                    {riskData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
+                    {riskData.map((entry, index) => {
+                      let fillUrl = 'url(#gradPending)';
+                      if (entry.name === 'Tinggi') fillUrl = 'url(#gradHigh)';
+                      else if (entry.name === 'Sedang') fillUrl = 'url(#gradMedium)';
+                      else if (entry.name === 'Rendah') fillUrl = 'url(#gradLow)';
+                      return <Cell key={`cell-${index}`} fill={fillUrl} />;
+                    })}
                   </Pie>
                   <Legend
-                    formatter={(value) => <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{value}</span>}
+                    formatter={(value) => <span style={{ color: 'var(--text-secondary)', fontSize: 12, fontWeight: 500 }}>{value}</span>}
                   />
                   <Tooltip
-                    contentStyle={{ borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}
-                    itemStyle={{ color: 'var(--text-primary)' }}
+                    contentStyle={{
+                      borderRadius: '12px',
+                      border: '1px solid var(--border)',
+                      background: 'var(--tooltip-bg)',
+                      backdropFilter: 'blur(8px)',
+                      boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)'
+                    }}
+                    itemStyle={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.8rem' }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -118,14 +158,27 @@ export default function Dashboard() {
           <div style={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={statusData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="name" stroke="var(--text-secondary)" tick={{ fontSize: 12 }} />
-                <YAxis stroke="var(--text-secondary)" tick={{ fontSize: 12 }} allowDecimals={false} />
+                <defs>
+                  <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity={0.9} />
+                    <stop offset="100%" stopColor="#10b981" stopOpacity={0.3} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} strokeOpacity={0.4} />
+                <XAxis dataKey="name" stroke="var(--text-muted)" tick={{ fontSize: 12, fontWeight: 500 }} axisLine={false} tickLine={false} dy={8} />
+                <YAxis stroke="var(--text-muted)" tick={{ fontSize: 12 }} allowDecimals={false} axisLine={false} tickLine={false} dx={-8} />
                 <Tooltip
-                  cursor={{ fill: 'var(--bg-card-hover)' }}
-                  contentStyle={{ borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}
+                  cursor={{ fill: 'rgba(148, 163, 184, 0.06)' }}
+                  contentStyle={{
+                    borderRadius: '12px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--tooltip-bg)',
+                    backdropFilter: 'blur(8px)',
+                    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)'
+                  }}
+                  itemStyle={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.8rem' }}
                 />
-                <Bar dataKey="total" fill="var(--accent-green)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="total" fill="url(#barGradient)" radius={[6, 6, 0, 0]} barSize={40} />
               </BarChart>
             </ResponsiveContainer>
           </div>

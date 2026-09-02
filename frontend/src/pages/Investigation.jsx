@@ -341,8 +341,8 @@ export default function Investigation() {
               <div className="flex items-center justify-between mb-1">
                 <span>Tingkat Anomali Biaya</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div className="progress-bar" style={{ width: 80 }}>
-                    <div className="progress-fill" style={{ width: `${(financial.anomaly_score || 0) * 100}%` }} />
+                  <div className="progress-bar" style={{ width: 80, height: 6, background: 'var(--bg-primary)', overflow: 'hidden', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                    <div className="progress-fill" style={{ width: `${(financial.anomaly_score || 0) * 100}%`, height: '100%', borderRadius: '4px' }} />
                   </div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{(financial.anomaly_score * 100).toFixed(0)}%</span>
                 </div>
@@ -356,8 +356,8 @@ export default function Investigation() {
               <div className="flex items-center justify-between mb-1">
                 <span>Skor Anomali Perilaku</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div className="progress-bar" style={{ width: 80 }}>
-                    <div className="progress-fill" style={{ width: `${(fraud.isolation_forest_score || 0) * 100}%`, background: fraud.isolation_forest_score > 0.7 ? 'var(--risk-high)' : 'var(--accent-green)' }} />
+                  <div className="progress-bar" style={{ width: 80, height: 6, background: 'var(--bg-primary)', overflow: 'hidden', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                    <div className="progress-fill" style={{ width: `${(fraud.isolation_forest_score || 0) * 100}%`, background: fraud.isolation_forest_score > 0.7 ? 'var(--risk-high)' : 'var(--accent-green)', height: '100%', borderRadius: '4px' }} />
                   </div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 600, color: fraud.isolation_forest_score > 0.7 ? 'var(--risk-high)' : 'inherit' }}>{((fraud.isolation_forest_score || 0) * 100).toFixed(0)}%</span>
                 </div>
@@ -403,8 +403,29 @@ export default function Investigation() {
             <div className="card" style={{ borderColor: tierColor[risk.priority_tier] }}>
               <div className="card-title">✓ Skor Risiko Final</div>
               <div className="flex items-center gap-3">
-                <div className={`score-circle ${risk.priority_tier}`} style={{ width: 80, height: 80, fontSize: '1.5rem' }}>
-                  <span>{risk.total_score}</span>
+                <div className={`score-circle ${risk.priority_tier}`} style={{ position: 'relative', width: 80, height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 'none', boxShadow: 'none', background: 'none' }}>
+                  <svg width="80" height="80" style={{ position: 'absolute', transform: 'rotate(-90deg)', top: 0, left: 0 }}>
+                    <circle cx="40" cy="40" r="33" stroke="rgba(148, 163, 184, 0.12)" strokeWidth="6" fill="transparent" />
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r="33"
+                      stroke={risk.priority_tier === 'high' ? 'var(--risk-high)' : (risk.priority_tier === 'medium' ? 'var(--risk-medium)' : 'var(--risk-low)')}
+                      strokeWidth="6"
+                      fill="transparent"
+                      strokeDasharray="207.35"
+                      strokeDashoffset={207.35 * (1 - (risk.total_score || 0) / 100)}
+                      strokeLinecap="round"
+                      style={{
+                        transition: 'stroke-dashoffset 1.5s cubic-bezier(0.16, 1, 0.3, 1)',
+                        filter: `drop-shadow(0 0 3px ${risk.priority_tier === 'high' ? 'rgba(239, 68, 68, 0.3)' : (risk.priority_tier === 'medium' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(16, 185, 129, 0.3)')})`
+                      }}
+                    />
+                  </svg>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1 }}>
+                    <span style={{ fontSize: '1.4rem', fontWeight: 800, color: risk.priority_tier === 'high' ? 'var(--risk-high)' : (risk.priority_tier === 'medium' ? 'var(--risk-medium)' : 'var(--risk-low)'), lineHeight: 1.1 }}>{risk.total_score}</span>
+                    <span style={{ fontSize: '0.55rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.5px', marginTop: '1px' }}>Score</span>
+                  </div>
                 </div>
                 <div>
                   <span className={`badge badge-${risk.priority_tier}`}>

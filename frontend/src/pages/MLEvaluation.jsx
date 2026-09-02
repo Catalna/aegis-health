@@ -80,7 +80,7 @@ export default function MLEvaluation() {
 
         <div className="card">
           <h3 className="card-title">Model Comparison (Held-out Test Set)</h3>
-          <table className="w-full mt-4 text-sm text-left">
+          <table className="w-full mt-4 text-sm text-left table-compact">
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
                 <th className="py-2">Metric</th>
@@ -119,8 +119,8 @@ export default function MLEvaluation() {
                     {(info.recall * 100).toFixed(0)}%
                   </strong>
                 </div>
-                <div className="progress-bar" style={{ height: 4 }}>
-                  <div className="progress-fill" style={{ width: `${info.recall * 100}%` }} />
+                <div className="progress-bar" style={{ height: 6, background: 'var(--bg-primary)', overflow: 'hidden', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                  <div className="progress-fill" style={{ width: `${info.recall * 100}%`, background: info.recall >= 0.8 ? 'var(--success)' : info.recall >= 0.5 ? 'var(--warning)' : 'var(--risk-high)', height: '100%', borderRadius: '4px' }} />
                 </div>
                 <div className="text-xs text-muted mt-1">{info.count} sampel</div>
               </div>
@@ -165,10 +165,10 @@ export default function MLEvaluation() {
             <div key={feature} className="mb-4">
               <div className="flex justify-between text-sm mb-1">
                 <span className="font-mono text-xs">{feature}</span>
-                <span>{(score * 100).toFixed(1)}%</span>
+                <span style={{ fontWeight: 600, color: 'var(--accent-green)', fontFamily: 'JetBrains Mono, monospace' }}>{(score * 100).toFixed(1)}%</span>
               </div>
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${score * 100}%` }} />
+              <div className="progress-bar" style={{ height: 6, background: 'var(--bg-primary)', overflow: 'hidden', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                <div className="progress-fill" style={{ width: `${score * 100}%`, background: 'var(--accent-green)', height: '100%', borderRadius: '4px' }} />
               </div>
             </div>
           ))}

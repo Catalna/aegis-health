@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Activity, Database, Cpu, Boxes, Network, Bot, TrendingDown } from 'lucide-react'
+import { Activity, Database, Cpu, Boxes, Network, Bot, TrendingDown, AlertCircle } from 'lucide-react'
 import { analyticsApi, healthApi } from '../api'
 
 const COMPONENT_ICONS = {
@@ -58,14 +58,63 @@ export default function Monitoring() {
   if (loading) return <div className="p-8 text-center text-muted">Memuat data monitoring...</div>
 
   const statCards = [
-    { label: 'Total Klaim di Database', value: stats?.total_claims || 0, color: 'var(--text-primary)' },
-    { label: 'Teranalisis AI', value: stats?.processed_claims || 0, color: 'var(--accent-green)' },
-    { label: 'Risiko Tinggi Terdeteksi', value: stats?.high_risk_claims || 0, color: 'var(--risk-high)' },
-    { label: 'Sudah Diverifikasi Verifier', value: stats?.verified_claims || 0, color: 'var(--success)' },
+    {
+      label: 'Total Klaim di Database',
+      value: stats?.total_claims || 0,
+      color: 'var(--text-primary)',
+      icon: <Database size={20} color="var(--text-secondary)" />,
+      bgGlow: 'var(--bg-card-hover)'
+    },
+    {
+      label: 'Teranalisis AI',
+      value: stats?.processed_claims || 0,
+      color: 'var(--accent-green)',
+      icon: <Bot size={20} color="var(--accent-green)" />,
+      bgGlow: 'var(--accent-green-glow)'
+    },
+    {
+      label: 'Risiko Tinggi Terdeteksi',
+      value: stats?.high_risk_claims || 0,
+      color: 'var(--risk-high)',
+      icon: <AlertCircle size={20} color="var(--risk-high)" />,
+      bgGlow: 'var(--risk-high-bg)'
+    },
+    {
+      label: 'Sudah Diverifikasi Verifier',
+      value: stats?.verified_claims || 0,
+      color: 'var(--success)',
+      icon: <Activity size={20} color="var(--success)" />,
+      bgGlow: 'var(--risk-low-bg)'
+    },
   ]
 
   const statusColor = (s) => s === 'ok' ? 'var(--success)' : s === 'warn' ? 'var(--warning)' : 'var(--risk-high)'
-  const statusText = (s) => s === 'ok' ? '● SEHAT' : s === 'warn' ? '● PERINGATAN' : '● ERROR'
+  const statusText = (s) => s === 'ok' ? 'SEHAT' : s === 'warn' ? 'PERINGATAN' : 'ERROR'
+
+  const statusBadgeStyle = (status) => {
+    if (status === 'ok') {
+      return {
+        background: 'var(--risk-low-bg)',
+        color: 'var(--risk-low)',
+        border: '1px solid rgba(16, 185, 129, 0.15)',
+        fontSize: '0.65rem'
+      };
+    } else if (status === 'warn') {
+      return {
+        background: 'var(--risk-medium-bg)',
+        color: 'var(--warning)',
+        border: '1px solid rgba(245, 158, 11, 0.15)',
+        fontSize: '0.65rem'
+      };
+    } else {
+      return {
+        background: 'var(--risk-high-bg)',
+        color: 'var(--risk-high)',
+        border: '1px solid rgba(239, 68, 68, 0.15)',
+        fontSize: '0.65rem'
+      };
+    }
+  }
 
   return (
     <div>
@@ -76,16 +125,32 @@ export default function Monitoring() {
         </h2>
         <p>
           Live analytics & status komponen sistem — diperbarui otomatis setiap 5 detik.
-          Status saat ini: <strong style={{ color: statusColor(health?.status) }}>{statusText(health?.status)}</strong>
+          Status saat ini: <strong style={{ color: statusColor(health?.status), display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '0.5rem' }}>●</span> {statusText(health?.status)}
+          </strong>
         </p>
       </div>
 
       <div className="grid-2 mb-3">
         {statCards.map(card => (
-          <div className="card text-center" key={card.label}>
-            <div className="card-title">{card.label}</div>
-            <div style={{ fontSize: '2.5rem', fontWeight: 800, color: card.color, marginTop: '0.5rem' }}>
-              {(card.value || 0).toLocaleString('id-ID')}
+          <div className="card" key={card.label} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '12px',
+              background: card.bgGlow,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              {card.icon}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+              <div className="card-title" style={{ marginBottom: 0, fontSize: '0.72rem', letterSpacing: '0.5px' }}>{card.label}</div>
+              <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>
+                {(card.value || 0).toLocaleString('id-ID')}
+              </div>
             </div>
           </div>
         ))}
@@ -118,11 +183,9 @@ export default function Monitoring() {
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <span className="text-xs text-muted">{comp.detail}</span>
-                <span className="badge" style={{
-                  fontSize: '0.65rem',
-                  background: statusColor(comp.status),
-                  color: 'white',
-                }}>{statusText(comp.status)}</span>
+                <span className="badge" style={statusBadgeStyle(comp.status)}>
+                  ● {statusText(comp.status)}
+                </span>
               </span>
             </div>
           ))}
@@ -142,10 +205,11 @@ export default function Monitoring() {
                 <span style={{ fontSize: '0.85rem' }}>{item.label}</span>
                 <span className="badge" style={{
                   fontSize: '0.7rem',
-                  background: status === 'ok' ? 'var(--accent-green-glow)' : 'var(--bg-card-hover)',
-                  color: status === 'ok' ? 'var(--accent-green)' : 'var(--text-muted)',
+                  background: status === 'ok' ? 'var(--risk-low-bg)' : 'var(--bg-card-hover)',
+                  color: status === 'ok' ? 'var(--risk-low)' : 'var(--text-muted)',
+                  border: status === 'ok' ? '1px solid rgba(16, 185, 129, 0.15)' : '1px solid var(--border)',
                 }}>
-                  <span style={{ color: statusColor(status) }}>●</span> {item.badge}
+                  <span style={{ color: statusColor(status), marginRight: '4px', fontSize: '0.55rem' }}>●</span> {item.badge}
                 </span>
               </div>
             )

@@ -199,8 +199,29 @@ export default function Assessment() {
         <div className="card" style={{ borderTop: `4px solid ${tierColor[risk.priority_tier]}` }}>
           <div className="card-title">Ringkasan Hasil</div>
           <div className="flex items-center gap-3">
-            <div className={`score-circle ${risk.priority_tier}`}>
-              {risk.total_score}
+            <div className={`score-circle ${risk.priority_tier}`} style={{ position: 'relative', width: 120, height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 'none', boxShadow: 'none', background: 'none' }}>
+              <svg width="120" height="120" style={{ position: 'absolute', transform: 'rotate(-90deg)', top: 0, left: 0 }}>
+                <circle cx="60" cy="60" r="50" stroke="rgba(148, 163, 184, 0.12)" strokeWidth="8" fill="transparent" />
+                <circle
+                  cx="60"
+                  cy="60"
+                  r="50"
+                  stroke={risk.priority_tier === 'high' ? 'var(--risk-high)' : (risk.priority_tier === 'medium' ? 'var(--risk-medium)' : 'var(--risk-low)')}
+                  strokeWidth="8"
+                  fill="transparent"
+                  strokeDasharray="314.16"
+                  strokeDashoffset={314.16 * (1 - (risk.total_score || 0) / 100)}
+                  strokeLinecap="round"
+                  style={{
+                    transition: 'stroke-dashoffset 1.5s cubic-bezier(0.16, 1, 0.3, 1)',
+                    filter: `drop-shadow(0 0 4px ${risk.priority_tier === 'high' ? 'rgba(239, 68, 68, 0.3)' : (risk.priority_tier === 'medium' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(16, 185, 129, 0.3)')})`
+                  }}
+                />
+              </svg>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1 }}>
+                <span style={{ fontSize: '2rem', fontWeight: 800, color: risk.priority_tier === 'high' ? 'var(--risk-high)' : (risk.priority_tier === 'medium' ? 'var(--risk-medium)' : 'var(--risk-low)'), lineHeight: 1.1 }}>{risk.total_score}</span>
+                <span style={{ fontSize: '0.62rem', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '1px', marginTop: '2px' }}>Score</span>
+              </div>
             </div>
             <div>
               <div className="mb-1">
@@ -359,8 +380,8 @@ export default function Assessment() {
                           <td style={{ fontSize: '0.78rem' }}>{fmtRp(sc.cost_claimed)}</td>
                           <td>
                             <div className="flex items-center gap-1">
-                              <div className="progress-bar" style={{ width: 40, height: 4 }}>
-                                <div className="progress-fill" style={{ width: `${sc.similarity * 100}%`, background: sc.similarity > 0.85 ? 'var(--risk-high)' : 'var(--accent-green)' }} />
+                              <div className="progress-bar" style={{ width: 40, height: 6, background: 'var(--bg-primary)', overflow: 'hidden', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                                <div className="progress-fill" style={{ width: `${sc.similarity * 100}%`, background: sc.similarity > 0.85 ? 'var(--risk-high)' : 'var(--accent-green)', height: '100%', borderRadius: '4px' }} />
                               </div>
                               <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{(sc.similarity * 100).toFixed(0)}%</span>
                             </div>
@@ -417,19 +438,26 @@ export default function Assessment() {
             <p className="text-xs text-muted mb-2">Kontribusi setiap komponen analisis terhadap total skor risiko</p>
             <div style={{ height: 250, width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={shapData} layout="vertical" margin={{ top: 5, right: 30, left: 120, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={true} vertical={false} />
-                  <XAxis type="number" stroke="var(--text-muted)" fontSize={11} />
-                  <YAxis dataKey="name" type="category" stroke="var(--text-muted)" fontSize={11} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} width={120} />
+                <BarChart data={shapData} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} vertical={true} strokeOpacity={0.4} />
+                  <XAxis type="number" stroke="var(--text-muted)" fontSize={11} axisLine={false} tickLine={false} dy={4} />
+                  <YAxis dataKey="name" type="category" stroke="var(--text-muted)" fontSize={11} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} width={120} axisLine={false} tickLine={false} dx={-4} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)', borderRadius: 8, fontSize: '0.8rem' }}
-                    itemStyle={{ color: 'var(--text-primary)' }}
+                    contentStyle={{
+                      borderRadius: '12px',
+                      border: '1px solid var(--border)',
+                      background: 'var(--tooltip-bg)',
+                      backdropFilter: 'blur(8px)',
+                      boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)'
+                    }}
+                    itemStyle={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.8rem' }}
                     formatter={(value) => [`${Number(value).toFixed(1)} poin`, 'Kontribusi']}
                   />
-                  <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                    {shapData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.value > 0 ? 'var(--risk-high)' : 'var(--success)'} />
-                    ))}
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={16}>
+                    {shapData.map((entry, index) => {
+                      const barColor = risk.priority_tier === 'high' ? 'var(--risk-high)' : (risk.priority_tier === 'medium' ? 'var(--risk-medium)' : 'var(--risk-low)');
+                      return <Cell key={`cell-${index}`} fill={entry.value > 0 ? barColor : 'var(--success)'} />;
+                    })}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -443,23 +471,28 @@ export default function Assessment() {
               <p className="text-xs text-muted mb-2">
                 Atribusi fitur dari model XGBoost — seberapa besar tiap faktor mendorong prediksi biaya
               </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                {shapFeatures.map((f, i) => (
-                  <div key={i}>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span>{f.feature_label || formatFeature(f.feature_name)}</span>
-                      <span style={{ fontWeight: 600, color: f.direction === 'positive' ? 'var(--risk-high)' : 'var(--success)' }}>
-                        {f.direction === 'positive' ? '↑ mendorong biaya naik' : '↓ menahan biaya'}
-                      </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                {shapFeatures.map((f, i) => {
+                  const featureColor = risk.priority_tier === 'high' ? 'var(--risk-high)' : (risk.priority_tier === 'medium' ? 'var(--risk-medium)' : 'var(--risk-low)');
+                  return (
+                    <div key={i}>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span>{f.feature_label || formatFeature(f.feature_name)}</span>
+                        <span style={{ fontWeight: 600, color: f.direction === 'positive' ? featureColor : 'var(--success)' }}>
+                          {f.direction === 'positive' ? '↑ mendorong biaya naik' : '↓ menahan biaya'}
+                        </span>
+                      </div>
+                      <div className="progress-bar" style={{ height: 6, background: 'var(--bg-primary)', overflow: 'hidden', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                        <div className="progress-fill" style={{
+                          width: `${Math.min(100, (f.contribution / (shapFeatures[0]?.contribution || 1)) * 100)}%`,
+                          background: f.direction === 'positive' ? featureColor : 'var(--accent-green)',
+                          height: '100%',
+                          borderRadius: '4px'
+                        }} />
+                      </div>
                     </div>
-                    <div className="progress-bar" style={{ height: 5 }}>
-                      <div className="progress-fill" style={{
-                        width: `${Math.min(100, (f.contribution / (shapFeatures[0]?.contribution || 1)) * 100)}%`,
-                        background: f.direction === 'positive' ? 'var(--risk-high)' : 'var(--accent-green)',
-                      }} />
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

@@ -77,12 +77,14 @@ export default function DemoLoader() {
               <span>Progress</span>
               <span>{progress}%</span>
             </div>
-            <div className="progress-bar mb-4" style={{ height: 12 }}>
+            <div className="progress-bar mb-4" style={{ height: 8, background: 'var(--bg-primary)', overflow: 'hidden', borderRadius: '4px', border: '1px solid var(--border)' }}>
               <div
                 className="progress-fill"
                 style={{
                   width: `${progress}%`,
                   background: status === 'error' ? 'var(--risk-high)' : 'var(--accent-green)',
+                  height: '100%',
+                  borderRadius: '4px'
                 }}
               />
             </div>
