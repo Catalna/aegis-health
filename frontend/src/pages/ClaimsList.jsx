@@ -84,11 +84,12 @@ export default function ClaimsList() {
   return (
     <div>
       <div className="page-header">
+        <div className="page-kicker">Antrian masuk</div>
         <h2 className="glow-text" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Search size={24} color="var(--accent-green)" />
+          <Search size={22} color="var(--accent-green)" aria-hidden="true" />
           Daftar Klaim
         </h2>
-        <p>Antrian prioritas klaim — diurutkan dari risiko tertinggi yang belum diverifikasi.</p>
+        <p>Antrian klaim yang perlu diperiksa, diurutkan dari kebutuhan tindak lanjut tertinggi.</p>
       </div>
 
       {/* Toolbar filter */}
@@ -98,33 +99,34 @@ export default function ClaimsList() {
             <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input
               className="form-input"
-              placeholder="Cari ID klaim / pasien / faskes / diagnosis..."
+              aria-label="Cari klaim"
+              placeholder="Cari ID klaim, peserta, fasilitas, atau diagnosis..."
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
               style={{ paddingLeft: 30, fontSize: '0.82rem' }}
             />
             {searchInput && (
-              <button onClick={() => setSearchInput('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                <X size={14} />
+             <button aria-label="Hapus pencarian" onClick={() => setSearchInput('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={14} aria-hidden="true" />
               </button>
             )}
           </div>
 
-          <select className="form-select" value={status} onChange={e => { setStatus(e.target.value); setPage(0) }} style={{ width: 'auto', fontSize: '0.82rem' }}>
+           <select aria-label="Saring berdasarkan status" className="form-select" value={status} onChange={e => { setStatus(e.target.value); setPage(0) }} style={{ width: 'auto', fontSize: '0.82rem' }}>
             <option value="">Semua Status</option>
             <option value="pending">Menunggu</option>
             <option value="processed">Terproses AI</option>
             <option value="verified">Diverifikasi</option>
           </select>
 
-          <select className="form-select" value={tier} onChange={e => { setTier(e.target.value); setPage(0) }} style={{ width: 'auto', fontSize: '0.82rem' }}>
+           <select aria-label="Saring berdasarkan prioritas" className="form-select" value={tier} onChange={e => { setTier(e.target.value); setPage(0) }} style={{ width: 'auto', fontSize: '0.82rem' }}>
             <option value="">Semua Prioritas</option>
             <option value="high">Risiko Tinggi</option>
             <option value="medium">Risiko Sedang</option>
             <option value="low">Risiko Rendah</option>
           </select>
 
-          <select className="form-select" value={sort} onChange={e => { setSort(e.target.value); setPage(0) }} style={{ width: 'auto', fontSize: '0.82rem' }}>
+           <select aria-label="Urutkan daftar klaim" className="form-select" value={sort} onChange={e => { setSort(e.target.value); setPage(0) }} style={{ width: 'auto', fontSize: '0.82rem' }}>
             <option value="priority">Urut: Prioritas</option>
             <option value="risk_desc">Skor Risiko ↓</option>
             <option value="risk_asc">Skor Risiko ↑</option>
@@ -152,30 +154,30 @@ export default function ClaimsList() {
           <table>
             <thead>
               <tr>
-                <th>Claim ID</th>
-                <th>Faskes</th>
-                <th>Diagnosis</th>
-                <th>Biaya Klaim</th>
-                <th>LOS</th>
-                <th>Risk Score</th>
-                <th>Prioritas</th>
-                <th>Status Verifikasi</th>
+                 <th scope="col">ID Klaim</th>
+                 <th scope="col">Fasilitas Kesehatan</th>
+                 <th scope="col">Diagnosis</th>
+                 <th scope="col">Biaya Klaim</th>
+                 <th scope="col">Lama Rawat</th>
+                 <th scope="col">Skor Risiko</th>
+                 <th scope="col">Prioritas</th>
+                 <th scope="col">Status Verifikasi</th>
               </tr>
             </thead>
             <tbody>
               {data.items.map(c => (
-                <tr key={c.claim_id} onClick={() => handleRowClick(c)} style={{ cursor: 'pointer', opacity: c.status === 'verified' ? 0.75 : 1 }}>
+               <tr key={c.claim_id} tabIndex="0" role="button" aria-label={`Buka klaim ${c.claim_id}`} onClick={() => handleRowClick(c)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleRowClick(c) } }} style={{ cursor: 'pointer', opacity: c.status === 'verified' ? 0.75 : 1 }}>
                   <td><span className="font-mono" style={{ fontSize: '0.78rem' }}>{c.claim_id}</span></td>
                   <td>
                     <div style={{ fontWeight: 500 }}>{c.provider_id}</div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>via Integrasi Faskes</div>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Sumber klaim</div>
                   </td>
                   <td><span className="badge badge-blue">{c.diagnosis_primary}</span></td>
                   <td>Rp {c.cost_claimed?.toLocaleString('id-ID')}</td>
-                  <td>{c.length_of_stay} hr</td>
+                   <td>{c.length_of_stay} hari</td>
                   <td>
-                    {c.status === 'pending' || !c.risk_score
-                      ? <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>N/A</span>
+                    {c.status === 'pending' || c.risk_score == null
+                       ? <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Belum tersedia</span>
                       : <ScoreBar score={Math.round(c.risk_score)} tier={c.priority_tier || 'low'} />}
                   </td>
                   <td>
@@ -199,7 +201,7 @@ export default function ClaimsList() {
               {data.items.length === 0 && (
                 <tr>
                   <td colSpan={8} className="text-center text-muted" style={{ padding: '2rem' }}>
-                    Tidak ada klaim yang cocok dengan filter.
+                     Tidak ada klaim yang sesuai dengan pilihan pencarian.
                   </td>
                 </tr>
               )}

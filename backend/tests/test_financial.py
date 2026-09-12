@@ -2,6 +2,7 @@
 import pytest
 
 from backend.app.agents.financial_engine import _zscore_fallback, analyze_financial, get_financial_model
+from backend.app.ml.feature_engineering import extract_cost_features
 from conftest import make_claim
 
 
@@ -45,6 +46,19 @@ async def test_analyze_financial_inflated_claim_scores_higher():
     normal = await analyze_financial(make_claim(cost_claimed=24_000_000))
     inflated = await analyze_financial(make_claim(claim_id="X2", cost_claimed=90_000_000))
     assert inflated.anomaly_score >= normal.anomaly_score
+
+
+def test_cost_prediction_features_do_not_include_claimed_cost():
+    """Prediksi biaya wajar tidak boleh membaca biaya yang sedang diuji."""
+    normal = make_claim(cost_claimed=24_000_000)
+    inflated = make_claim(cost_claimed=90_000_000)
+    assert extract_cost_features(normal.model_dump()) == extract_cost_features(inflated.model_dump())
+
+
+@pytest.mark.asyncio
+async def test_model_financial_score_detects_three_times_peer_cost():
+    result = await analyze_financial(make_claim(claim_id="X3", cost_claimed=72_000_000))
+    assert result.anomaly_score > 0.5
 
 
 def test_model_loads_if_available():

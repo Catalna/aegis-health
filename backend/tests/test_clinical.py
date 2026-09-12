@@ -7,6 +7,30 @@ from backend.app.models.schemas import FinancialAssessment, FraudAssessment, Rev
 from conftest import make_claim
 
 
+def test_normal_delivery_scenario_does_not_include_forceps_procedure():
+    """O80 adalah persalinan spontan tunggal; 72.0 adalah tindakan forceps rendah."""
+    from backend.app.data.synthetic_generator import BASE_SCENARIOS
+
+    scenario = next(s for s in BASE_SCENARIOS if s["primary"] == "O80")
+    assert "72.0" not in scenario["procs"]
+
+
+def test_synthetic_scenarios_only_use_reviewed_medical_codes():
+    from backend.app.data.ina_cbg_rules import DIAGNOSIS_LABELS, PROCEDURE_LABELS
+    from backend.app.data.synthetic_generator import BASE_SCENARIOS
+
+    diagnosis_codes = {
+        code for scenario in BASE_SCENARIOS
+        for code in [scenario["primary"], *scenario["secondary"]]
+    }
+    procedure_codes = {code for scenario in BASE_SCENARIOS for code in scenario["procs"]}
+    assert diagnosis_codes <= DIAGNOSIS_LABELS.keys()
+    assert procedure_codes <= PROCEDURE_LABELS.keys()
+
+    ckd_stage_3 = next(s for s in BASE_SCENARIOS if s["primary"] == "N18.3")
+    assert "39.95" not in ckd_stage_3["procs"]
+
+
 @pytest.mark.asyncio
 async def test_match_table_case_no_llm_needed(normal_claim):
     """Kasus match tabel referensi & wajar → rule engine, plausibility=plausible."""
@@ -58,6 +82,16 @@ def test_plausibility_mapping_deterministic():
     assert _plausibility_from_flags(["los_outlier"])[0] == "questionable"
     assert _plausibility_from_flags(["los_outlier", "severity_med_mismatch"])[0] == "implausible"
     assert _plausibility_from_flags(["tariff_deviation_extreme"])[0] == "implausible"
+
+
+def test_unsupported_high_risk_procedure_is_flagged():
+    claim = make_claim(
+        diagnosis_primary="J18.9",
+        procedure_codes=["85.41"],
+        severity_level=1,
+    )
+    flags = _rule_flags(claim, tariff_deviation=0.0, known_diag=True)
+    assert "unsupported_high_risk_proc" in flags
 
 
 # ---------------------------------------------------------------------------
@@ -121,12 +155,44 @@ def test_risk_score_repeat_billing_caps_similarity():
     assert risk.breakdown["similarity_fraud"] == 20.0
 
 
-def test_risk_score_plain_similarity_capped_low():
-    """Kemiripan 100% antar-faskes berbeda tanpa cloning = pola penyakit wajar → maks 8 poin."""
+def test_repeat_billing_is_not_hidden_in_low_priority():
+    risk = calculate_risk_score(
+        _clinical(), _financial(), _fraud(repeat=True), _review("weak"),
+    )
+    assert risk.total_score >= 25.0
+    assert risk.priority_tier == "medium"
+
+
+def test_unbundling_is_scored_as_a_high_confidence_relationship():
+    fraud = _fraud().model_copy(update={"unbundling_flag": True})
+    risk = calculate_risk_score(_clinical(), _financial(), fraud, _review("weak"))
+    assert risk.breakdown["similarity_fraud"] == 20.0
+    assert risk.priority_tier == "medium"
+
+
+def test_risk_score_does_not_depend_on_review_llm_level():
+    weak = calculate_risk_score(
+        _clinical(["severity_proc_mismatch"]),
+        _financial(anomaly=0.8),
+        _fraud(),
+        _review("weak"),
+    )
+    strong = calculate_risk_score(
+        _clinical(["severity_proc_mismatch"]),
+        _financial(anomaly=0.8),
+        _fraud(),
+        _review("strong_multi_signal"),
+    )
+    assert strong.total_score == weak.total_score
+    assert strong.breakdown == weak.breakdown
+
+
+def test_risk_score_plain_similarity_has_no_fraud_weight():
+    """Kemiripan lintas-faskes tanpa relasi cloning/repeat tidak menambah skor risiko."""
     risk = calculate_risk_score(
         _clinical(), _financial(), _fraud(sim=1.0), _review("weak"),
     )
-    assert risk.breakdown["similarity_fraud"] <= 8.0
+    assert risk.breakdown["similarity_fraud"] == 0.0
 
 
 def test_risk_score_cloning_full_weight():
@@ -146,9 +212,10 @@ def _clinical(flags=None):
 
 
 def test_risk_score_high_tier():
+    fraud = _fraud(sim=0.97, if_score=1.0).model_copy(update={"cloning_flag": True})
     risk = calculate_risk_score(
         _clinical(["tariff_deviation_extreme", "severity_proc_mismatch"]),
-        _financial(anomaly=1.0, dev=120), _fraud(sim=0.97, if_score=1.0), _review("strong_multi_signal"),
+        _financial(anomaly=1.0, dev=120), fraud, _review("strong_multi_signal"),
     )
     assert risk.priority_tier == "high"
     assert risk.total_score >= 75

@@ -57,6 +57,17 @@ def _fmt_rp(x: float) -> str:
     return f"Rp {x:,.0f}".replace(",", ".")
 
 
+def build_priority_reason(risk: RiskScore) -> str:
+    """Deterministic QA wording so a clean claim is not described as a change."""
+    if risk.priority_tier == "low":
+        return (
+            f"Prioritas rendah (skor {risk.total_score:.0f}/100) karena sistem tidak menemukan "
+            "ketidakwajaran atau sinyal risiko signifikan yang memenuhi ambang investigasi."
+        )
+    tier = "tinggi" if risk.priority_tier == "high" else "sedang"
+    return f"Prioritas {tier} (skor {risk.total_score:.0f}/100) ditentukan dari kontribusi sinyal risiko yang terverifikasi."
+
+
 def _normalize_tokens(text: str) -> list[float]:
     """Token angka → float. Titik diikuti tepat 3 digit = ribuan; selain itu desimal."""
     out = []
@@ -130,7 +141,8 @@ def _template_explanation(
     fraud: FraudAssessment, review: ReviewSynthesis, risk: RiskScore, facts: dict,
 ) -> ClaimExplanation:
     """Fallback template — kaku tapi 100% akurat."""
-    reasons = list(review.corroborating_signals)
+    # Low tier must not repeat an unverified LLM synthesis as a finding.
+    reasons = [] if risk.priority_tier == "low" else list(review.corroborating_signals)
     if not reasons:
         if financial.deviation_pct > 20:
             reasons.append(f"Biaya melebihi prediksi model {financial.deviation_pct:+.1f}%")
@@ -141,10 +153,12 @@ def _template_explanation(
     if not reasons:
         reasons.append("Tidak ditemukan indikasi anomali signifikan.")
 
+    tier_label = {"high": "tinggi", "medium": "sedang", "low": "rendah"}[risk.priority_tier]
+    top_reason = reasons[0].rstrip(".")
     narrative = (
         f"Klaim {claim.claim_id} mendapat skor risiko {facts['score']:.0f} dari 100 "
-        f"(prioritas {risk.priority_tier}). "
-        + (f"Temuan utama: {reasons[0]}. " if reasons else "")
+        f"(prioritas {tier_label}). "
+        + (f"Temuan utama: {top_reason}. " if reasons else "")
         + f"Biaya diklaim {_fmt_rp(claim.cost_claimed)}"
         + (
             f" vs prediksi model {_fmt_rp(financial.predicted_cost_range[1] / 1.15)} (deviasi {financial.deviation_pct:+.1f}%)."
@@ -169,8 +183,7 @@ def _template_explanation(
         ranked_reasons=reasons,
         recommended_action=TIER_TO_ACTION[risk.priority_tier],
         qa_panel=QAPanel(
-            why_top_priority=f"Skor {facts['score']:.0f}/100 dengan kontributor terbesar: {strongest_label} "
-                             f"({risk.breakdown.get(strongest, 0):.1f} poin). " + "; ".join(reasons[:2]),
+            why_top_priority=build_priority_reason(risk),
             most_similar_claim=similar_text,
             strongest_evidence=f"{strongest_label}: {risk.breakdown.get(strongest, 0):.1f} poin dari total {facts['score']:.0f}. " +
                                (financial.evidence_text if strongest == "financial_anomaly" else ""),
@@ -188,8 +201,6 @@ async def generate_explanation(
     review: ReviewSynthesis,
     risk: RiskScore,
 ) -> ClaimExplanation:
-    model = await get_available_model(EXPLANATION_MODEL, EXPLANATION_MODEL_FALLBACK)
-
     # ---------- Fakta final yang BOLEH dikutip narasi ----------
     # Kemiripan antar-faskes berbeda tanpa kontensi cloning/repeat = pola penyakit wajar,
     # TIDAK dikutip sebagai temuan agar narasi tidak menyesatkan verifier.
@@ -201,6 +212,13 @@ async def generate_explanation(
         "similarity_pct": fraud.similarity_max_score * 100 if (relational_signal and fraud.similarity_max_score > 0.6) else None,
         "actual_cost": claim.cost_claimed,
     }
+
+    # A low-priority result is a clean/weak-signal outcome. Keep its narrative
+    # deterministic so an LLM cannot introduce an unsupported fraud finding.
+    if risk.priority_tier == "low":
+        return _template_explanation(claim, clinical, financial, fraud, review, risk, facts)
+
+    model = await get_available_model(EXPLANATION_MODEL, EXPLANATION_MODEL_FALLBACK)
 
     breakdown_items = sorted(risk.breakdown.items(), key=lambda x: -x[1])
     nonzero = [(k, v) for k, v in breakdown_items if v > 0.05]
@@ -250,6 +268,8 @@ SINTESIS REVIEW: {review.reasoning_narrative}
         "7. strongest_evidence: 1 kalimat utuh temuan terkuat dengan angka persis.\n"
         "8. ranked_reasons: maksimal 4 alasan berupa frasa/kalimat singkat yang mengandung angka persis.\n"
         "9. Semua output dalam Bahasa Indonesia."
+        "\n10. Jika prioritas rendah, jelaskan sebagai 'tidak ditemukan ketidakwajaran atau sinyal risiko signifikan' "
+        "dan JANGAN menulis 'tidak ada yang menunjukkan perubahan'."
     )
 
     from pydantic import BaseModel
@@ -292,7 +312,7 @@ SINTESIS REVIEW: {review.reasoning_narrative}
             ranked_reasons=[_sanitize_jargon(r) for r in response.ranked_reasons[:4] if r and r.strip()],
             recommended_action=TIER_TO_ACTION[risk.priority_tier],  # dari tier, bukan LLM
             qa_panel=QAPanel(
-                why_top_priority=_sanitize_jargon(response.why_top_priority.strip()),
+                why_top_priority=build_priority_reason(risk),
                 most_similar_claim=similar_claim_text,
                 strongest_evidence=_sanitize_jargon(response.strongest_evidence.strip()),
                 is_this_fraud=FRAUD_ANSWER,  # hardcoded, tidak pernah dari LLM

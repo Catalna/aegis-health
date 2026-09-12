@@ -7,19 +7,45 @@ import { claimsApi, formatRecommendedAction, formatFeature, ANALYSIS_VERSION } f
 // Maps for technical terms -> human readable
 const COMPONENT_LABELS = {
   similarity_fraud: 'Kemiripan Riwayat Klaim',
-  clinical_rule_flags: 'Kewajaran Medis (Rule)',
-  isolation_forest_anomaly: 'Anomali Pola Perilaku',
-  synthesis_confidence: 'Keyakinan Sistem',
-  financial_anomaly: 'Anomali Finansial',
+  clinical_rule_flags: 'Temuan Medis',
+  isolation_forest_anomaly: 'Pola Klaim yang Menyimpang',
+  synthesis_confidence: 'Kekuatan Bukti',
+  financial_anomaly: 'Perbedaan Biaya',
 }
 
 const EVIDENCE_LEVEL_LABELS = {
   strong_multi_signal: 'Banyak Indikasi Kuat',
   single_signal: 'Satu Indikasi',
-  weak: 'Tidak Ada Indikasi',
+  weak: 'Bukti Belum Menguat',
 }
 
 const fmtRp = (x) => `Rp ${Math.round(x || 0).toLocaleString('id-ID')}`
+
+function plainText(value) {
+  if (!value) return value
+  return String(value)
+    .replace(/phantom billing/gi, 'tindakan yang belum terbukti')
+    .replace(/repeat billing/gi, 'pengulangan klaim')
+    .replace(/cloning/gi, 'kemiripan tidak wajar antar klaim')
+    .replace(/upcoding/gi, 'tingkat keparahan yang tidak sesuai')
+    .replace(/agent\s*\d+/gi, 'pemeriksaan')
+    .replace(/XGBoost\s*\+\s*SHAP/gi, 'analisis biaya')
+    .replace(/XGBoost/gi, 'analisis biaya')
+    .replace(/SHAP/gi, 'faktor biaya')
+    .replace(/\bseverity\b/gi, 'tingkat keparahan')
+    .replace(/\boutlier\b/gi, 'jauh dari pola umum')
+    .replace(/\bfallback\b/gi, 'data cadangan')
+    .replace(/\bN\/A\b/gi, 'tidak tersedia')
+    .replace(/fallback/gi, 'data cadangan')
+    .replace(/rule engine/gi, 'aturan pemeriksaan')
+    .replace(/LLM/gi, 'analisis tambahan')
+    .replace(/\bmodel\b/gi, 'perkiraan')
+    .replace(/\bCBG\b/gi, 'kelompok biaya')
+    .replace(/ACUTE MYOCARDIAL INFARCTION/gi, 'serangan jantung akut')
+    .replace(/diagnosis-prosedur-severity/gi, 'diagnosis, tindakan, dan tingkat keparahan')
+    .replace(/deviasi/gi, 'perbedaan')
+    .replace(/evidence/gi, 'temuan')
+}
 
 export default function Assessment() {
   const { claimId } = useParams()
@@ -128,16 +154,16 @@ export default function Assessment() {
       <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⚠</div>
       {stale ? (
         <>
-          <div>Hasil analisis tersimpan dibuat dengan <strong>versi engine yang lama</strong>.</div>
+           <div>Hasil pemeriksaan tersimpan dibuat dengan <strong>aturan pemeriksaan yang lama</strong>.</div>
           <p style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
-            Skor kemiripan pada versi lama tidak dapat dipercaya. Jalankan analisis ulang untuk menghitung ulang dengan engine terbaru.
+             Hasil lama perlu diperbarui agar sesuai dengan aturan pemeriksaan terbaru.
           </p>
         </>
       ) : (
         <p style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>Silakan jalankan investigasi terlebih dahulu dari Daftar Klaim.</p>
       )}
       <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={handleRerun}>
-        <RefreshCw size={14} /> Analisis Ulang
+         <RefreshCw size={14} aria-hidden="true" /> Periksa Ulang
       </button>
     </div>
   )
@@ -170,12 +196,12 @@ export default function Assessment() {
       <div className="page-header">
         <div className="flex items-center justify-between">
           <div>
-            <h2>Hasil Analisis Klaim</h2>
+            <h2>Hasil Pemeriksaan Klaim</h2>
             <p className="font-mono text-sm" style={{ color: 'var(--text-muted)' }}>Klaim: {claimId}</p>
           </div>
           <div className="flex gap-1">
-            <button className="btn btn-ghost" onClick={handleRerun} title="Reset dan jalankan analisis ulang">
-              <RefreshCw size={14} /> Analisis Ulang
+             <button className="btn btn-ghost" onClick={handleRerun} title="Hapus hasil lama dan periksa kembali">
+               <RefreshCw size={14} aria-hidden="true" /> Periksa Ulang
             </button>
             <button className="btn btn-ghost" onClick={() => navigate('/claims')}>
               ← Daftar Klaim
@@ -186,7 +212,7 @@ export default function Assessment() {
 
       {data.partial && (
         <div className="alert-disclaimer mb-3" style={{ borderLeft: '4px solid var(--warning)' }}>
-          ⚠ Analisis ini <strong>partial</strong> — sebagian agent gagal dan memakai fallback, sehingga evidence tidak lengkap.
+         ⚠ <strong>Pemeriksaan belum lengkap</strong> — sebagian data tidak tersedia sehingga temuan perlu dibaca dengan perhatian tambahan.
         </div>
       )}
 
@@ -203,6 +229,7 @@ export default function Assessment() {
               {risk.total_score}
             </div>
             <div>
+              <div className="text-xs text-muted mb-1">Makin tinggi, makin perlu diverifikasi lebih dulu</div>
               <div className="mb-1">
                 <span className={`badge badge-${risk.priority_tier}`}>
                   Prioritas {risk.priority_tier === 'high' ? 'Tinggi' : risk.priority_tier === 'medium' ? 'Sedang' : 'Rendah'}
@@ -212,9 +239,9 @@ export default function Assessment() {
                 {formatRecommendedAction(explanation.recommended_action)}
               </h3>
               <p className="text-muted text-sm">
-                {clinical?.rule_flags?.length > 0
-                  ? `Flag klinis: ${clinical.rule_flags.join(', ')}`
-                  : 'Perlu tinjauan manual'}
+                 {clinical?.rule_flags?.length > 0
+                   ? `${clinical.rule_flags.length} temuan medis perlu diperhatikan`
+                   : 'Tidak ada temuan medis yang perlu ditindaklanjuti'}
               </p>
             </div>
           </div>
@@ -281,15 +308,15 @@ export default function Assessment() {
           {/* Narasi Sistem */}
           <div className="card">
             <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              Narasi Analisis Sistem
+               Ringkasan Pemeriksaan
               {explanation?.generated_by && (
                 <span className="badge badge-blue" style={{ fontSize: '0.6rem', fontWeight: 400 }}>
-                  {explanation.generated_by === 'template_fallback' ? 'template fallback' : `Generated by: ${explanation.generated_by} (local)`}
+                   {explanation.generated_by === 'template_fallback' ? 'ringkasan aturan' : 'ringkasan otomatis'}
                 </span>
               )}
             </div>
             <div className="qa-answer mb-2" style={{ marginTop: 0 }}>
-              {explanation?.narrative_id || 'Narasi tidak tersedia.'}
+               {plainText(explanation?.narrative_id) || 'Ringkasan tidak tersedia.'}
             </div>
             <div className="text-xs text-muted mb-3" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
               <span style={{ color: 'var(--accent-green)' }}>
@@ -303,29 +330,27 @@ export default function Assessment() {
                 { label: 'Kenapa klaim ini mendapat prioritas ini?', key: 'why_top_priority' },
                 { label: 'Apa temuan terkuat dari analisis?', key: 'strongest_evidence' },
                 { label: 'Apakah ada klaim serupa sebelumnya?', key: 'most_similar_claim' },
-                { label: 'Apakah ini sudah dikonfirmasi sebagai fraud?', key: 'is_this_fraud' }
+                 { label: 'Apakah temuan ini sudah dikonfirmasi?', key: 'is_this_fraud' }
               ].map(q => (
                 <details key={q.key} style={{ background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
                   <summary style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', cursor: 'pointer', outline: 'none', fontWeight: 500 }}>
                     {q.label}
                   </summary>
                   <div style={{ padding: '1rem', borderTop: '1px solid var(--border)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, background: 'var(--bg-card)' }}>
-                    {explanation?.qa_panel?.[q.key] || '—'}
+                     {plainText(explanation?.qa_panel?.[q.key]) || '—'}
                   </div>
                 </details>
               ))}
             </div>
           </div>
 
-          {/* Riwayat Klaim Mirip — side-by-side dari data nyata.
-              Skor = komposit multi-faktor, BUKAN kemiripan penyakit saja:
-              kode medis 40% + kedekatan biaya 30% + faskes sama 15%
-              + jarak waktu 10% + pasien sama 5%. Klik baris → rincian faktor. */}
+          {/* Hanya relasi repeat billing atau cloning yang ditampilkan.
+              Skor komposit mengurutkan kandidat yang sudah lolos aturan relasi. */}
           <div className="card">
             <div className="card-title">Riwayat Klaim Serupa</div>
             <p className="text-xs text-muted mb-2">
-              Skor komposit: kode medis 40% + kedekatan biaya 30% + faskes sama 15% + jarak waktu 10% + pasien sama 5%.
-              Penyakit sama saja <strong>tidak</strong> dianggap mirip. Klik baris untuk melihat rincian faktor.
+               Hanya hubungan pengulangan klaim atau kemiripan tidak wajar dalam 45 hari yang ditampilkan.
+               Klik baris untuk melihat alasan kemiripannya.
             </p>
             {similarClaims.length > 0 ? (
               <div className="table-container">
@@ -369,28 +394,28 @@ export default function Assessment() {
                         {expandedSimilar === sc.claim_id && (
                           <tr>
                             <td colSpan={4} style={{ background: 'var(--bg-secondary)', padding: '0.75rem 1rem' }}>
-                              <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.45rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                                Mengapa dianggap mirip — rincian faktor
+                               <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.45rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                                 Alasan kemiripan
                               </div>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                                <span className="badge badge-blue" style={{ fontSize: '0.65rem' }} title="Jaccard diagnosis + prosedur (bobot 40%)">
-                                  Kode medis: {((sc.code_similarity ?? 0) * 100).toFixed(0)}%
+                                 <span className="badge badge-blue" style={{ fontSize: '0.65rem' }} title="Kesesuaian kode diagnosis dan tindakan">
+                                   Diagnosis dan tindakan: {((sc.code_similarity ?? 0) * 100).toFixed(0)}%
                                 </span>
-                                <span className={`badge ${(sc.cost_proximity ?? 0) > 0.9 ? 'badge-high' : 'badge-blue'}`} style={{ fontSize: '0.65rem' }} title="Kedekatan nominal biaya (bobot 30%)">
+                                 <span className={`badge ${(sc.cost_proximity ?? 0) > 0.9 ? 'badge-high' : 'badge-blue'}`} style={{ fontSize: '0.65rem' }} title="Kedekatan jumlah biaya">
                                   Kedekatan biaya: {((sc.cost_proximity ?? 0) * 100).toFixed(0)}%
                                 </span>
-                                <span className={`badge ${sc.same_provider ? 'badge-high' : 'badge-low'}`} style={{ fontSize: '0.65rem' }} title="Cloning umumnya terjadi di faskes yang sama (bobot 15%)">
-                                  Faskes: {sc.same_provider ? `sama${sc.provider_id ? ` (${sc.provider_id})` : ''}` : 'berbeda'}
+                                 <span className={`badge ${sc.same_provider ? 'badge-high' : 'badge-low'}`} style={{ fontSize: '0.65rem' }} title="Kesesuaian fasilitas kesehatan">
+                                   Fasilitas kesehatan: {sc.same_provider ? `sama${sc.provider_id ? ` (${sc.provider_id})` : ''}` : 'berbeda'}
                                 </span>
-                                <span className={`badge ${sc.days_apart != null && sc.days_apart <= 7 ? 'badge-high' : 'badge-low'}`} style={{ fontSize: '0.65rem' }} title="Klaim hasil cloning/repeat biasanya berdekatan (bobot 10%)">
+                                 <span className={`badge ${sc.days_apart != null && sc.days_apart <= 7 ? 'badge-high' : 'badge-low'}`} style={{ fontSize: '0.65rem' }} title="Jarak tanggal klaim">
                                   Jarak waktu: {sc.days_apart != null ? `${sc.days_apart} hari` : 'tidak diketahui'}
                                 </span>
-                                <span className={`badge ${sc.same_patient ? 'badge-high' : 'badge-low'}`} style={{ fontSize: '0.65rem' }} title="Pasien sama = indikasi repeat billing (bobot 5%)">
-                                  Pasien: {sc.same_patient ? `sama${sc.patient_id ? ` (${sc.patient_id})` : ''}` : 'berbeda'}
+                                 <span className={`badge ${sc.same_patient ? 'badge-high' : 'badge-low'}`} style={{ fontSize: '0.65rem' }} title="Kesesuaian peserta">
+                                   Peserta: {sc.same_patient ? `sama${sc.patient_id ? ` (${sc.patient_id})` : ''}` : 'berbeda'}
                                 </span>
                               </div>
                               <div className="text-xs text-muted" style={{ marginTop: '0.5rem' }}>
-                                Faktor berwarna merah = konteks mencurigakan. Kemiripan tinggi dengan faskes &amp; pasien berbeda perlu perhatian (indikasi cloning antar-pasien).
+                                Faktor berwarna merah menunjukkan konteks yang mendukung investigasi. Pola klinis lintas faskes tidak ditampilkan sebagai kandidat cloning.
                               </div>
                             </td>
                           </tr>
@@ -404,7 +429,7 @@ export default function Assessment() {
               <div className="text-sm text-muted text-center p-4">
                 {fraud?.similarity_matched_claim_id
                   ? `Klaim paling mirip: ${fraud.similarity_matched_claim_id} (${((fraud.similarity_max_score || 0) * 100).toFixed(0)}%)`
-                  : 'Tidak ada klaim historis yang cukup mirip (di bawah ambang komposit 60%) — kemiripan pola penyakit semata dianggap wajar'}
+                   : 'Tidak ada kandidat pengulangan klaim atau kemiripan tidak wajar. Kemiripan pola penyakit semata dianggap wajar.'}
               </div>
             )}
           </div>
@@ -414,7 +439,7 @@ export default function Assessment() {
           {/* Grafik Kontribusi Skor */}
           <div className="card">
             <div className="card-title">Faktor Penentu Risiko Utama</div>
-            <p className="text-xs text-muted mb-2">Kontribusi setiap komponen analisis terhadap total skor risiko</p>
+            <p className="text-xs text-muted mb-2">Bagian pemeriksaan yang paling memengaruhi tingkat prioritas klaim.</p>
             <div style={{ height: 250, width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={shapData} layout="vertical" margin={{ top: 5, right: 30, left: 120, bottom: 5 }}>
@@ -436,20 +461,20 @@ export default function Assessment() {
             </div>
           </div>
 
-          {/* SHAP attribution asli dari model */}
+           {/* Faktor yang memengaruhi perkiraan biaya */}
           {shapFeatures.length > 0 && (
             <div className="card">
-              <div className="card-title">Model Attribution (SHAP)</div>
+              <div className="card-title">Faktor yang Memengaruhi Biaya</div>
               <p className="text-xs text-muted mb-2">
-                Atribusi fitur dari model XGBoost — seberapa besar tiap faktor mendorong prediksi biaya
+                Faktor yang paling memengaruhi perkiraan biaya kasus ini.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                 {shapFeatures.map((f, i) => (
                   <div key={i}>
                     <div className="flex justify-between text-xs mb-1">
-                      <span>{f.feature_label || formatFeature(f.feature_name)}</span>
+                       <span>{plainText(f.feature_label || formatFeature(f.feature_name))}</span>
                       <span style={{ fontWeight: 600, color: f.direction === 'positive' ? 'var(--risk-high)' : 'var(--success)' }}>
-                        {f.direction === 'positive' ? '↑ mendorong biaya naik' : '↓ menahan biaya'}
+                        {f.direction === 'positive' ? '↑ biaya lebih tinggi' : '↓ biaya lebih rendah'}
                       </span>
                     </div>
                     <div className="progress-bar" style={{ height: 5 }}>
@@ -466,32 +491,32 @@ export default function Assessment() {
 
           {/* Catatan Temuan */}
           <div className="card">
-            <div className="card-title">Catatan Temuan Sistem</div>
+             <div className="card-title">Catatan Temuan</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--accent-green)' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Temuan Klinis</span>
-                  <span>{clinical?.evidence_source === 'llm_local' ? `rule + ${clinical.model_used}` : clinical?.evidence_source === 'fallback_no_data' ? 'fallback' : 'rule engine'}</span>
+                   <span>Temuan Medis</span>
+                   <span>{clinical?.evidence_source === 'llm_local' ? 'Analisis tambahan' : clinical?.evidence_source === 'fallback_no_data' ? 'Data cadangan' : 'Aturan pemeriksaan'}</span>
                 </div>
-                <div style={{ fontSize: '0.82rem' }}>{clinical?.evidence_text || 'Tidak ada temuan klinis signifikan'}</div>
+                 <div style={{ fontSize: '0.82rem' }}>{plainText(clinical?.evidence_text) || 'Tidak ada temuan medis yang signifikan.'}</div>
               </div>
               <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--risk-medium)' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Temuan Keuangan</span>
-                  <span>{financial?.method === 'zscore_peer_fallback' ? 'fallback z-score' : 'XGBoost + SHAP'}</span>
+                   <span>Temuan Biaya</span>
+                   <span>{financial?.method === 'zscore_peer_fallback' ? 'Perbandingan cadangan' : 'Analisis biaya'}</span>
                 </div>
-                <div style={{ fontSize: '0.82rem' }}>{financial?.evidence_text || 'Biaya dalam batas wajar'}</div>
+                 <div style={{ fontSize: '0.82rem' }}>{plainText(financial?.evidence_text) || 'Biaya berada dalam kisaran yang wajar.'}</div>
               </div>
               <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--risk-high)' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Temuan Anomali Pola</div>
-                <div style={{ fontSize: '0.82rem' }}>{fraud?.evidence_text || 'Tidak terdeteksi indikasi penipuan pola berulang'}</div>
+                 <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Temuan Pola Klaim</div>
+                 <div style={{ fontSize: '0.82rem' }}>{plainText(fraud?.evidence_text) || 'Tidak ditemukan pola pengulangan klaim yang perlu ditindaklanjuti.'}</div>
               </div>
               <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--border)' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Sintesis Review</span>
-                  <span>{review?.reasoning_source === 'rule_fallback' ? 'fallback rule-count' : review?.model_used || review?.reasoning_source}</span>
+                   <span>Ringkasan Temuan</span>
+                   <span>{review?.reasoning_source === 'rule_fallback' ? 'Aturan pemeriksaan' : 'Analisis tambahan'}</span>
                 </div>
-                <div style={{ fontSize: '0.82rem' }}>{review?.reasoning_narrative || '—'}</div>
+                 <div style={{ fontSize: '0.82rem' }}>{plainText(review?.reasoning_narrative) || '—'}</div>
               </div>
             </div>
           </div>

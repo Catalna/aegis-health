@@ -113,6 +113,8 @@ class FraudAssessment(BaseModel):
     # Cloning sungguhan: sangat mirip + pasien BERBEDA + faskes SAMA.
     # Kemiripan tinggi antar-faskes berbeda = pola penyakit wajar, BUKAN cloning.
     cloning_flag: bool = False
+    unbundling_flag: bool = False
+    unbundling_matched_claim_ids: List[str] = Field(default_factory=list)
     graph_cluster_anomaly_score: float  # dari provider network metrics precomputed
     isolation_forest_score: float = 0.0
     is_isolation_forest_outlier: bool = False

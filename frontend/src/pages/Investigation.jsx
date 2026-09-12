@@ -3,17 +3,17 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { claimsApi, createSSEStream, formatRecommendedAction, ANALYSIS_VERSION } from '../api'
 
 const AGENT_LABELS = {
-  start: 'Orkestrator',
-  validation: 'Validasi Data',
-  phase1: 'Analisis Klinis + Keuangan + Pola',
-  phase1_complete: 'Agen Paralel',
-  phase2: 'Agen Sintesis',
-  phase2_complete: 'Agen Sintesis',
-  phase3: 'Mesin Skor Risiko',
-  phase3_complete: 'Mesin Skor Risiko',
-  phase4: 'Agen Penjelasan',
-  phase4_complete: 'Agen Penjelasan',
-  complete: 'Orkestrator',
+  start: 'Proses Pemeriksaan',
+  validation: 'Pemeriksaan Data',
+  phase1: 'Pemeriksaan Medis, Biaya, dan Pola',
+  phase1_complete: 'Pemeriksaan Awal',
+  phase2: 'Perangkuman Temuan',
+  phase2_complete: 'Perangkuman Temuan',
+  phase3: 'Penentuan Prioritas',
+  phase3_complete: 'Penentuan Prioritas',
+  phase4: 'Penjelasan Hasil',
+  phase4_complete: 'Penjelasan Hasil',
+  complete: 'Pemeriksaan Selesai',
   error: 'Sistem',
 }
 
@@ -137,7 +137,7 @@ export default function Investigation() {
       }
 
       try {
-        addLog('start', 'Mengirim klaim ke mesin analisis (validasi deterministik → 6 agent)...')
+        addLog('start', 'Memulai pemeriksaan data klaim...')
         const res = await claimsApi.analyze(claimData)
         const { task_id } = res.data
 
@@ -149,13 +149,13 @@ export default function Investigation() {
             setFraud(data.fraud)
             setPartial(!!data.partial)
             resultRef.current = { ...resultRef.current, clinical: data.clinical, financial: data.financial, fraud: data.fraud }
-            const devPct = data.financial.deviation_pct?.toFixed(1)
+             const devPct = data.financial.deviation_pct?.toFixed(1)
             const ifScore = ((data.fraud.isolation_forest_score || 0) * 100).toFixed(0)
             addLog('phase1_complete',
               `Selesai — Flag klinis: ${data.clinical.rule_flags?.length || 0}, ` +
-              `Deviasi biaya: ${devPct ?? 'N/A'}%, ` +
-              `Anomali perilaku: ${ifScore}%`
-              + (data.partial ? ' (PARTIAL — sebagian agent fallback)' : '')
+              `Perbedaan biaya: ${devPct ?? 'belum tersedia'}%, ` +
+              `Pola yang perlu diperiksa: ${ifScore}%`
+              + (data.partial ? ' (sebagian pemeriksaan memakai data cadangan)' : '')
             )
           },
           onPhase2: (data) => {
@@ -218,7 +218,7 @@ export default function Investigation() {
     return (
       <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
         <div style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>⏳</div>
-        <div>Memeriksa riwayat analisis klaim {claimId}...</div>
+              <div>Memeriksa riwayat klaim {claimId}...</div>
         <p style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
           Jika analisis sudah ada, Anda akan diarahkan otomatis ke halaman hasil.
         </p>
@@ -231,7 +231,7 @@ export default function Investigation() {
       <div className="page-header">
         <div className="flex items-center justify-between">
           <div>
-            <h2>{isRerun ? 'Analisis Ulang Klaim' : 'Proses Investigasi Klaim'}</h2>
+            <h2>{isRerun ? 'Periksa Ulang Klaim' : 'Pemeriksaan Klaim'}</h2>
             <p className="font-mono text-sm" style={{ color: 'var(--text-muted)' }}>Klaim: {claimId}</p>
           </div>
           {done && (
@@ -250,7 +250,7 @@ export default function Investigation() {
 
       {partial && !rejected && (
         <div className="alert-disclaimer mb-3" style={{ borderLeft: '4px solid var(--warning)' }}>
-          ⚠ <strong>Analisis partial:</strong> satu atau lebih agent gagal dan menggunakan fallback. Evidence mungkin tidak lengkap.
+           ⚠ <strong>Pemeriksaan belum lengkap:</strong> sebagian data tidak tersedia sehingga hasil perlu dibaca dengan perhatian tambahan.
         </div>
       )}
 
@@ -290,23 +290,23 @@ export default function Investigation() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {clinical && (
             <div className="card">
-              <div className="card-title">✓ Analisis Medis Klinis</div>
+                 <div className="card-title">✓ Pemeriksaan Medis</div>
               <div className="flex items-center justify-between mb-1">
                 <span>Kewajaran Klinis</span>
                 <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                   <span className={`badge badge-${clinical.plausibility === 'implausible' ? 'high' : clinical.plausibility === 'questionable' ? 'medium' : 'low'}`}>
-                    {clinical.plausibility === 'implausible' ? 'Tidak Wajar' : clinical.plausibility === 'questionable' ? 'Meragukan' : clinical.plausibility === 'n/a' ? 'N/A' : 'Wajar'}
+               {clinical.plausibility === 'implausible' ? 'Tidak Wajar' : clinical.plausibility === 'questionable' ? 'Meragukan' : clinical.plausibility === 'n/a' ? 'Belum tersedia' : 'Wajar'}
                   </span>
                   {clinical.evidence_source !== 'rule_engine' && (
                     <span className="badge badge-blue" style={{ fontSize: '0.6rem' }}>
-                      {clinical.evidence_source === 'llm_local' ? `LLM: ${clinical.model_used}` : 'fallback'}
+                       {clinical.evidence_source === 'llm_local' ? 'Analisis tambahan' : 'Data cadangan'}
                     </span>
                   )}
                 </div>
               </div>
               {clinical.rule_flags?.length > 0 && (
                 <div className="text-xs mb-1" style={{ color: 'var(--risk-medium)' }}>
-                  Flag rule: {clinical.rule_flags.join(', ')}
+                   Temuan yang perlu diperhatikan: {clinical.rule_flags.length}
                 </div>
               )}
               {clinical.grouper_result && (
@@ -328,12 +328,12 @@ export default function Investigation() {
 
           {financial && (
             <div className="card">
-              <div className="card-title">✓ Analisis Keuangan</div>
+                 <div className="card-title">✓ Pemeriksaan Biaya</div>
               {financial.method === 'zscore_peer_fallback' && (
-                <div className="text-xs mb-1" style={{ color: 'var(--warning)' }}>⚠ Mode fallback z-score peer</div>
+               <div className="text-xs mb-1" style={{ color: 'var(--warning)' }}>⚠ Menggunakan perbandingan biaya cadangan</div>
               )}
               <div className="flex items-center justify-between mb-1">
-                <span>Deviasi Biaya dari Prediksi</span>
+                 <span>Perbedaan Biaya dari Perkiraan</span>
                 <span style={{ fontWeight: 700, color: Math.abs(financial.deviation_pct) > 30 ? 'var(--risk-high)' : 'var(--success)' }}>
                   {financial.deviation_pct > 0 ? '+' : ''}{financial.deviation_pct?.toFixed(1)}%
                 </span>
@@ -352,9 +352,9 @@ export default function Investigation() {
 
           {fraud && (
             <div className="card">
-              <div className="card-title">✓ Analisis Anomali Pola</div>
+               <div className="card-title">✓ Pemeriksaan Pola Klaim</div>
               <div className="flex items-center justify-between mb-1">
-                <span>Skor Anomali Perilaku</span>
+                 <span>Pola yang Perlu Diperiksa</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <div className="progress-bar" style={{ width: 80 }}>
                     <div className="progress-fill" style={{ width: `${(fraud.isolation_forest_score || 0) * 100}%`, background: fraud.isolation_forest_score > 0.7 ? 'var(--risk-high)' : 'var(--accent-green)' }} />
@@ -363,19 +363,19 @@ export default function Investigation() {
                 </div>
               </div>
               <div className="flex items-center justify-between mb-1">
-                <span>Kemiripan Klaim Lain</span>
+                 <span>Kemiripan dengan Klaim Lain</span>
                 <span style={{ fontWeight: 700, color: fraud.similarity_max_score > 0.85 ? 'var(--risk-high)' : 'var(--text-primary)' }}>
                   {((fraud.similarity_max_score || 0) * 100).toFixed(0)}%
                 </span>
               </div>
               <div className="flex items-center justify-between mb-1">
-                <span>Indikasi Klaim Ganda</span>
+                 <span>Indikasi Pengulangan Klaim</span>
                 <span className={`badge ${fraud.repeat_billing_flag ? 'badge-high' : 'badge-low'}`}>
                   {fraud.repeat_billing_flag ? 'Terdeteksi' : 'Tidak Ada'}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span>Anomali Jaringan Faskes</span>
+                 <span>Pola Fasilitas Kesehatan</span>
                 <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{((fraud.graph_cluster_anomaly_score || 0) * 100).toFixed(0)}%</span>
               </div>
             </div>
@@ -383,7 +383,7 @@ export default function Investigation() {
 
           {review && (
             <div className="card">
-              <div className="card-title">✓ Sintesis Temuan</div>
+               <div className="card-title">✓ Ringkasan Temuan</div>
               <div className="flex items-center justify-between mb-1">
                 <span>Kekuatan Indikasi</span>
                 <span className={`badge ${review.evidence_level === 'strong_multi_signal' ? 'badge-high' : review.evidence_level === 'single_signal' ? 'badge-medium' : 'badge-low'}`}>
@@ -391,7 +391,7 @@ export default function Investigation() {
                 </span>
               </div>
               <div className="text-xs text-muted mb-1">
-                Sumber reasoning: {review.reasoning_source === 'rule_fallback' ? 'fallback rule-count' : review.model_used || review.reasoning_source}
+                 Cara merangkum: {review.reasoning_source === 'rule_fallback' ? 'aturan pemeriksaan' : 'analisis tambahan'}
               </div>
               {review.corroborating_signals?.length > 0 && (
                 <div className="text-xs text-muted">{review.corroborating_signals.join(' • ')}</div>

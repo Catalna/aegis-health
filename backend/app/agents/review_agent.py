@@ -28,6 +28,8 @@ def compute_rule_signals(
         signals.append("Lama rawat melebihi batas klinis")
     if "upcoding_risk_diag" in clinical.rule_flags:
         signals.append("Diagnosis sekunder berisiko upcoding")
+    if "unsupported_high_risk_proc" in clinical.rule_flags:
+        signals.append("Prosedur berbiaya tinggi tidak sesuai diagnosis")
     if financial.anomaly_score > 0.4:
         signals.append(f"Skor anomali finansial {financial.anomaly_score:.2f}")
     if financial.deviation_pct > 30:
@@ -36,9 +38,31 @@ def compute_rule_signals(
         signals.append("Repeat billing terdeteksi (pasien sama, prosedur sama)")
     if fraud.cloning_flag:
         signals.append(f"Indikasi cloning: kemiripan {fraud.similarity_max_score:.0%} dengan klaim faskes sama untuk pasien berbeda")
+    if fraud.unbundling_flag:
+        signals.append("Indikasi pemecahan satu episode menjadi beberapa klaim")
     if fraud.is_isolation_forest_outlier:
         signals.append(f"Outlier perilaku (skor {fraud.isolation_forest_score:.2f})")
+    if fraud.graph_cluster_anomaly_score > 0.5:
+        signals.append(f"Pola jaringan faskes menyimpang ({fraud.graph_cluster_anomaly_score:.2f})")
     return signals
+
+
+def deterministic_source_count(
+    clinical: ClinicalAssessment,
+    financial: FinancialAssessment,
+    fraud: FraudAssessment,
+) -> int:
+    """Count independent agent sources, not individual flags from one source."""
+    clinical_signal = bool(clinical.rule_flags)
+    financial_signal = financial.anomaly_score > 0.4 or financial.deviation_pct > 30
+    fraud_signal = any((
+        fraud.repeat_billing_flag,
+        fraud.cloning_flag,
+        fraud.unbundling_flag,
+        fraud.is_isolation_forest_outlier,
+        fraud.graph_cluster_anomaly_score > 0.5,
+    ))
+    return sum((clinical_signal, financial_signal, fraud_signal))
 
 
 async def synthesize_review(
@@ -82,7 +106,7 @@ Klaim Paling Mirip: {fraud.similarity_matched_claim_id or "Tidak ada"}
 Skor Jaringan Faskes: {fraud.graph_cluster_anomaly_score:.2f}
 Evidence: {fraud.evidence_text}
 
-SINYAL RULE TERDETEKSI ({len(rule_signals)}): {"; ".join(rule_signals) if rule_signals else "tidak ada"}
+    SINYAL RULE TERDETEKSI ({len(rule_signals)} dari {deterministic_source_count(clinical, financial, fraud)} sumber): {"; ".join(rule_signals) if rule_signals else "tidak ada"}
 
 Tentukan evidence_level keseluruhan. Nilai harus PERSIS salah satu dari:
 "strong_multi_signal" (≥2 sinyal saling menguatkan), "single_signal" (1 sinyal kuat), "weak" (tidak ada sinyal kuat).
@@ -117,9 +141,10 @@ hanya merujuk fakta di atas — dilarang menambah fakta baru.
             "strong_multi_signal" if len(rule_signals) >= 2 else "single_signal" if len(rule_signals) == 1 else "weak"
         )
 
-        # Guard: LLM tidak boleh mengklaim multi-sinyal kuat tanpa sinyal rule
-        if level == "strong_multi_signal" and len(rule_signals) < 2:
-            level = "single_signal" if len(rule_signals) == 1 else "weak"
+        # Guard: LLM tidak boleh mengklaim multi-sinyal kuat tanpa dua sumber.
+        source_count = deterministic_source_count(clinical, financial, fraud)
+        if level == "strong_multi_signal" and source_count < 2:
+            level = "single_signal" if source_count == 1 else "weak"
 
         return ReviewSynthesis(
             claim_id=claim.claim_id,
@@ -132,7 +157,8 @@ hanya merujuk fakta di atas — dilarang menambah fakta baru.
 
     except Exception as e:
         # Fallback rule-count sesuai AGENTS.md Section 5 (tangkap semua kegagalan)
-        level = "strong_multi_signal" if len(rule_signals) >= 2 else "single_signal" if len(rule_signals) == 1 else "weak"
+        source_count = deterministic_source_count(clinical, financial, fraud)
+        level = "strong_multi_signal" if source_count >= 2 else "single_signal" if source_count == 1 else "weak"
         return ReviewSynthesis(
             claim_id=claim.claim_id,
             evidence_level=level,

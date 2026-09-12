@@ -12,21 +12,21 @@ const COMPONENT_ICONS = {
 }
 
 const COMPONENT_LABELS = {
-  database: 'Database PostgreSQL',
-  llm_ollama: 'LLM Lokal (Ollama)',
-  ml_financial: 'Financial Engine (XGBoost + SHAP)',
-  ml_isolation_forest: 'Isolation Forest',
-  vector_store: 'Vector Store (LanceDB)',
-  graph_metrics: 'Graph Metrics Provider',
+  database: 'Penyimpanan Data Klaim',
+  llm_ollama: 'Pemeriksaan Tambahan',
+  ml_financial: 'Pemeriksaan Biaya',
+  ml_isolation_forest: 'Pemeriksaan Pola Klaim',
+  vector_store: 'Data Pembanding Klaim',
+  graph_metrics: 'Pola Fasilitas Kesehatan',
 }
 
 const AGENT_INFO = [
-  { label: 'Agent 1: Clinical Grouper & Plausibility', key: 'llm_ollama', badge: 'Ollama: Mistral (rule-first, LLM hanya ambigu)' },
-  { label: 'Agent 2: Financial Regressor & SHAP', key: 'ml_financial', badge: 'XGBoost (CPU) + SHAP' },
-  { label: 'Agent 3: Fraud & Behavioral Isolation', key: 'vector_store', badge: 'LanceDB + Isolation Forest + SQL' },
-  { label: 'Agent 4: Review & Synthesis', key: 'llm_ollama', badge: 'Ollama: DeepSeek-R1 / Mistral' },
-  { label: 'Agent 5: Risk Score Engine', key: 'database', badge: 'Deterministik (rule + bobot terdokumentasi)' },
-  { label: 'Agent 6: Explanation & QA Panel', key: 'llm_ollama', badge: 'Ollama: Qwen / Mistral + validasi angka' },
+  { label: 'Pemeriksaan Medis', key: 'llm_ollama', badge: 'Berjalan' },
+  { label: 'Pemeriksaan Biaya', key: 'ml_financial', badge: 'Berjalan' },
+  { label: 'Pemeriksaan Pola Klaim', key: 'vector_store', badge: 'Berjalan' },
+  { label: 'Perangkuman Temuan', key: 'llm_ollama', badge: 'Berjalan' },
+  { label: 'Penentuan Prioritas', key: 'database', badge: 'Berjalan' },
+  { label: 'Penjelasan Hasil', key: 'llm_ollama', badge: 'Berjalan' },
 ]
 
 export default function Monitoring() {
@@ -65,18 +65,28 @@ export default function Monitoring() {
   ]
 
   const statusColor = (s) => s === 'ok' ? 'var(--success)' : s === 'warn' ? 'var(--warning)' : 'var(--risk-high)'
-  const statusText = (s) => s === 'ok' ? '● SEHAT' : s === 'warn' ? '● PERINGATAN' : '● ERROR'
+  const statusText = (s) => s === 'ok' ? 'Sehat' : s === 'warn' ? 'Perlu perhatian' : 'Gangguan'
+  const detailText = (key, comp) => comp?.status === 'ok'
+    ? ({
+        database: 'Penyimpanan data tersedia',
+        llm_ollama: 'Pemeriksaan tambahan tersedia',
+        ml_financial: 'Pemeriksaan biaya tersedia',
+        ml_isolation_forest: 'Pemeriksaan pola tersedia',
+        vector_store: 'Data pembanding tersedia',
+        graph_metrics: 'Data fasilitas kesehatan tersedia',
+      }[key] || 'Layanan tersedia')
+    : 'Layanan perlu diperiksa'
 
   return (
     <div>
       <div className="page-header">
+        <div className="page-kicker">Status layanan</div>
         <h2 className="glow-text" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Activity size={24} color="var(--accent-green)" />
-          Monitoring Center
+          <Activity size={22} color="var(--accent-green)" aria-hidden="true" />
+          Pemantauan Sistem
         </h2>
         <p>
-          Live analytics & status komponen sistem — diperbarui otomatis setiap 5 detik.
-          Status saat ini: <strong style={{ color: statusColor(health?.status) }}>{statusText(health?.status)}</strong>
+          Status layanan diperbarui otomatis setiap 5 detik. Kondisi saat ini: <strong style={{ color: statusColor(health?.status) }}>{statusText(health?.status)}</strong>
         </p>
       </div>
 
@@ -100,15 +110,15 @@ export default function Monitoring() {
           Rp {(stats?.potential_savings || 0).toLocaleString('id-ID')}
         </div>
         <p className="text-xs text-muted mt-1">
-          Dihitung dari selisih biaya klaim vs batas atas prediksi model finansial
-          (hanya klaim risiko tinggi/sedang). Angka ini adalah estimasi potensi berdasarkan
-          pola anomali — bukan nilai final verifikasi.
+           Dihitung dari selisih biaya klaim dengan batas atas perkiraan biaya
+           (hanya klaim prioritas tinggi/sedang). Angka ini adalah perkiraan awal, bukan
+           nilai akhir hasil verifikasi.
         </p>
       </div>
 
       {/* Component Health — status nyata dari /api/health */}
       <div className="card mb-3">
-        <div className="card-title">Component Health Status (real-time)</div>
+         <div className="card-title">Kondisi Layanan</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '1rem' }}>
           {Object.entries(health?.components || {}).map(([key, comp]) => (
             <div key={key} className="flex items-center justify-between" style={{ padding: '0.4rem 0' }}>
@@ -117,7 +127,7 @@ export default function Monitoring() {
                 {COMPONENT_LABELS[key] || key}
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <span className="text-xs text-muted">{comp.detail}</span>
+                 <span className="text-xs text-muted">{detailText(key, comp)}</span>
                 <span className="badge" style={{
                   fontSize: '0.65rem',
                   background: statusColor(comp.status),
@@ -126,13 +136,13 @@ export default function Monitoring() {
               </span>
             </div>
           ))}
-          {!health && <div className="text-sm" style={{ color: 'var(--risk-high)' }}>⚠ Tidak dapat menghubungi endpoint /api/health</div>}
+           {!health && <div className="text-sm" style={{ color: 'var(--risk-high)' }}>⚠ Layanan pemeriksaan belum dapat dihubungi.</div>}
         </div>
       </div>
 
       {/* Agent Architecture Status */}
-      <div className="card">
-        <div className="card-title">Agent Health Status</div>
+       <div className="card">
+         <div className="card-title">Tahapan Pemeriksaan</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
           {AGENT_INFO.map(item => {
             const comp = health?.components?.[item.key]

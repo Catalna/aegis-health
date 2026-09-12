@@ -1,3 +1,4 @@
+import asyncio
 import json
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.future import select
@@ -9,6 +10,18 @@ from backend.app.models.database import (
 )
 
 router = APIRouter(prefix="/api/claims", tags=["claims"])
+
+
+async def _index_claim_in_background(claim_data: dict) -> None:
+    """Keep intake responsive while the local embedding model indexes the claim."""
+    try:
+        from backend.app.ml.similarity import store_single_claim
+        from backend.app.ml.graph_metrics import refresh_sync_safe
+
+        await asyncio.to_thread(store_single_claim, claim_data)
+        refresh_sync_safe()
+    except Exception as e:
+        print(f"[claims] Peringatan index LanceDB: {e}")
 
 
 async def get_db():
@@ -109,14 +122,9 @@ async def create_claim(claim: ClaimInput, db=Depends(get_db)):
     db.add(record)
     await db.commit()
 
-    # Index ke LanceDB agar klaim baru bisa ditemukan similarity check
-    try:
-        from backend.app.ml.similarity import store_single_claim
-        from backend.app.ml.graph_metrics import refresh_sync_safe
-        store_single_claim(claim.model_dump(mode="json"))
-        refresh_sync_safe()
-    except Exception as e:
-        print(f"[claims] Peringatan index LanceDB: {e}")
+    # Embedding lokal dapat lambat; klaim sudah aman di DB dan akan tetap di-index
+    # lagi saat analisis selesai. Jangan tahan respons intake untuk pekerjaan ini.
+    asyncio.create_task(_index_claim_in_background(claim.model_dump(mode="json")))
 
     return {"status": "success", "claim_id": claim.claim_id, "message": "Klaim berhasil disimpan ke sistem."}
 

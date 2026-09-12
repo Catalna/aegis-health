@@ -9,14 +9,32 @@ Lapis 2 (HANYA kasus ambigu): LLM lokal menilai plausibility untuk kombinasi
 """
 from backend.app.models.schemas import ClaimInput, ClinicalAssessment, CBGLookupResult
 from backend.app.core.llm_client import structured_completion, LLMError, CLINICAL_MODEL
-from backend.app.data.ina_cbg_rules import calculate_expected_tariff, DIAGNOSIS_TO_CBG_MAPPING
+from backend.app.data.ina_cbg_rules import (
+    DIAGNOSIS_LABELS, DIAGNOSIS_TO_CBG_MAPPING, PROCEDURE_LABELS,
+    calculate_expected_tariff,
+)
 from backend.app.ml.feature_engineering import EXPECTED_LOS
+from backend.app.ml.feature_engineering import PHANTOM_RISK_PROCS
+
+
+SUPPORTED_HIGH_RISK_PROCS = {
+    "I21": {"36.10"},
+    "N18": {"39.95"},
+    "C50": {"85.41"},
+    "S72": {"81.51"},
+}
 
 
 def _diag_name(code: str) -> str:
+    if code in DIAGNOSIS_LABELS:
+        return DIAGNOSIS_LABELS[code]
     base = code.split(".")[0] if "." in code else code
     info = DIAGNOSIS_TO_CBG_MAPPING.get(base)
     return info.name if info else code
+
+
+def _procedure_name(code: str) -> str:
+    return PROCEDURE_LABELS.get(code, code)
 
 
 def _rule_flags(claim: ClaimInput, tariff_deviation: float | None, known_diag: bool) -> list[str]:
@@ -47,6 +65,12 @@ def _rule_flags(claim: ClaimInput, tariff_deviation: float | None, known_diag: b
     upcoding_risk = {"A41.9", "Z87.39", "E46"}
     if claim.severity_level >= 3 and any(d in upcoding_risk for d in claim.diagnosis_secondary):
         flags.append("upcoding_risk_diag")
+
+    # A high-cost procedure must have a diagnosis context that supports it.
+    # This is a review signal, not a claim that the procedure was definitely absent.
+    supported_procs = SUPPORTED_HIGH_RISK_PROCS.get(base, set())
+    if any(p in PHANTOM_RISK_PROCS and p not in supported_procs for p in claim.procedure_codes):
+        flags.append("unsupported_high_risk_proc")
 
     return flags
 
@@ -100,6 +124,7 @@ async def analyze_clinical(claim: ClaimInput) -> ClinicalAssessment:
         "severity_med_mismatch": "severity tinggi dengan obat tidak lengkap",
         "los_outlier": "lama rawat jauh melebihi batas klinis",
         "upcoding_risk_diag": "diagnosis sekunder berisiko upcoding",
+        "unsupported_high_risk_proc": "prosedur berbiaya tinggi tidak sesuai diagnosis dan perlu bukti",
     }
     for f in flags:
         parts.append(f"Flag: {flag_labels.get(f, f)}.")
@@ -134,7 +159,7 @@ Evaluasi kewajaran klinis klaim JKN berikut.
 
 Diagnosis Primer: {claim.diagnosis_primary} ({_diag_name(claim.diagnosis_primary)})
 Diagnosis Sekunder: {", ".join(diag_secondary_names) if diag_secondary_names else "Tidak ada"}
-Prosedur: {", ".join(claim.procedure_codes) if claim.procedure_codes else "Tidak ada"}
+ Prosedur: {", ".join(f"{c} ({_procedure_name(c)})" for c in claim.procedure_codes) if claim.procedure_codes else "Tidak ada"}
 Obat: {", ".join([f"{m.name} x{m.quantity}" for m in claim.medication]) if claim.medication else "Tidak ada"}
 Severity Level: {claim.severity_level} (skala 1-4)
 Lama Rawat: {claim.length_of_stay} hari

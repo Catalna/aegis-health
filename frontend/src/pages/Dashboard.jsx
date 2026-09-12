@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import { LayoutDashboard, AlertCircle, FileText, CheckCircle, Clock, Brain } from 'lucide-react'
 import { analyticsApi } from '../api'
 
 export default function Dashboard() {
+  const navigate = useNavigate()
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -28,8 +30,8 @@ export default function Dashboard() {
     return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
-  if (loading) return <div className="p-8 text-center text-muted">Memuat data dashboard...</div>
-  if (error && !stats) return <div className="p-8 text-center" style={{ color: 'var(--risk-high)' }}>{error}</div>
+  if (loading) return <div className="status-message" aria-live="polite"><strong>Menyiapkan ringkasan klaim</strong><p>Data terbaru sedang dimuat.</p></div>
+  if (error && !stats) return <div className="status-message error" role="alert"><strong>Ringkasan belum dapat dimuat</strong><p>{error}</p><button className="btn btn-outline" style={{ marginTop: '1rem' }} onClick={() => window.location.reload()}>Coba lagi</button></div>
 
   // Distribusi risiko dari agregasi server (bukan fetch ratusan klaim)
   const riskData = [
@@ -55,23 +57,32 @@ export default function Dashboard() {
   return (
     <div>
       <div className="page-header">
+        <div className="page-kicker">Pusat kerja verifier</div>
         <h2 className="glow-text" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <LayoutDashboard size={24} color="var(--accent-green)" />
-          Dashboard Utama
+          <LayoutDashboard size={22} color="var(--accent-green)" aria-hidden="true" /> Dashboard Utama
         </h2>
-        <p>Ringkasan performa verifikasi klaim dan analisis risiko.</p>
+        <p>Ringkasan antrian klaim, tingkat risiko, dan pekerjaan yang perlu ditindaklanjuti.</p>
       </div>
 
-      {error && <div className="alert-disclaimer mb-3" style={{ color: 'var(--risk-high)' }}>⚠ {error} — menampilkan data terakhir.</div>}
+      {error && <div className="alert-disclaimer mb-3" role="status">Data terakhir ditampilkan. Pembaruan berikutnya akan dicoba otomatis.</div>}
+
+      <section className="priority-strip mb-3" aria-labelledby="priority-title">
+        <div>
+          <div className="page-kicker" id="priority-title">Yang perlu dilihat lebih dulu</div>
+          <strong>{(stats?.high_risk_claims || 0).toLocaleString('id-ID')} klaim berisiko tinggi</strong>
+          <p>Periksa klaim berisiko tinggi sebelum melanjutkan ke antrian lainnya.</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => navigate('/claims?tier=high')}>Buka klaim prioritas</button>
+      </section>
 
       <div className="grid-4 mb-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
         {statCards.map((card, i) => (
-          <div className="card" key={i} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="card metric-card" key={i}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="card-title" style={{ marginBottom: 0 }}>{card.label}</div>
               <div style={{ color: card.color }}>{card.icon}</div>
             </div>
-            <div style={{ fontSize: '2.5rem', fontWeight: 800 }}>
+            <div className="metric-value" style={{ fontSize: '2.5rem', fontWeight: 800 }}>
               {(card.value || 0).toLocaleString('id-ID')}
             </div>
           </div>
@@ -80,10 +91,10 @@ export default function Dashboard() {
 
       <div className="grid-2 mb-3">
         <div className="card">
-          <div className="card-title">Distribusi Risiko Klaim</div>
+          <div className="section-heading"><div><div className="card-title">Distribusi Risiko</div><p className="section-subtitle">Jumlah klaim berdasarkan tingkat kebutuhan pemeriksaan.</p></div></div>
           <div style={{ height: 300 }}>
             {riskData.length === 0 ? (
-              <div className="text-center text-muted" style={{ paddingTop: '8rem' }}>Belum ada klaim teranalisis</div>
+              <div className="status-message">Belum ada klaim yang selesai diperiksa.<p>Distribusi risiko akan muncul setelah data tersedia.</p></div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -114,7 +125,7 @@ export default function Dashboard() {
         </div>
 
         <div className="card">
-          <div className="card-title">Status Penyelesaian Klaim</div>
+          <div className="section-heading"><div><div className="card-title">Perjalanan Klaim</div><p className="section-subtitle">Posisi klaim dari masuk sampai selesai ditinjau.</p></div></div>
           <div style={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={statusData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
@@ -132,23 +143,23 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="card" style={{ borderLeft: '4px solid var(--accent-green)' }}>
+      <div className="card summary-card" style={{ borderLeft: '4px solid var(--accent-green)' }}>
         <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Brain size={16} color="var(--accent-green)" /> Ringkasan Sistem
+          <Brain size={16} color="var(--accent-green)" aria-hidden="true" /> Ringkasan Aktivitas
         </div>
         <div className="grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginTop: '0.5rem' }}>
           <div>
-            <div className="text-xs text-muted">Klaim Teranalisis AI</div>
+            <div className="text-xs text-muted">Klaim sudah diperiksa</div>
             <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{(stats?.processed_claims || 0).toLocaleString('id-ID')}</div>
           </div>
           <div>
-            <div className="text-xs text-muted">Estimasi Potensi Penghematan</div>
+            <div className="text-xs text-muted">Perkiraan dana yang dapat ditinjau</div>
             <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--success)' }}>
               Rp {(stats?.potential_savings || 0).toLocaleString('id-ID')}
             </div>
           </div>
           <div>
-            <div className="text-xs text-muted">Tingkat Analisis</div>
+            <div className="text-xs text-muted">Kemajuan pemeriksaan</div>
             <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>
               {stats?.total_claims ? Math.round((stats.processed_claims / stats.total_claims) * 100) : 0}%
             </div>

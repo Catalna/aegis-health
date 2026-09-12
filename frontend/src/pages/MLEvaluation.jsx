@@ -1,22 +1,22 @@
 import { useState, useEffect } from 'react'
-import { mlApi } from '../api'
+import { mlApi, formatFeature } from '../api'
 
 const METRIC_LABELS = {
-  precision: 'Precision',
-  recall: 'Recall',
-  f1: 'F1-Score',
-  roc_auc: 'ROC-AUC',
-  pr_auc: 'PR-AUC',
+  precision: 'Ketepatan temuan',
+  recall: 'Cakupan temuan',
+  f1: 'Keseimbangan hasil',
+  roc_auc: 'Kemampuan membedakan',
+  pr_auc: 'Ketepatan berdasarkan prioritas',
 }
 
 const TYPE_LABELS = {
-  upcoding: 'Upcoding',
-  cloning: 'Cloning',
-  repeat_billing: 'Repeat Billing',
-  phantom_billing: 'Phantom Billing',
-  prolonged_los: 'Prolonged LOS',
-  inflated_bill: 'Inflated Bill',
-  unbundling: 'Unbundling',
+  upcoding: 'Tingkat keparahan tidak sesuai',
+  cloning: 'Kemiripan antar klaim',
+  repeat_billing: 'Pengulangan tagihan',
+  phantom_billing: 'Tindakan tidak terbukti',
+  prolonged_los: 'Lama rawat tidak biasa',
+  inflated_bill: 'Biaya tidak wajar',
+  unbundling: 'Pemisahan tagihan',
 }
 
 export default function MLEvaluation() {
@@ -29,13 +29,13 @@ export default function MLEvaluation() {
       .then(res => setData(res.data))
       .catch(err => {
         if (err?.response?.status === 404) setError('Hasil evaluasi belum tersedia. Jalankan: python scripts/train_all.py')
-        else setError('Gagal memuat hasil evaluasi model. Pastikan backend aktif.')
+        else setError('Gagal memuat hasil evaluasi. Pastikan layanan pemeriksaan aktif.')
       })
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) return <div className="p-8 text-center text-muted">Memuat hasil evaluasi model...</div>
-  if (error) return <div className="p-8 text-center" style={{ color: 'var(--risk-high)' }}>⚠ {error}</div>
+  if (loading) return <div className="status-message" aria-live="polite"><strong>Menyiapkan evaluasi</strong><p>Ketepatan pemeriksaan sedang dimuat.</p></div>
+  if (error) return <div className="status-message error" role="alert"><strong>Hasil evaluasi belum dapat dimuat</strong><p>{error}</p></div>
 
   const importance = Object.entries(data.feature_importance || {}).slice(0, 7)
   const perType = data.recall_per_anomaly_type || {}
@@ -44,48 +44,49 @@ export default function MLEvaluation() {
   return (
     <div className="max-w-4xl mx-auto py-8">
       <div className="page-header mb-8">
-        <h2 className="glow-text">Machine Learning Evaluation</h2>
+        <div className="page-kicker">Pemeriksaan kualitas</div>
+        <h2 className="glow-text">Evaluasi Ketepatan Sistem</h2>
         <p>
-          Performa model deteksi anomali pada <strong>held-out test set</strong> — dataset independen
-          yang digenerate terpisah (seed berbeda) dan tidak pernah dilihat saat tuning.
+           Ringkasan ketepatan pemeriksaan pada data uji terpisah yang tidak digunakan saat penyusunan aturan.
         </p>
         {data.methodology?.note && (
           <div className="alert-disclaimer mt-2" style={{ fontSize: '0.75rem' }}>
-            ⓘ {data.methodology.note}
+             ⓘ Data uji dibuat terpisah agar angka ketepatan menggambarkan kemampuan pemeriksaan pada kasus baru.
           </div>
         )}
       </div>
 
       <div className="grid-2 mb-6">
         <div className="card">
-          <h3 className="card-title">Dataset Characteristics</h3>
+           <h3 className="card-title">Data Pengujian</h3>
           <ul className="space-y-2 mt-4 text-sm">
             <li className="flex justify-between"><span>Total Klaim</span> <strong>{(data.dataset.total_samples || 0).toLocaleString('id-ID')}</strong></li>
-            <li className="flex justify-between"><span>Training Set</span> <strong>{(data.dataset.train_size || 0).toLocaleString('id-ID')}</strong></li>
-            <li className="flex justify-between"><span>Validation Set</span> <strong>{(data.dataset.val_size || 0).toLocaleString('id-ID')}</strong></li>
-            <li className="flex justify-between"><span>Held-out Test Set</span> <strong>{(data.dataset.test_size || 0).toLocaleString('id-ID')}</strong></li>
-            <li className="flex justify-between"><span>Fraud Rate</span> <strong>{((data.dataset.fraud_rate || 0) * 100).toFixed(1)}%</strong></li>
+             <li className="flex justify-between"><span>Data penyusunan</span> <strong>{(data.dataset.train_size || 0).toLocaleString('id-ID')}</strong></li>
+             <li className="flex justify-between"><span>Data penyesuaian</span> <strong>{(data.dataset.val_size || 0).toLocaleString('id-ID')}</strong></li>
+             <li className="flex justify-between"><span>Data uji terpisah</span> <strong>{(data.dataset.test_size || 0).toLocaleString('id-ID')}</strong></li>
+             <li className="flex justify-between"><span>Proporsi klaim bermasalah</span> <strong>{((data.dataset.fraud_rate || 0) * 100).toFixed(1)}%</strong></li>
           </ul>
           {data.xgboost_regressor && (
             <div className="mt-4 text-sm" style={{ borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
               <div className="flex justify-between">
-                <span>Regressor MAPE (klaim normal)</span>
+                 <span>Rata-rata perbedaan perkiraan biaya</span>
                 <strong>{data.xgboost_regressor.mape_pct_normal_holdout != null
                   ? `${data.xgboost_regressor.mape_pct_normal_holdout.toFixed(1)}%`
-                  : 'N/A'}</strong>
+                   : 'Belum tersedia'}</strong>
               </div>
             </div>
           )}
         </div>
 
         <div className="card">
-          <h3 className="card-title">Model Comparison (Held-out Test Set)</h3>
-          <table className="w-full mt-4 text-sm text-left">
+           <h3 className="card-title">Perbandingan Ketepatan</h3>
+           <div className="table-container">
+           <table className="w-full text-sm text-left">
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
                 <th className="py-2">Metric</th>
-                <th>XGBoost</th>
-                <th>Baseline (LR)</th>
+                 <th>Pemeriksaan utama</th>
+                 <th>Pembanding awal</th>
               </tr>
             </thead>
             <tbody>
@@ -101,15 +102,16 @@ export default function MLEvaluation() {
                 </tr>
               ))}
             </tbody>
-          </table>
+           </table>
+           </div>
         </div>
       </div>
 
       {/* Recall per jenis anomali */}
       {Object.keys(perType).length > 0 && (
         <div className="card mb-6">
-          <h3 className="card-title">Recall per Jenis Anomali (Held-out)</h3>
-          <p className="text-xs text-muted mb-4">Seberapa banyak tiap pola fraud yang berhasil dideteksi classifier</p>
+           <h3 className="card-title">Cakupan per Jenis Temuan</h3>
+           <p className="text-xs text-muted mb-4">Seberapa banyak tiap pola klaim bermasalah yang berhasil ditemukan.</p>
           <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
             {Object.entries(perType).map(([type, info]) => (
               <div key={type} style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' }}>
@@ -127,20 +129,18 @@ export default function MLEvaluation() {
             ))}
           </div>
           <div className="mt-4" style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.25rem' }}>Catatan: cloning & repeat billing recall rendah di classifier — by design</div>
+             <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.25rem' }}>Catatan: pengulangan dan kemiripan antar klaim dinilai melalui hubungan antar data.</div>
             <div className="text-xs text-muted" style={{ lineHeight: 1.6 }}>
-              Cloning dan repeat billing adalah <strong>anomali relasional</strong> (hubungan antar klaim),
-              bukan penyimpangan fitur per-klaim — sehingga tidak terlihat oleh classifier berbasis fitur tunggal.
-              Kedua pola ini ditangani oleh <strong>Fraud Agent</strong> via similarity search (LanceDB) dan
-              pengecekan repeat billing (SQL pasien + prosedur + tanggal). Pembagian tugas ini sesuai desain
-              PRD: satu sinyal per jenis anomali, semuanya explainable.
+               Pengulangan dan kemiripan antar klaim membutuhkan perbandingan beberapa klaim sekaligus,
+               bukan hanya melihat satu klaim. Karena itu, pola ini diperiksa melalui hubungan peserta,
+               fasilitas kesehatan, tindakan, biaya, dan tanggal.
             </div>
           </div>
         </div>
       )}
       {ifMetrics.detection_rate_anomalies != null && (
         <div className="card mb-6">
-          <h3 className="card-title">Isolation Forest (Unsupervised Baseline)</h3>
+           <h3 className="card-title">Pemeriksaan Pola Tidak Biasa</h3>
           <div className="grid-2 mt-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8 }}>
               <div className="text-xs text-muted">Deteksi pada klaim anomali</div>
@@ -149,7 +149,7 @@ export default function MLEvaluation() {
               </div>
             </div>
             <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8 }}>
-              <div className="text-xs text-muted">False positive pada klaim normal</div>
+               <div className="text-xs text-muted">Temuan keliru pada klaim wajar</div>
               <div style={{ fontSize: '1.4rem', fontWeight: 700, color: ifMetrics.false_positive_rate_normal > 0.15 ? 'var(--risk-high)' : 'var(--success)' }}>
                 {((ifMetrics.false_positive_rate_normal || 0) * 100).toFixed(1)}%
               </div>
@@ -159,12 +159,12 @@ export default function MLEvaluation() {
       )}
 
       <div className="card">
-        <h3 className="card-title">XGBoost Feature Importance (Top 7)</h3>
+         <h3 className="card-title">Faktor yang Paling Berpengaruh</h3>
         <div className="mt-4">
           {importance.map(([feature, score]) => (
             <div key={feature} className="mb-4">
               <div className="flex justify-between text-sm mb-1">
-                <span className="font-mono text-xs">{feature}</span>
+                <span>{formatFeature(feature)}</span>
                 <span>{(score * 100).toFixed(1)}%</span>
               </div>
               <div className="progress-bar">
@@ -174,9 +174,8 @@ export default function MLEvaluation() {
           ))}
         </div>
         <p className="text-xs text-muted mt-4">
-          Metrik dihitung pada held-out test set yang tidak digunakan dalam pelatihan —
-          menghindari bias tautologi data sintetis (PRD Section 10). Data tetap sintetis; angka ini
-          bukan performa terhadap data JKN riil.
+           Angka dihitung dari data uji terpisah untuk mengurangi bias. Data yang digunakan tetap
+           merupakan data simulasi, bukan data klaim JKN nyata.
         </p>
       </div>
     </div>

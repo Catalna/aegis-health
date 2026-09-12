@@ -152,8 +152,9 @@ async def _audit(db, claim_id, agent_name, action, details=None):
 # Versi engine analisis — di-stamp ke evidence_json. Hasil tersimpan dengan
 # versi berbeda dianggap stale oleh frontend dan memicu analisis ulang otomatis
 # (hasil lama tidak boleh ditampilkan karena skornya dihitung logika berbeda).
-# v3: similarity komposit multi-faktor + ambang kemiripan minimum.
-ANALYSIS_VERSION = 3
+# v5: scoring deterministik tanpa pengaruh level LLM, model biaya tanpa target
+# leakage, serta sinyal prosedur tidak sesuai dan pemecahan klaim.
+ANALYSIS_VERSION = 5
 
 
 async def process_claim(claim: ClaimInput, sse_queue: asyncio.Queue = None) -> RiskAssessment:

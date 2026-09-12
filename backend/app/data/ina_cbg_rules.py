@@ -24,12 +24,38 @@ DIAGNOSIS_TO_CBG_MAPPING = {
 
 # Simplified additive factor to the base tariff before severity multiplier.
 PROCEDURE_ADD_ONS = {
-    "36.1": 45000000, # CABG
-    "36.10": 45000000, # CABG specific
+    "36.1": 45000000, # Aortocoronary bypass for heart revascularization
     "47.0": 5000000,  # Appendectomy
     "39.95": 2500000, # Hemodialysis
     "85.41": 15000000, # Mastectomy
     "81.51": 35000000, # Hip replacement
+}
+
+# Code labels supplied to the clinical prompt. This demonstrator deliberately
+# keeps a small reviewed catalogue instead of asking the LLM to infer codes.
+DIAGNOSIS_LABELS = {
+    "J18.9": "Pneumonia, unspecified organism",
+    "J44.1": "Chronic obstructive pulmonary disease with acute exacerbation",
+    "I21.9": "Acute myocardial infarction, unspecified",
+    "I10": "Essential hypertension",
+    "E11.9": "Type 2 diabetes mellitus without complications",
+    "K35.8": "Other and unspecified acute appendicitis",
+    "O80": "Single spontaneous delivery",
+    "N18.3": "Chronic kidney disease, stage 3",
+    "C50.9": "Malignant neoplasm of breast, unspecified",
+    "S72.0": "Fracture of neck of femur",
+    "A41.9": "Sepsis, unspecified organism",
+}
+
+PROCEDURE_LABELS = {
+    "36.10": "Aortocoronary bypass for heart revascularization, not otherwise specified",
+    "89.52": "Electrocardiogram",
+    "47.01": "Laparoscopic appendectomy",
+    "39.95": "Hemodialysis",
+    "93.94": "Respiratory medication administered by nebulizer",
+    "85.41": "Unilateral simple mastectomy",
+    "81.51": "Total hip replacement",
+    "72.0": "Low forceps operation",
 }
 
 def calculate_expected_tariff(

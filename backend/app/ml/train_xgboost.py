@@ -17,7 +17,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, average_precision_score
 
 from backend.app.data.synthetic_generator import generate_dataset
-from backend.app.ml.feature_engineering import extract_features, FEATURE_NAMES
+from backend.app.ml.feature_engineering import (
+    extract_features,
+    extract_cost_features,
+    FEATURE_NAMES,
+    COST_FEATURE_NAMES,
+)
 
 TRAIN_SEED = 101
 HOLDOUT_SEED = 202  # sengaja beda — held-out set independen
@@ -42,6 +47,7 @@ def train_models():
         seed=TRAIN_SEED, claim_prefix="TRAIN",
     )
     X_train, yc_train, yr_train = _vectorize(train_data)
+    X_cost_train = np.array([extract_cost_features(c) for c in train_data])
 
     print(f"Training samples: {len(X_train)} | fraud rate: {yc_train.mean():.1%}")
 
@@ -53,6 +59,7 @@ def train_models():
         seed=HOLDOUT_SEED, claim_prefix="HOLD",
     )
     X_test, yc_test, yr_test = _vectorize(holdout_data)
+    X_cost_test = np.array([extract_cost_features(c) for c in holdout_data])
     print(f"Held-out samples: {len(X_test)} | fraud rate: {yc_test.mean():.1%}")
 
     # Validation split dari training set (untuk early stopping signal)
@@ -76,7 +83,7 @@ def train_models():
     clf.save_model(os.path.join(MODELS_DIR, "xgboost_classifier.json"))
 
     print("=== [4/5] Training XGBoost Cost Regressor (normal claims only) ===")
-    normal_idx = (yc_tr == 0)
+    normal_idx = (yc_train == 0)
     reg = xgb.XGBRegressor(
         objective="reg:squarederror",
         n_estimators=200,
@@ -84,13 +91,13 @@ def train_models():
         max_depth=4,
         random_state=42,
     )
-    reg.fit(X_tr[normal_idx], yr_tr[normal_idx])
+    reg.fit(X_cost_train[normal_idx], yr_train[normal_idx])
     reg.save_model(os.path.join(MODELS_DIR, "xgboost_regressor.json"))
 
     # Regressor evaluation di held-out normal claims (MAPE)
     normal_test = (yc_test == 0)
     if normal_test.any():
-        pred_cost = reg.predict(X_test[normal_test])
+        pred_cost = reg.predict(X_cost_test[normal_test])
         mape = float(np.mean(np.abs((yr_test[normal_test] - pred_cost) / yr_test[normal_test])) * 100)
     else:
         mape = None
@@ -171,6 +178,8 @@ def train_models():
         "logistic_regression_baseline": lr_metrics,
         "xgboost_regressor": {
             "trained_on": "normal claims (baseline biaya wajar)",
+            "feature_names": COST_FEATURE_NAMES,
+            "target_leakage_guard": "claimed cost dan fitur turunannya tidak digunakan",
             "mape_pct_normal_holdout": mape,
         },
         "isolation_forest": if_metrics,

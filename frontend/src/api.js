@@ -32,10 +32,6 @@ export const mlApi = {
   evaluation: () => api.get('/api/ml/eval'),
 }
 
-export const demoApi = {
-  start: () => api.post('/api/demo/generate'),
-}
-
 export function createSSEStream(taskId, callbacks) {
   const url = `${API_BASE}/api/stream/${taskId}`
   const eventSource = new EventSource(url)
@@ -58,20 +54,6 @@ export function createSSEStream(taskId, callbacks) {
   return eventSource
 }
 
-export function createDemoStream(callbacks) {
-  const eventSource = new EventSource(`${API_BASE}/api/demo/stream`)
-  eventSource.addEventListener('status', (e) => callbacks.onStatus?.(JSON.parse(e.data)))
-  eventSource.addEventListener('progress', (e) => callbacks.onProgress?.(JSON.parse(e.data)))
-  eventSource.addEventListener('done', (e) => { callbacks.onDone?.(e.data ? JSON.parse(e.data) : 'Selesai'); eventSource.close() })
-  eventSource.addEventListener('error', (e) => {
-    if (e.data) {
-      try { callbacks.onError?.(JSON.parse(e.data)) } catch { callbacks.onError?.({ message: 'Koneksi terputus' }) }
-    }
-    eventSource.close()
-  })
-  return eventSource
-}
-
 export const ACTION_LABELS = {
   verify_immediately: 'Verifikasi Segera',
   review_when_available: 'Tinjau Saat Tersedia',
@@ -81,8 +63,9 @@ export const ACTION_LABELS = {
 // Versi engine analisis — HARUS sinkron dengan ANALYSIS_VERSION di
 // backend/app/agents/orchestrator.py. Hasil tersimpan dengan versi berbeda
 // dianggap stale (skor dihitung logika lama) dan memicu analisis ulang.
-// v3: similarity komposit multi-faktor + ambang kemiripan minimum.
-export const ANALYSIS_VERSION = 3
+// v5: scoring deterministik tanpa pengaruh level LLM, model biaya tanpa target
+// leakage, serta sinyal prosedur tidak sesuai dan pemecahan klaim.
+export const ANALYSIS_VERSION = 5
 
 export const formatRecommendedAction = (action) => ACTION_LABELS[action] || action || '-'
 
@@ -98,11 +81,11 @@ export const FEATURE_LABELS = {
   cost_vs_peer_ratio: 'Biaya vs rata-rata peer',
   los_vs_expected_ratio: 'Lama rawat vs standar',
   has_high_cost_proc: 'Ada prosedur berbiaya tinggi',
-  has_phantom_risk_proc: 'Ada prosedur berisiko phantom billing',
-  has_upcoding_risk_diag: 'Ada diagnosis berisiko upcoding',
-  severity_proc_mismatch: 'Severity vs prosedur tidak cocok',
-  severity_med_mismatch: 'Severity vs obat tidak cocok',
-  los_outlier: 'Lama rawat outlier',
+  has_phantom_risk_proc: 'Ada prosedur yang perlu bukti pelaksanaan',
+  has_upcoding_risk_diag: 'Ada diagnosis sekunder yang perlu diverifikasi',
+  severity_proc_mismatch: 'Tingkat keparahan vs tindakan tidak cocok',
+  severity_med_mismatch: 'Tingkat keparahan vs obat tidak cocok',
+  los_outlier: 'Lama rawat jauh di atas pola umum',
   cost_outlier: 'Biaya outlier',
   num_total_codes: 'Jumlah total kode medis',
   cost_per_los_log: 'Biaya per hari rawat',

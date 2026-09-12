@@ -181,3 +181,31 @@ FEATURE_NAMES = [
 ]
 
 NUM_FEATURES = len(FEATURE_NAMES)
+
+# Features allowed for the expected-cost model. Claimed cost and every value
+# derived from it are intentionally excluded to prevent target leakage.
+COST_FEATURE_NAMES = [
+    "primary_diag_encoded",
+    "num_secondary_diags",
+    "num_procedures",
+    "num_medications",
+    "severity_level",
+    "length_of_stay",
+    "has_high_cost_proc",
+    "has_phantom_risk_proc",
+    "has_upcoding_risk_diag",
+    "severity_proc_mismatch",
+    "severity_med_mismatch",
+    "los_outlier",
+    "num_total_codes",
+    "proc_count_ratio",
+    "medication_count",
+]
+
+_COST_FEATURE_INDICES = [FEATURE_NAMES.index(name) for name in COST_FEATURE_NAMES]
+
+
+def extract_cost_features(claim: dict) -> list[float]:
+    """Return only claim facts available before the submitted cost is judged."""
+    features = extract_features(claim)
+    return [features[index] for index in _COST_FEATURE_INDICES]

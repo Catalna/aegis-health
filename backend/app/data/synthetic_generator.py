@@ -74,9 +74,9 @@ BASE_SCENARIOS = [
         "cost_base": 7_500_000,
     },
     {
-        "primary": "O80",     # Persalinan normal
+        "primary": "O80",     # Persalinan spontan tunggal
         "secondary": [],
-        "procs": ["72.0"],
+        "procs": [],
         "meds": [{"name": "Oxytocin", "qty": 2}],
         "los_range": (2, 3),
         "severity": 1,
@@ -85,7 +85,7 @@ BASE_SCENARIOS = [
     {
         "primary": "N18.3",   # Chronic Kidney Disease stage 3
         "secondary": ["I10", "E11.9"],
-        "procs": ["39.95"],   # Hemodialisis
+        "procs": [],
         "meds": [{"name": "Erythropoietin", "qty": 4}, {"name": "Bicarbonate", "qty": 10}],
         "los_range": (2, 4),
         "severity": 2,

@@ -18,14 +18,25 @@ rincian per-faktor agar verifier melihat MENGAPA dianggap mirip.
 Cosine embedding murni hanya dipakai sebagai prefilter kandidat.
 """
 import os
-import lancedb
-from lancedb.pydantic import Vector, LanceModel
+
+try:
+    import lancedb
+    from lancedb.pydantic import Vector, LanceModel
+    _lancedb_import_error = None
+except Exception as e:
+    # LanceDB uses native PyArrow binaries. Keep the API available when the OS
+    # blocks those binaries so non-vector checks can still run.
+    lancedb = None
+    Vector = None
+    LanceModel = None
+    _lancedb_import_error = e
+
 from sentence_transformers import SentenceTransformer
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "lancedb_data")
 os.makedirs(DB_PATH, exist_ok=True)
 
-db = lancedb.connect(DB_PATH)
+db = lancedb.connect(DB_PATH) if lancedb is not None else None
 
 try:
     model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -39,19 +50,24 @@ DIM = model.get_sentence_embedding_dimension() if model else 384
 TABLE_NAME = "claims_vectors_v3"
 
 
-class ClaimVector(LanceModel):
-    claim_id: str
-    patient_id: str
-    provider_id: str
-    doctor_id: str
-    diagnosis_primary: str = ""
-    cost_claimed: float = 0.0
-    admission_date: str = ""  # ISO date, untuk faktor temporal
-    vector: Vector(DIM)
-    text_content: str
+if LanceModel is not None and Vector is not None:
+    class ClaimVector(LanceModel):
+        claim_id: str
+        patient_id: str
+        provider_id: str
+        doctor_id: str
+        diagnosis_primary: str = ""
+        cost_claimed: float = 0.0
+        admission_date: str = ""  # ISO date, untuk faktor temporal
+        vector: Vector(DIM)
+        text_content: str
+else:
+    ClaimVector = None
 
 
 def get_table():
+    if db is None:
+        raise RuntimeError(f"LanceDB tidak tersedia: {_lancedb_import_error}") from _lancedb_import_error
     if TABLE_NAME not in db.table_names():
         return db.create_table(TABLE_NAME, schema=ClaimVector)
     return db.open_table(TABLE_NAME)
@@ -83,14 +99,8 @@ def _normalize(vec: list[float]) -> list[float]:
 
 W_CODE, W_COST, W_PROVIDER, W_TEMPORAL, W_PATIENT = 0.40, 0.30, 0.15, 0.10, 0.05
 
-# Ambang komposit minimum agar dua klaim layak disebut "serupa".
-# Kalibrasi:
-#   ~0.40-0.49 : hanya kode medis sama + biaya agak dekat, faktor lain beda semua
-#                (faskes/pasien/waktu) → pola penyakit wajar, BUKAN "mirip".
-#   ~0.55      : kode medis identik + biaya mirip, tanpa faktor konteks.
-#   ≥0.60      : butuh kecocokan kode + minimal satu faktor konteks kuat
-#                (biaya nyaris sama / faskes sama / waktu dekat) → layak ditampilkan.
-SIMILARITY_THRESHOLD = 0.60
+# Batas waktu yang sama dengan pemeriksaan repeat billing di database.
+RELATIONSHIP_WINDOW_DAYS = 45
 
 
 def cost_proximity(cost_a: float, cost_b: float) -> float:
@@ -131,6 +141,26 @@ def composite_similarity(
     )
 
 
+def is_investigation_candidate(
+    code_similarity: float,
+    cost_proximity: float,
+    same_provider: bool,
+    same_patient: bool,
+    days_apart: int | None,
+) -> bool:
+    """Return whether two claims have a relationship worth investigating.
+
+    Similar clinical profiles across different patients and providers are expected
+    in claims data. A candidate must instead satisfy a concrete repeat-billing or
+    cloning relationship; the composite score only ranks those candidates.
+    """
+    if days_apart is None or days_apart > RELATIONSHIP_WINDOW_DAYS:
+        return False
+    if same_patient:
+        return code_similarity >= 0.8
+    return same_provider and code_similarity > 0.9 and cost_proximity > 0.95
+
+
 def _days_between(date_a: str, date_b: str) -> int | None:
     if not date_a or not date_b:
         return None
@@ -149,7 +179,7 @@ def _days_between(date_a: str, date_b: str) -> int | None:
 
 def embed_and_store(claims: list[dict]):
     """Embed dan simpan daftar klaim ke LanceDB (idempotent per claim_id)."""
-    if not model:
+    if not model or db is None:
         print("[LanceDB] Model embedding tidak tersedia, lewati.")
         return 0
     table = get_table()
@@ -222,7 +252,7 @@ def find_similar_claims(claim_id: str, claim_data: dict, limit: int = 5) -> list
     Cari klaim historis serupa. Urutan berdasarkan SKOR KOMPOSIT (bukan cosine).
     Cosine embedding hanya prefilter kandidat (profil medis mirip).
     """
-    if not model:
+    if not model or db is None:
         return []
 
     table = get_table()
@@ -273,8 +303,15 @@ def find_similar_claims(claim_id: str, claim_data: dict, limit: int = 5) -> list
             "cost_claimed": cand_cost,
         })
 
-    # Filter ambang: di bawah threshold = pola penyakit wajar, jangan disebut "serupa"
-    scored = [s for s in scored if s["similarity"] >= SIMILARITY_THRESHOLD]
+    # Jangan tampilkan pola klinis lintas pasien/faskes sebagai kandidat fraud.
+    # Skor komposit hanya dipakai untuk mengurutkan kandidat yang relasinya valid.
+    scored = [
+        s for s in scored
+        if is_investigation_candidate(
+            s["code_similarity"], s["cost_proximity"], s["same_provider"],
+            s["same_patient"], s["days_apart"],
+        )
+    ]
 
     # Urutkan berdasar skor komposit
     scored.sort(key=lambda s: s["similarity"], reverse=True)

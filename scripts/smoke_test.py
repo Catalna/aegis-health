@@ -2,6 +2,7 @@
 import json
 import threading
 import time
+import uuid
 import httpx
 
 BASE = "http://localhost:8000"
@@ -27,6 +28,7 @@ def claim_payload(**over):
 
 def run_analysis(payload, events: list, label: str):
     r = httpx.post(f"{BASE}/api/claims/analyze", json=payload, timeout=30)
+    r.raise_for_status()
     task_id = r.json()["task_id"]
     print(f"[{label}] task_id={task_id}")
 
@@ -56,42 +58,63 @@ def run_analysis(payload, events: list, label: str):
 
 
 def main():
+    run_id = uuid.uuid4().hex[:8].upper()
+
     # ===== Test 1: klaim tanggal korup → hard reject =====
     events = []
     bad = claim_payload(
-        claim_id="CLM-SMOKE-BAD",
+        claim_id=f"CLM-SMOKE-BAD-{run_id}",
         admission_date="2026-07-19",
         discharge_date="2026-07-10",
     )
     # simpan dulu ke DB
     r = httpx.post(f"{BASE}/api/claims", json=bad, timeout=30)
     print(f"[BAD] create status: {r.status_code}")
+    assert r.status_code == 200, r.text
     run_analysis(bad, events, "BAD")
     rejected = [d for (e, d) in events if e == "rejected"]
     print(f"[BAD] rejected event: {rejected}")
     assert rejected, "HARD REJECT TIDAK BEKERJA!"
-    print("[BAD] ✓ Validasi deterministik menolak klaim korup\n")
+    print("[BAD] OK: Validasi deterministik menolak klaim korup\n")
 
     # ===== Test 2: klaim normal → pipeline penuh =====
     events2 = []
-    httpx.post(f"{BASE}/api/claims", json=claim_payload(), timeout=30)
-    run_analysis(claim_payload(), events2, "NORMAL")
+    normal = claim_payload(
+        claim_id=f"CLM-SMOKE-{run_id}",
+        patient_id=f"PAT-SMOKE-{run_id}",
+        provider_id=f"FAC-SMOKE-{run_id}",
+        doctor_id=f"DR-SMOKE-{run_id}",
+    )
+    r = httpx.post(f"{BASE}/api/claims", json=normal, timeout=30)
+    assert r.status_code == 200, r.text
+    run_analysis(normal, events2, "NORMAL")
     phases = [e for (e, d) in events2]
     print(f"[NORMAL] events: {phases}")
     phase1 = next((d for (e, d) in events2 if e == "phase1_complete"), None)
     phase3 = next((d for (e, d) in events2 if e == "phase3_complete"), None)
     phase4 = next((d for (e, d) in events2 if e == "phase4_complete"), None)
+    assert {"phase1_complete", "phase2_complete", "phase3_complete", "phase4_complete", "done"}.issubset(phases)
+    assert phase1 and phase3 and phase4
     if phase1:
         print(f"[NORMAL] clinical flags: {phase1['clinical']['rule_flags']}, source: {phase1['clinical']['evidence_source']}")
         print(f"[NORMAL] financial: dev={phase1['financial']['deviation_pct']:.1f}%, method={phase1['financial']['method']}, shap={len(phase1['financial']['shap_top_features'])} fitur")
         print(f"[NORMAL] fraud: sim={phase1['fraud']['similarity_max_score']:.2f}, similar_claims={len(phase1['fraud']['similar_claims'])}, graph={phase1['fraud']['graph_cluster_anomaly_score']}")
+        assert not phase1["fraud"]["repeat_billing_flag"]
+        assert not phase1["fraud"]["cloning_flag"]
+        assert phase1["fraud"]["similar_claims"] == []
     if phase3:
         print(f"[NORMAL] risk: score={phase3['risk']['total_score']}, tier={phase3['risk']['priority_tier']}, breakdown={phase3['risk']['breakdown']}")
+        assert phase3["risk"]["breakdown"]["similarity_fraud"] == 0.0
+        assert phase3["risk"]["priority_tier"] == "low"
+        assert phase3["risk"]["total_score"] < 25
     if phase4:
         expl = phase4["explanation"]
         print(f"[NORMAL] explanation by: {expl['generated_by']}")
         print(f"[NORMAL] narrative: {expl['narrative_id']}")
         print(f"[NORMAL] action: {expl['recommended_action']}")
+        priority_reason = expl["qa_panel"]["why_top_priority"].lower()
+        assert "tidak menemukan ketidakwajaran" in priority_reason
+        assert "perubahan" not in priority_reason
         assert phase3["risk"]["total_score"] == json.loads(json.dumps(phase3["risk"]))["total_score"]
         # Validasi: skor di narasi harus sesuai (pakai normalisasi sama seperti backend)
         import re
@@ -108,7 +131,7 @@ def main():
                 pass
         score = phase3["risk"]["total_score"]
         ok = any(abs(v - score) < 0.05 or abs(v - round(score)) < 0.05 for v in vals)
-        print(f"[NORMAL] angka di narasi: {vals} — skor asli {score} {'✓ ADA' if ok else '✗ HILANG'}")
+        print(f"[NORMAL] angka di narasi: {vals}; skor asli {score} {'OK' if ok else 'MISSING'}")
     print("\nSMOKE TEST SELESAI")
 
 if __name__ == "__main__":

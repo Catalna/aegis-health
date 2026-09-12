@@ -12,7 +12,11 @@ import numpy as np
 import xgboost as xgb
 import shap
 from backend.app.models.schemas import ClaimInput, FinancialAssessment, SHAPFeature
-from backend.app.ml.feature_engineering import extract_features, FEATURE_NAMES, PEER_BASELINE
+from backend.app.ml.feature_engineering import (
+    extract_cost_features,
+    COST_FEATURE_NAMES,
+    PEER_BASELINE,
+)
 
 # Label ramah pengguna untuk tiap fitur (ditampilkan di UI)
 FEATURE_LABELS = {
@@ -22,18 +26,13 @@ FEATURE_LABELS = {
     "num_medications": "jumlah jenis obat",
     "severity_level": "tingkat keparahan",
     "length_of_stay": "lama rawat",
-    "cost_claimed_log": "besaran biaya klaim",
-    "cost_vs_peer_ratio": "biaya vs rata-rata peer",
-    "los_vs_expected_ratio": "lama rawat vs standar",
     "has_high_cost_proc": "ada prosedur berbiaya tinggi",
     "has_phantom_risk_proc": "ada prosedur berisiko phantom billing",
     "has_upcoding_risk_diag": "ada diagnosis berisiko upcoding",
     "severity_proc_mismatch": "severity vs prosedur tidak cocok",
     "severity_med_mismatch": "severity vs obat tidak cocok",
     "los_outlier": "lama rawat outlier",
-    "cost_outlier": "biaya outlier",
     "num_total_codes": "jumlah total kode medis",
-    "cost_per_los_log": "biaya per hari rawat",
     "proc_count_ratio": "rasio prosedur vs severity",
     "medication_count": "jumlah obat",
 }
@@ -55,12 +54,18 @@ def get_financial_model():
         try:
             model = xgb.XGBRegressor()
             model.load_model(model_path)
-            _xgb_model = model
             # XGBoost 3.x + SHAP 0.49: pakai predict callable
+            model_features = model.get_booster().num_features()
+            if model_features != len(COST_FEATURE_NAMES):
+                raise RuntimeError(
+                    "Model biaya lama tidak kompatibel dengan fitur tanpa target leakage. "
+                    "Jalankan scripts/train_all.py."
+                )
             _shap_explainer = shap.Explainer(
                 model.predict,
-                shap.maskers.Independent(np.zeros((1, len(FEATURE_NAMES))), max_samples=50),
+                shap.maskers.Independent(np.zeros((1, len(COST_FEATURE_NAMES))), max_samples=50),
             )
+            _xgb_model = model
             _load_error = None
         except Exception as e:
             _load_error = f"Gagal load model XGBoost: {e}"
@@ -102,8 +107,11 @@ async def analyze_financial(claim: ClaimInput) -> FinancialAssessment:
     except Exception as e:
         return _zscore_fallback(claim, str(e))
 
-    features = np.array([extract_features(claim.model_dump())])
-    predicted_cost = float(model.predict(features)[0])
+    features = np.array([extract_cost_features(claim.model_dump())])
+    try:
+        predicted_cost = float(model.predict(features)[0])
+    except Exception as e:
+        return _zscore_fallback(claim, f"prediksi model gagal: {e}")
 
     # SHAP attribution
     try:
@@ -121,7 +129,7 @@ async def analyze_financial(claim: ClaimInput) -> FinancialAssessment:
 
     # Top SHAP features dengan label terjemahan
     contributions = sorted(
-        zip(FEATURE_NAMES, raw_shap), key=lambda x: abs(x[1]), reverse=True
+        zip(COST_FEATURE_NAMES, raw_shap), key=lambda x: abs(x[1]), reverse=True
     )
     top_features: list[SHAPFeature] = []
     for fname, fval in contributions[:5]:

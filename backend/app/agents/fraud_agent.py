@@ -18,7 +18,7 @@ from sqlalchemy.future import select as sa_select
 from backend.app.models.schemas import ClaimInput, FraudAssessment, SimilarClaim
 from backend.app.models.database import AsyncSessionLocal, ClaimRecord
 from backend.app.ml.similarity import find_similar_claims
-from backend.app.ml.feature_engineering import extract_features
+from backend.app.ml.feature_engineering import extract_features, PEER_BASELINE
 from backend.app.ml.graph_metrics import get_provider_metrics
 
 _MODELS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "models_trained"))
@@ -74,6 +74,57 @@ async def _check_repeat_billing_db(claim: ClaimInput) -> str | None:
     return None
 
 
+def is_unbundling_candidate(claim_cost: float, matched_costs: list[float], peer_baseline: float) -> bool:
+    """Detect several under-sized related claims that add up to one peer cost."""
+    costs = [claim_cost, *matched_costs]
+    if len(costs) < 2 or peer_baseline <= 0:
+        return False
+    return (
+        all(cost < peer_baseline * 0.8 for cost in costs)
+        and peer_baseline * 0.75 <= sum(costs) <= peer_baseline * 1.5
+    )
+
+
+async def _check_unbundling_db(claim: ClaimInput) -> list[str]:
+    """Find related low-value fragments for the same patient/provider/diagnosis."""
+    if not claim.procedure_codes or not claim.patient_id or not claim.provider_id:
+        return []
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                sa_select(ClaimRecord).where(
+                    ClaimRecord.patient_id == claim.patient_id,
+                    ClaimRecord.provider_id == claim.provider_id,
+                    ClaimRecord.diagnosis_primary == claim.diagnosis_primary,
+                    ClaimRecord.claim_id != claim.claim_id,
+                )
+            )
+            candidates = result.scalars().all()
+    except Exception as e:
+        print(f"[fraud] Unbundling DB check gagal: {e}")
+        return []
+
+    base = claim.diagnosis_primary.split(".")[0]
+    peer_baseline = PEER_BASELINE.get(base, 5_000_000)
+    related = []
+    related_costs = []
+    for cand in candidates:
+        cand_procs = {p.strip() for p in (cand.procedure_codes or "").split(",") if p.strip()}
+        if not cand_procs or not (set(claim.procedure_codes) & cand_procs):
+            continue
+        if claim.admission_date and cand.admission_date:
+            try:
+                cand_admit = date.fromisoformat(str(cand.admission_date)[:10])
+                if abs((claim.admission_date - cand_admit).days) > 45:
+                    continue
+            except ValueError:
+                continue
+        related.append(cand.claim_id)
+        related_costs.append(float(cand.cost_claimed or 0))
+
+    return related if is_unbundling_candidate(claim.cost_claimed, related_costs, peer_baseline) else []
+
+
 async def analyze_fraud(claim: ClaimInput) -> FraudAssessment:
     claim_dict = claim.model_dump(mode="json")
 
@@ -113,18 +164,20 @@ async def analyze_fraud(claim: ClaimInput) -> FraudAssessment:
     matched_id = next((s["claim_id"] for s in similar_raw if s["similarity"] == similarity_max), None)
 
     # Cloning sungguhan: faskes SAMA + pasien BERBEDA + kode medis hampir identik
-    # + biaya hampir persis (klaim hasil cloning menyalin nominal). Kemiripan
-    # profil medis saja (penyakit sama) BUKAN cloning.
-    cloning_flag = any(
+    # + biaya hampir persis dalam jendela waktu investigasi. Kemiripan profil
+    # medis saja (penyakit sama) BUKAN cloning.
+    cloning_matches = [s for s in similar_raw if (
         s["same_provider"] and not s["same_patient"]
         and s.get("code_similarity", 0) > 0.9
         and s.get("cost_proximity", 0) > 0.95
-        for s in similar_raw
-    )
+        and s.get("days_apart") is not None and s["days_apart"] <= 45
+    )]
+    cloning_flag = bool(cloning_matches)
 
     # ---------- 3. Repeat billing (SQL, pasien sama) ----------
     repeat_matched_id = await _check_repeat_billing_db(claim)
     repeat_billing = repeat_matched_id is not None
+    unbundling_matched_ids = await _check_unbundling_db(claim)
 
     # ---------- 4. Provider network metrics (precomputed) ----------
     provider_metrics = get_provider_metrics(claim.provider_id)
@@ -138,12 +191,17 @@ async def analyze_fraud(claim: ClaimInput) -> FraudAssessment:
             f"{repeat_matched_id} dengan prosedur tumpang tindih dan rentang tanggal berdekatan."
         )
     if cloning_flag:
-        top_clone = similar_raw[0] if similar_raw else {}
+        top_clone = cloning_matches[0]
         parts.append(
             f"Indikasi cloning: klaim sangat mirip dengan {top_clone.get('claim_id', matched_id)} "
             f"dari faskes yang sama untuk pasien berbeda — kode medis "
             f"{top_clone.get('code_similarity', 0)*100:.0f}% identik dan biaya hampir persis "
             f"(Rp {top_clone.get('cost_claimed', 0):,.0f} vs Rp {claim.cost_claimed:,.0f})."
+        )
+    if unbundling_matched_ids:
+        parts.append(
+            f"Indikasi pemecahan klaim: biaya klaim ini dan {len(unbundling_matched_ids)} klaim terkait "
+            "untuk pasien, faskes, dan diagnosis yang sama tampak seperti satu episode yang dipecah."
         )
 
     if is_if_outlier:
@@ -182,6 +240,8 @@ async def analyze_fraud(claim: ClaimInput) -> FraudAssessment:
         repeat_billing_flag=repeat_billing,
         repeat_billing_matched_claim_id=repeat_matched_id,
         cloning_flag=cloning_flag,
+        unbundling_flag=bool(unbundling_matched_ids),
+        unbundling_matched_claim_ids=unbundling_matched_ids,
         graph_cluster_anomaly_score=graph_score,
         isolation_forest_score=if_score_normalized,
         is_isolation_forest_outlier=is_if_outlier,

@@ -15,7 +15,6 @@ from backend.app.agents.orchestrator import process_claim
 from backend.app.models.database import (
     init_db, AsyncSessionLocal, ClaimRecord, RiskAnalysisRecord,
 )
-from backend.app.data.synthetic_generator import generate_dataset
 from backend.app.api.claims import router as claims_router, get_db
 
 
@@ -240,127 +239,6 @@ async def ml_evaluation():
         data = json.load(f)
     data["generated_from"] = "backend/models_trained/evaluation_results.json"
     return data
-
-
-# ---------------------------------------------------------------------------
-# Demo generation — subscriber queue per-klien + index LanceDB + refresh graph
-# ---------------------------------------------------------------------------
-
-_demo_subscribers: list[asyncio.Queue] = []
-_demo_status = {"is_running": False}
-
-
-async def _broadcast(event: dict):
-    for q in list(_demo_subscribers):
-        await q.put(event)
-
-
-@app.post("/api/demo/generate")
-async def start_demo_generation():
-    """Generate klaim sintetis + simpan ke DB + index LanceDB (background)."""
-    if _demo_status["is_running"]:
-        return {"status": "already_running"}
-
-    _demo_status["is_running"] = True
-    asyncio.create_task(_generate_and_save_demo())
-    return {"status": "started"}
-
-
-async def _generate_and_save_demo():
-    try:
-        await _broadcast({"event": "status", "data": "Menghasilkan data sintetis..."})
-        # seed=None + prefix khusus → setiap klik menambah klaim BARU (tanpa bentrok ID seed awal)
-        data = generate_dataset(
-            num_normal=100,
-            num_upcoding=10,
-            num_cloning_pairs=5,
-            num_repeat_billing=5,
-            num_phantom=5,
-            num_prolonged_los=5,
-            num_inflated=5,
-            num_unbundling_groups=2,
-            seed=None,
-            claim_prefix="DEMO",
-        )
-
-        await _broadcast({"event": "status", "data": f"Menyimpan {len(data)} klaim ke database..."})
-
-        async with AsyncSessionLocal() as db:
-            existing = await db.execute(select(ClaimRecord.claim_id))
-            existing_ids = {r[0] for r in existing.all()}
-
-            added = 0
-            for i, claim_dict in enumerate(data):
-                if claim_dict["claim_id"] in existing_ids:
-                    continue
-                db.add(ClaimRecord(
-                    claim_id=claim_dict["claim_id"],
-                    patient_id=claim_dict["patient_id"],
-                    provider_id=claim_dict["provider_id"],
-                    doctor_id=claim_dict["doctor_id"],
-                    diagnosis_primary=claim_dict["diagnosis_primary"],
-                    diagnosis_secondary=",".join(claim_dict["diagnosis_secondary"]),
-                    procedure_codes=",".join(claim_dict["procedure_codes"]),
-                    severity_level=claim_dict["severity_level"],
-                    cost_claimed=claim_dict["cost_claimed"],
-                    length_of_stay=claim_dict["length_of_stay"],
-                    admission_date=claim_dict.get("admission_date").isoformat() if claim_dict.get("admission_date") else None,
-                    discharge_date=claim_dict.get("discharge_date").isoformat() if claim_dict.get("discharge_date") else None,
-                    medication_json=json.dumps(claim_dict.get("medication", [])),
-                ))
-                added += 1
-                if i % 25 == 0:
-                    await _broadcast({"event": "progress", "data": {"current": i, "total": len(data)}})
-                    await db.commit()
-            await db.commit()
-
-        await _broadcast({"event": "status", "data": f"{added} klaim baru disimpan. Meng-index ke LanceDB..."})
-
-        # Index semua klaim ke LanceDB agar similarity check mengenali data baru
-        try:
-            from backend.app.ml.similarity import embed_and_store
-            n = embed_and_store(data)
-            await _broadcast({"event": "status", "data": f"{n} vektor baru di-index ke LanceDB."})
-        except Exception as e:
-            await _broadcast({"event": "status", "data": f"Peringatan: LanceDB index gagal: {e}"})
-
-        # Refresh provider graph metrics
-        try:
-            from backend.app.ml.graph_metrics import refresh_graph_metrics
-            stats = await refresh_graph_metrics()
-            await _broadcast({"event": "status", "data": f"Graph metrics di-refresh: {stats}"})
-        except Exception as e:
-            await _broadcast({"event": "status", "data": f"Peringatan: graph metrics gagal: {e}"})
-
-        await _broadcast({"event": "done", "data": f"Generasi selesai — {added} klaim baru."})
-    except Exception as e:
-        await _broadcast({"event": "error", "data": str(e)})
-    finally:
-        _demo_status["is_running"] = False
-        for q in list(_demo_subscribers):
-            await q.put(None)
-
-
-@app.get("/api/demo/stream")
-async def stream_demo_generation(request: Request):
-    """Stream progress generasi — tiap klien punya queue sendiri (tanpa race)."""
-    queue: asyncio.Queue = asyncio.Queue()
-    _demo_subscribers.append(queue)
-
-    async def event_generator():
-        try:
-            while True:
-                if await request.is_disconnected():
-                    break
-                event = await queue.get()
-                if event is None:
-                    break
-                yield {"event": event["event"], "data": json.dumps(event["data"], default=str)}
-        finally:
-            if queue in _demo_subscribers:
-                _demo_subscribers.remove(queue)
-
-    return EventSourceResponse(event_generator())
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,58 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-jari_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/backend.Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-jari_db}
+      ALLOWED_ORIGINS: http://localhost,http://localhost:5173,http://127.0.0.1:5173
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-mistral:7b}
+      CLINICAL_MODEL: ${CLINICAL_MODEL:-mistral:7b}
+      REVIEW_MODEL: ${REVIEW_MODEL:-deepseek-r1:7b}
+      REVIEW_MODEL_FALLBACK: ${REVIEW_MODEL_FALLBACK:-mistral:7b}
+      EXPLANATION_MODEL: ${EXPLANATION_MODEL:-qwen2.5:7b}
+      EXPLANATION_MODEL_FALLBACK: ${EXPLANATION_MODEL_FALLBACK:-mistral:7b}
+      HF_HOME: /root/.cache/huggingface
+    depends_on:
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/models_trained:/app/backend/models_trained:ro
+      - lancedb_data:/app/backend/app/lancedb_data
+      - huggingface_cache:/root/.cache/huggingface
+
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/frontend.Dockerfile
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  postgres_data:
+  lancedb_data:
+  huggingface_cache:

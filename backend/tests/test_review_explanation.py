@@ -5,10 +5,10 @@ from backend.app.models.schemas import (
     ClinicalAssessment, FinancialAssessment, FraudAssessment,
     ReviewSynthesis, RiskScore, ClaimExplanation,
 )
-from backend.app.agents.review_agent import synthesize_review, compute_rule_signals
+from backend.app.agents.review_agent import synthesize_review, compute_rule_signals, deterministic_source_count
 from backend.app.agents.explanation_agent import (
     _validate_narrative, _normalize_tokens, _template_explanation, generate_explanation,
-    TIER_TO_ACTION,
+    TIER_TO_ACTION, build_priority_reason,
 )
 from conftest import make_claim
 
@@ -58,6 +58,14 @@ def test_rule_signals_3_strong():
 def test_rule_signals_weak_case():
     signals = compute_rule_signals(_clinical(), _financial(), _fraud(sim=0.3))
     assert len(signals) <= 1
+
+
+def test_review_source_count_does_not_double_count_one_agent():
+    assert deterministic_source_count(
+        _clinical(["tariff_deviation_extreme", "severity_proc_mismatch"]),
+        _financial(),
+        _fraud(),
+    ) == 1
 
 
 @pytest.mark.asyncio
@@ -201,10 +209,54 @@ async def test_generate_explanation_rejects_wrong_numbers(monkeypatch):
     assert "42" not in explanation.narrative_id
 
 
+@pytest.mark.asyncio
+async def test_low_risk_explanation_ignores_hallucinated_fraud_finding(monkeypatch):
+    """Klaim low-risk harus memakai narasi deterministik, bukan tuduhan dari LLM."""
+    import backend.app.agents.explanation_agent as ea
+
+    class HallucinatedResp:
+        narrative_id = "Klaim X mendapat skor 3.7 dari 100 dan terdapat indikasi phantom billing."
+        ranked_reasons = ["indikasi phantom billing"]
+        why_top_priority = "indikasi phantom billing"
+        strongest_evidence = "indikasi phantom billing"
+
+    async def fake_llm(*a, **k):
+        return HallucinatedResp()
+
+    monkeypatch.setattr(ea, "structured_completion", fake_llm)
+    monkeypatch.setattr(ea, "get_available_model", lambda *a: _async("qwen2.5:7b"))
+
+    risk = RiskScore(total_score=3.7, breakdown={"isolation_forest_anomaly": 3.7}, priority_tier="low")
+    explanation = await generate_explanation(
+        make_claim(), _clinical(), _financial(), _fraud(), _review("weak"), risk,
+    )
+
+    assert explanation.generated_by == "template_fallback"
+    assert "phantom billing" not in explanation.narrative_id.lower()
+
+
 def test_tier_action_mapping():
     assert TIER_TO_ACTION["high"] == "verify_immediately"
     assert TIER_TO_ACTION["medium"] == "review_when_available"
     assert TIER_TO_ACTION["low"] == "low_priority"
+
+
+def test_low_priority_reason_describes_absence_of_irregularity_not_change():
+    risk = RiskScore(total_score=0.0, breakdown={"clinical_rule_flags": 0.0}, priority_tier="low")
+    text = build_priority_reason(risk)
+    assert "tidak menemukan ketidakwajaran" in text.lower()
+    assert "perubahan" not in text.lower()
+
+
+def test_low_priority_template_uses_indonesian_tier_without_double_period():
+    claim = make_claim()
+    risk = RiskScore(total_score=3.7, breakdown={"isolation_forest_anomaly": 3.7}, priority_tier="low")
+    explanation = _template_explanation(
+        claim, _clinical(), _financial(), _fraud(), _review("weak"), risk,
+        facts={"score": 3.7, "deviation_pct": 0.0, "similarity_pct": None, "actual_cost": claim.cost_claimed, "tier": "low"},
+    )
+    assert "prioritas rendah" in explanation.narrative_id.lower()
+    assert ".." not in explanation.narrative_id
 
 
 def test_sanitize_jargon_replaces_keys():

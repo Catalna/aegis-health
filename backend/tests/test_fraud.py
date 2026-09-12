@@ -1,8 +1,15 @@
 """Test Fraud Agent components + Similarity (tanpa DB/LanceDB live)."""
 import pytest
+from types import SimpleNamespace
 
-from backend.app.ml.similarity import compute_jaccard_similarity, _parse_text_content, generate_claim_text
+from backend.app.ml.similarity import (
+    compute_jaccard_similarity,
+    _parse_text_content,
+    generate_claim_text,
+    is_investigation_candidate,
+)
 from backend.app.models.schemas import SimilarClaim, FraudAssessment
+from backend.app.agents.fraud_agent import is_unbundling_candidate
 from conftest import make_claim
 
 
@@ -24,6 +31,80 @@ def test_jaccard_different_claims_low():
 
 def test_jaccard_empty_sets_zero():
     assert compute_jaccard_similarity({}, {}) == 0.0
+
+
+def test_cross_provider_same_disease_is_not_an_investigation_candidate():
+    """Pola klinis/biaya yang sama lintas faskes bukan cloning atau repeat billing."""
+    assert not is_investigation_candidate(
+        code_similarity=1.0,
+        cost_proximity=0.96,
+        same_provider=False,
+        same_patient=False,
+        days_apart=6,
+    )
+
+
+def test_same_provider_near_exact_claim_for_different_patient_is_cloning_candidate():
+    assert is_investigation_candidate(
+        code_similarity=1.0,
+        cost_proximity=0.99,
+        same_provider=True,
+        same_patient=False,
+        days_apart=6,
+    )
+
+
+def test_under_sized_related_claims_are_unbundling_candidate():
+    assert is_unbundling_candidate(2_000_000, [2_000_000], 4_200_000)
+
+
+def test_normal_sized_repeat_is_not_unbundling_candidate():
+    assert not is_unbundling_candidate(4_200_000, [4_100_000], 4_200_000)
+
+
+@pytest.mark.asyncio
+async def test_unbundling_db_check_returns_related_fragments(monkeypatch):
+    from backend.app.agents import fraud_agent as fa
+
+    candidate = SimpleNamespace(
+        claim_id="UNB-1",
+        patient_id="PAT-001",
+        provider_id="FAC-A12",
+        diagnosis_primary="J44.1",
+        procedure_codes="93.94",
+        admission_date="2026-07-02",
+        cost_claimed=2_000_000,
+    )
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def execute(self, query):
+            return self
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return [candidate]
+
+    monkeypatch.setattr(fa, "AsyncSessionLocal", lambda: FakeSession())
+    result = await fa._check_unbundling_db(
+        make_claim(
+            claim_id="UNB-2",
+            patient_id="PAT-001",
+            provider_id="FAC-A12",
+            diagnosis_primary="J44.1",
+            procedure_codes=["93.94"],
+            cost_claimed=2_000_000,
+            admission_date="2026-07-04",
+        )
+    )
+    assert result == ["UNB-1"]
 
 
 # ---------------------------------------------------------------------------
