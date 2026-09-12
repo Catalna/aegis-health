@@ -42,7 +42,7 @@
 | OllamaClient (lokal) | qwen2.5:7b | Explanation Agent — narasi Bahasa Indonesia |
 | OllamaClient (lokal) | mistral:7b | Clinical Agent Lapis 2 & Review Agent |
 | OllamaClient (lokal) | qwen2.5:3b / llama3.2:3b | Routing sederhana & quick validation |
-| OllamaClient (lokal) | deepseek-r1:7b | Review Agent — reasoning trace |
+| OllamaClient (lokal) | model terkonfigurasi | Review Agent — structured evidence summary |
 | GeminiClient (API) | Gemini Flash | Benchmark baseline + production-path narrative |
 
 *Hardware Target Specification*: Intel Core 5 215H, 16GB RAM, RTX 5050 8GB VRAM. Model max 7B (Q4_K_M ~4.5-5GB VRAM + KV cache).

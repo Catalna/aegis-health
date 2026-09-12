@@ -3,7 +3,7 @@
 > **J-ARI: JKN Agentic Risk Intelligence**  
 > Healthkathon 2026 BPJS Kesehatan  
 > Versi Dokumen: 1.0  
-> Status: Production Model Specification  
+> Status: Prototype Model Specification
 
 ---
 
@@ -22,14 +22,14 @@ J-ARI memanfaatkan arsitektur **Multi-Model Intelligence** yang menggabungkan mo
   [ Supervised ML ]            [ Unsupervised ML ]          [ Vector Store & Graph ]
   XGBoost Regressor            Isolation Forest             LanceDB (384-d Embedding)
   + SHAP TreeExplainer         + Graph Centrality           + Composite Similarity
-  (Fair Cost Baseline)         (Multi-dim Outlier)          (Repeat/Cloning/Unbundling)
+   (Expected Reimbursement)     (Supporting Context)         (Repeat/Cloning/Unbundling)
           |                            |                            |
           +----------------------------+----------------------------+
                                        |
                                        v
-                           [ Domain Rule Engine ]
-                           INA-CBG Simplified Grouper
-                           + Severity & Tariff Rules
+                            [ Domain Rule Engine ]
+                            INA-CBG Consistency Heuristic
+                            + Severity & Benchmark Rules
                                        |
                                        v
                            [ Deterministic Risk Score ]
@@ -47,7 +47,7 @@ J-ARI memanfaatkan arsitektur **Multi-Model Intelligence** yang menggabungkan mo
 
 ### 2.1 Deskripsi Model
 - **Algoritma**: **XGBoost Regressor** (`xgboost.XGBRegressor`).
-- **Tujuan**: Memprediksi biaya wajar (*fair baseline cost*) untuk suatu episod klaim berdasarkan profil medis dan karakteristik fasilitas kesehatan.
+- **Tujuan**: Mengestimasi *expected reimbursement benchmark* untuk suatu episode klaim berdasarkan profil medis dan karakteristik fasilitas kesehatan. Model ini bukan official INA-CBG grouper dan tidak menyatakan biaya medis yang benar.
 - **File Artifact**: `backend/app/models_trained/xgboost_cost_model.joblib`.
 
 ### 2.2 Feature Engineering Pipeline (`feature_engineering.py`)
@@ -66,7 +66,7 @@ Fitur-fitur yang diekstraksi dari data klaim terstruktur:
 | `provider_type_enc` | Categorical | One-Hot Encoding tipe Faskes (RS Tipe A/B/C/D, Klinik, Puskesmas). |
 
 ### 2.3 Pelatihan & Evaluasi Model (`train_xgboost.py`)
-- **Fungsi Target**: `log1p(cost_claimed)` (transformasi logaritmik untuk menangani skewness biaya).
+- **Fungsi Target**: `log1p(cost_claimed)` pada klaim normal sintetis. Ini adalah benchmark prototype terhadap claimed amount, bukan label harga medis yang benar.
 - **Hyperparameter Utama**:
   - `n_estimators`: 200
   - `max_depth`: 6
@@ -136,20 +136,28 @@ Di mana:
 
 ---
 
-## 5. Domain Rule Engine: INA-CBG Simplified Grouper
+## 5. Domain Rule Engine: INA-CBG Consistency Heuristic
 
-### 5.1 Matriks Aturan Klinis & Bobot Skor Risiko
-Aturan deterministik berbasis domain kesehatan JKN yang dievaluasi oleh `clinical_agent.py`:
+### 5.1 Matriks Aturan Domain & Bobot Skor Risiko
+Aturan deterministik berbasis domain kesehatan JKN yang dievaluasi oleh `clinical_agent.py`. Pemetaan ini adalah heuristic prototype dan harus divalidasi terhadap referensi grouper resmi sebelum operasional.
 
 | Kode Rule Flag | Deskripsi Aturan | Bobot Skor (`risk_engine.py`) |
 |---|---|---|
-| `tariff_deviation_extreme` | Biaya klaim $> 100\%$ di atas tarif referensi INA-CBG | +10.0 Poin |
+| `tariff_deviation_extreme` | Claimed amount $> 100\%$ di atas reimbursement benchmark | Evidence reimbursement, bukan clinical point |
 | `unsupported_high_risk_proc` | Prosedur berbiaya tinggi tidak sesuai dengan diagnosis primer | +8.0 Poin |
-| `tariff_deviation_high` | Biaya klaim $> 50\%$ di atas tarif referensi INA-CBG | +6.0 Poin |
+| `tariff_deviation_high` | Claimed amount $> 50\%$ di atas reimbursement benchmark | Evidence reimbursement, bukan clinical point |
 | `severity_proc_mismatch` | Severity Level $\ge 3$ tanpa ada prosedur tindakan pendukung | +5.0 Poin |
 | `upcoding_risk_diag` | Diagnosis sekunder berisiko upcoding (A41.9, Z87.39, E46) pada Severity $\ge 3$ | +4.0 Poin |
 | `severity_med_mismatch` | Severity Level $\ge 3$ dengan jumlah jenis obat $< 2$ | +3.0 Poin |
 | `los_outlier` | Length of Stay $> 2\times$ batas atas rata-rata klinis diagnosis | +2.0 Poin |
+
+### 5.2 Kontrak Scoring Deterministik
+
+- `evidence_support` menggantikan `synthesis_confidence` dan dihitung dari keluarga evidence deterministik, bukan dari level atau narasi LLM.
+- Deviasi tarif hanya masuk keluarga `reimbursement_benchmark`; deviasi tersebut tidak dihitung ulang sebagai clinical point.
+- Isolation Forest dan provider context ditampilkan sebagai `behavioral_context` dan tidak menambah evidence support pada prototype ini.
+- Similarity biasa tidak menambah skor. Hanya repeat billing, cloning, atau unbundling yang dapat menjadi `relational_pattern` evidence.
+- Setiap evidence memiliki `evidence_id`, `source_family`, `signal_type`, nilai, dan penjelasan yang dapat ditelusuri.
 
 ---
 

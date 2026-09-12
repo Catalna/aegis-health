@@ -265,13 +265,13 @@ async def get_dashboard_stats(db: AsyncSessionLocal = Depends(get_db)):
         select(func.count(ClaimRecord.claim_id)).where(ClaimRecord.status == "pending")
     )
 
-    # Potensi penghematan via SQL: SUM(GREATEST(0, actual_cost - predicted_cost_upper))
+    # Potential financial exposure via SQL: SUM(GREATEST(0, actual_cost - predicted_cost_upper))
     from sqlalchemy import literal_column
-    savings_expr = func.coalesce(func.sum(
+    exposure_expr = func.coalesce(func.sum(
         func.greatest(literal_column("0"), RiskAnalysisRecord.actual_cost - RiskAnalysisRecord.predicted_cost_upper)
     ), 0.0)
-    potential_savings = await db.scalar(
-        select(savings_expr).where(RiskAnalysisRecord.priority_tier.in_(["high", "medium"]))
+    potential_financial_exposure = await db.scalar(
+        select(exposure_expr).where(RiskAnalysisRecord.priority_tier.in_(["high", "medium"]))
     )
 
     return {
@@ -282,5 +282,7 @@ async def get_dashboard_stats(db: AsyncSessionLocal = Depends(get_db)):
         "low_risk_claims": low_risk or 0,
         "verified_claims": verified_claims or 0,
         "pending_claims": pending_claims or 0,
-        "potential_savings": round(float(potential_savings or 0)),
+        "potential_financial_exposure": round(float(potential_financial_exposure or 0)),
+        # Deprecated additive compatibility key for older dashboard clients.
+        "potential_savings": round(float(potential_financial_exposure or 0)),
     }

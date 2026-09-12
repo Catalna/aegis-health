@@ -40,7 +40,7 @@ _JARGON_MAP = {
     "isolation_forest_anomaly": "anomali pola perilaku",
     "isolation_forest": "pola anomali klaim",
     "financial_anomaly": "anomali finansial",
-    "synthesis_confidence": "keyakinan sistem",
+    "evidence_support": "kekuatan bukti deterministik",
     "SHAP": "analisis faktor biaya",
     "XGBoost": "model prediksi biaya",
     "Jaccard": "kemiripan kode medis",
@@ -142,7 +142,10 @@ def _template_explanation(
 ) -> ClaimExplanation:
     """Fallback template — kaku tapi 100% akurat."""
     # Low tier must not repeat an unverified LLM synthesis as a finding.
-    reasons = [] if risk.priority_tier == "low" else list(review.corroborating_signals)
+    reasons = [] if risk.priority_tier == "low" else [
+        item.explanation for item in risk.evidence
+        if item.source_family != "behavioral_context"
+    ][:4]
     if not reasons:
         if financial.deviation_pct > 20:
             reasons.append(f"Biaya melebihi prediksi model {financial.deviation_pct:+.1f}%")
@@ -174,7 +177,7 @@ def _template_explanation(
         "clinical_rule_flags": "Flag klinis (rule engine)",
         "similarity_fraud": "Kemiripan klaim historis",
         "isolation_forest_anomaly": "Anomali pola perilaku",
-        "synthesis_confidence": "Sintesis multi-sinyal",
+        "evidence_support": "Kekuatan bukti deterministik",
     }.get(strongest, strongest)
 
     return ClaimExplanation(
@@ -242,6 +245,7 @@ FAKTA FINAL (angka ini SUDAH FINAL — wajib dikutip PERSIS, dilarang membulatka
 - Indikasi repeat billing: {"YA" if fraud.repeat_billing_flag else "TIDAK"}
 - Indikasi cloning (faskes sama, pasien beda): {"YA" if fraud.cloning_flag else "TIDAK"}
 - Flag klinis rule engine: {", ".join(clinical.rule_flags) if clinical.rule_flags else "tidak ada"}
+- Evidence ID yang tersedia: {", ".join(item.evidence_id for item in risk.evidence) or "tidak ada"}
 
 KONTRIBUSI SKOR:
 {breakdown_lines}
@@ -261,14 +265,15 @@ SINTESIS REVIEW: {review.reasoning_narrative}
         "Disarankan verifikasi dokumen penunjang sebelum persetujuan.'\n"
         "3. DILARANG mengubah, membulatkan, atau menambah angka yang tidak ada di fakta.\n"
         "4. DILARANG memakai istilah teknis atau nama key (isolation forest, SHAP, Jaccard, XGBoost, "
-        "embedding, similarity_fraud, clinical_rule_flags, synthesis_confidence). "
+        "embedding, similarity_fraud, clinical_rule_flags, evidence_support). "
         "Ganti dengan bahasa awam: 'pola anomali', 'kemiripan riwayat klaim', 'flag kewajaran medis'.\n"
         "5. DILARANG menyimpulkan klaim ini fraud — hanya tingkat kebutuhan verifikasi.\n"
         "6. why_top_priority: 1-2 kalimat mengalir dengan angka persis (bukan fragmen).\n"
         "7. strongest_evidence: 1 kalimat utuh temuan terkuat dengan angka persis.\n"
         "8. ranked_reasons: maksimal 4 alasan berupa frasa/kalimat singkat yang mengandung angka persis.\n"
-        "9. Semua output dalam Bahasa Indonesia."
-        "\n10. Jika prioritas rendah, jelaskan sebagai 'tidak ditemukan ketidakwajaran atau sinyal risiko signifikan' "
+        "9. evidence_ids wajib berisi hanya ID evidence yang tersedia pada fakta final.\n"
+        "10. Semua output dalam Bahasa Indonesia."
+        "\n11. Jika prioritas rendah, jelaskan sebagai 'tidak ditemukan ketidakwajaran atau sinyal risiko signifikan' "
         "dan JANGAN menulis 'tidak ada yang menunjukkan perubahan'."
     )
 
@@ -279,6 +284,7 @@ SINTESIS REVIEW: {review.reasoning_narrative}
         ranked_reasons: list[str]
         why_top_priority: str
         strongest_evidence: str
+        evidence_ids: list[str] = []
 
     try:
         response = await structured_completion(
@@ -295,6 +301,14 @@ SINTESIS REVIEW: {review.reasoning_narrative}
         if violations:
             raise LLMError("Validasi angka narasi gagal: " + " | ".join(violations[:3]))
 
+        allowed_evidence = {item.evidence_id: item for item in risk.evidence}
+        requested_evidence = getattr(response, "evidence_ids", None)
+        if requested_evidence is None:
+            raise LLMError("Explanation Agent tidak mengembalikan evidence_ids.")
+        if not requested_evidence or any(item_id not in allowed_evidence for item_id in requested_evidence):
+            raise LLMError("Explanation Agent mengembalikan evidence_id yang tidak tersedia.")
+        selected_evidence = [allowed_evidence[item_id] for item_id in requested_evidence]
+
         similar_claim_text = _similar_claim_text(fraud, claim.cost_claimed)
 
         strongest = max(risk.breakdown, key=risk.breakdown.get) if risk.breakdown else "financial_anomaly"
@@ -303,18 +317,18 @@ SINTESIS REVIEW: {review.reasoning_narrative}
             "clinical_rule_flags": "Flag klinis (rule engine)",
             "similarity_fraud": "Kemiripan klaim historis",
             "isolation_forest_anomaly": "Anomali pola perilaku",
-            "synthesis_confidence": "Sintesis multi-sinyal",
+            "evidence_support": "Kekuatan bukti deterministik",
         }.get(strongest, _sanitize_jargon(strongest))
 
         return ClaimExplanation(
             claim_id=claim.claim_id,
             narrative_id=narrative,
-            ranked_reasons=[_sanitize_jargon(r) for r in response.ranked_reasons[:4] if r and r.strip()],
+            ranked_reasons=[_sanitize_jargon(item.explanation) for item in selected_evidence[:4]],
             recommended_action=TIER_TO_ACTION[risk.priority_tier],  # dari tier, bukan LLM
             qa_panel=QAPanel(
                 why_top_priority=build_priority_reason(risk),
                 most_similar_claim=similar_claim_text,
-                strongest_evidence=_sanitize_jargon(response.strongest_evidence.strip()),
+                strongest_evidence=" ".join(item.explanation for item in selected_evidence[:2]),
                 is_this_fraud=FRAUD_ANSWER,  # hardcoded, tidak pernah dari LLM
             ),
             generated_by=model,

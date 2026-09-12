@@ -12,6 +12,13 @@ from backend.app.models.database import (
 router = APIRouter(prefix="/api/claims", tags=["claims"])
 
 
+def is_current_analysis(evidence: dict) -> bool:
+    """Return whether persisted analysis was produced by the current engine."""
+    from backend.app.agents.orchestrator import ANALYSIS_VERSION
+
+    return evidence.get("analysis_version") == ANALYSIS_VERSION
+
+
 async def _index_claim_in_background(claim_data: dict) -> None:
     """Keep intake responsive while the local embedding model indexes the claim."""
     try:
@@ -151,9 +158,19 @@ async def get_claim_analysis(claim_id: str, db=Depends(get_db)):
     except json.JSONDecodeError:
         evidence = {}
 
+    from backend.app.agents.orchestrator import ANALYSIS_VERSION
+    if not is_current_analysis(evidence):
+        return {
+            "status": "stale",
+            "claim_id": claim_id,
+            "analysis_version": evidence.get("analysis_version"),
+            "current_analysis_version": ANALYSIS_VERSION,
+        }
+
     return {
         "status": "analyzed",
         "claim_id": claim_id,
+        "analysis_version": ANALYSIS_VERSION,
         "total_score": analysis.total_score,
         "priority_tier": analysis.priority_tier,
         "recommended_action": analysis.recommended_action,

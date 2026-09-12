@@ -31,6 +31,14 @@ def test_zscore_fallback_predicted_range_sane():
     assert abs(hi - 24_000_000 * 1.15) < 1  # peer AMI 24jt ±15%
 
 
+def test_financial_evidence_uses_benchmark_and_claimed_amount_terms():
+    result = _zscore_fallback(make_claim(cost_claimed=72_000_000), "mock")
+    evidence = result.evidence_text.lower()
+    assert "claimed amount" in evidence
+    assert "reimbursement benchmark" in evidence
+    assert "biaya klaim" not in evidence
+
+
 @pytest.mark.asyncio
 async def test_analyze_financial_with_model_or_fallback(normal_claim):
     """Dengan atau tanpa model, hasil selalu ada angka (tidak pernah no-score)."""

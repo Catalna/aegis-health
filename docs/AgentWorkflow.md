@@ -3,7 +3,7 @@
 > **J-ARI: JKN Agentic Risk Intelligence**  
 > Healthkathon 2026 BPJS Kesehatan  
 > Versi Dokumen: 1.0  
-> Status: Production Architecture Specification  
+> Status: Prototype Architecture Specification
 
 ---
 
@@ -85,9 +85,9 @@ Sebelum agent berbasis ML/LLM diaktifkan, klaim melewati gerbang deterministik u
 Tiga agent utama dijalankan secara paralel asynchronously untuk efisiensi waktu respon:
 
 #### 1. Clinical Agent (`clinical_agent.py`)
-- **Fungsi**: Memeriksa konsistensi medis dan kesesuaian tarif prospektif INA-CBG.
+- **Fungsi**: Memeriksa konsistensi medis dan kesesuaian terhadap reimbursement benchmark prototype.
 - **Logika Deterministik (Lapis 1)**:
-  - Mengonsultasikan diagnosis & prosedur ke *INA-CBG Simplified Grouper*.
+  - Mengonsultasikan diagnosis & prosedur ke *INA-CBG consistency heuristic*; ini bukan official INA-CBG grouper.
   - Pengecekan aturan `rule_flags`:
     - `tariff_deviation_extreme`: Biaya diklaim `> 100%` di atas tarif referensi.
     - `tariff_deviation_high`: Biaya diklaim `> 50%` di atas tarif referensi.
@@ -99,11 +99,11 @@ Tiga agent utama dijalankan secara paralel asynchronously untuk efisiensi waktu 
 - **Analisis LLM (Lapis 2 - `mistral:7b`)**: Jika data klaim tidak ditemukan pada tabel grouper statis, LLM Lapis 2 dipanggil untuk menilai plausibilitas klinis secara kontekstual.
 
 #### 2. Financial Engine (`financial_engine.py`)
-- **Fungsi**: Memprediksi biaya wajar (*fair cost baseline*) dan mendeteksi anomali finansial.
+- **Fungsi**: Mengestimasi *expected reimbursement benchmark* dan mendeteksi deviasi claimed amount.
 - **Model ML**: Regresi **XGBoost** terlatih (menggunakan fitur diagnosis, severity, LOS, tipe provider).
 - **SHAP Feature Attribution**: Menggunakan **SHAP TreeExplainer** untuk mengidentifikasi 3 fitur teratas yang menaikkan/menurunkan perkiraan biaya (`shap_top_features`).
 - **Deviasi & Anomali**:
-  - `deviation_pct` = `((cost_claimed - predicted_cost) / predicted_cost) * 100`.
+  - `deviation_pct` = `((claimed_amount - expected_benchmark) / expected_benchmark) * 100`.
   - `anomaly_score` = fungsi sigmoid terukur dari `deviation_pct`.
 - **Fallback**: Menggunakan kalkulasi **Z-Score Peer Group** berdasarkan rata-rata biaya Faskes sejenis jika model XGBoost tidak tersedia.
 
@@ -123,17 +123,18 @@ Tiga agent utama dijalankan secara paralel asynchronously untuk efisiensi waktu 
   - **Unbundling**: Prosedur terpisah pada window waktu singkat yang seharusnya berada dalam satu paket INA-CBG.
 - **Unsupervised Anomaly & Graph**:
   - **Isolation Forest**: Menilai pencilan multidimensi pada profil medis.
-  - **Graph Network Metrics**: Memodulasi skor Isolation Forest menggunakan *degree centrality* dan *clustering coefficient* provider yang terkomputasi.
+  - **Provider context**: Ditampilkan sebagai supporting context dan tidak menambah evidence support pada prototype ini.
 
 ---
 
 ### Phase 2: Review Synthesis Agent (`review_agent.py`)
 - **Fungsi**: Mengonsolidasi dan menyintesis temuan dari Phase 1 menjadi satu kesimpulan bukti.
-- **Model LLM**: `deepseek-r1:7b` (dengan *reasoning trace*) atau `mistral:7b`.
+- **Model LLM**: Model lokal yang tersedia untuk structured evidence summary.
 - **Output**:
   - `evidence_level`: `strong_multi_signal` (>= 2 sinyal independen atau fraud terkonfirmasi), `single_signal`, atau `weak`.
-  - `corroborating_signals`: Daftar string sinyal yang saling mengonfirmasi (misal: "Upcoding severity 3 diidentifikasi oleh Clinical Agent DAN Deviasi biaya +145% dikonfirmasi Financial Engine").
-  - `reasoning_narrative`: Narasi penalar terperinci mengenai korelasi antar-bukti.
+  - `evidence_ids`: ID evidence yang dipilih hanya dari evidence deterministik yang tersedia.
+  - `corroborating_signals`: Ringkasan dari evidence yang telah divalidasi, bukan string bebas.
+  - `reasoning_narrative`: Ringkasan evidence untuk verifier, bukan keputusan fraud atau chain-of-thought.
 
 ---
 
@@ -141,15 +142,15 @@ Tiga agent utama dijalankan secara paralel asynchronously untuk efisiensi waktu 
 - **Prinsip Utama**: **Non-LLM & Purely Deterministic Scoring**. LLM tidak pernah mengubah atau memanipulasi angka skor risiko secara langsung.
 - **Formula Bobot (Total Maksimal 100 Poin)**:
 
-  $$\text{Total Risk Score} = \text{Clinical} + \text{Financial} + \text{Isolation Forest} + \text{Similarity Fraud} + \text{Synthesis Confidence}$$
+  $$\text{Total Risk Score} = \text{Clinical} + \text{Financial} + \text{Similarity Fraud} + \text{Evidence Support}$$
 
 | Komponen Breakdown | Bobot Maksimal | Sumber Angka (Traceable) |
 |---|---|---|
-| `clinical_rule_flags` | 20.0 | Jumlah & bobot `rule_flags` klinis (`tariff_deviation_extreme`: +10, `unsupported_high_risk_proc`: +8, `severity_proc_mismatch`: +5, `upcoding_risk_diag`: +4, `severity_med_mismatch`: +3, `los_outlier`: +2). |
+| `clinical_rule_flags` | 20.0 | Jumlah & bobot rule konsistensi klinis. Tariff deviation berada pada reimbursement evidence dan tidak dihitung ulang di sini. |
 | `financial_anomaly` | 30.0 | $\min(30.0, \text{financial.anomaly\_score} \times 30.0)$. |
-| `isolation_forest_anomaly` | 15.0 | $\min(15.0, \text{isolation\_forest\_score} \times 15.0 \times \text{provider\_factor})$. |
+| `isolation_forest_anomaly` | 0.0 pada prototype | Supporting context saja sampai ablation study membuktikan nilai tambah. |
 | `similarity_fraud` | 20.0 | 20.0 jika `unbundling_flag` / `repeat_billing_flag` True; atau $\min(20.0, \text{similarity\_max\_score} \times 20.0)$ jika `cloning_flag` True; 0.0 untuk kemiripan wajar. |
-| `synthesis_confidence` | 15.0 | 15.0 jika terdapat `>= 2` sinyal independen atau fraud relasional; 5.0 jika 1 sinyal; 0.0 jika tidak ada. |
+| `evidence_support` | 15.0 | 15.0 untuk 3 keluarga evidence deterministic; 10.0 untuk 2; 5.0 untuk 1; 0.0 jika tidak ada. Tidak dipengaruhi LLM. |
 
 - **Tiering Prioritas**:
   - **High Priority** ($\ge 60.0$)
@@ -224,7 +225,7 @@ data: {
 |---|---|---|
 | `status` | Pesan indikator progress pipeline (`step`, `message`). | Awal pipeline & perpindahan fase. |
 | `phase1_complete` | Object JSON gabungan dari Clinical, Financial, & Fraud Agent. | Setelah `asyncio.gather` Phase 1 selesai. |
-| `phase2_complete` | Object `ReviewSynthesis` (sintesis bukti & reasoning trace). | Setelah Review Agent selesai. |
+| `phase2_complete` | Object `ReviewSynthesis` (sintesis evidence terstruktur). | Setelah Review Agent selesai. |
 | `phase3_complete` | Object `RiskScore` (total score, breakdown, priority tier). | Setelah Risk Engine selesai. |
 | `phase4_complete` | Object `ClaimExplanation` (narasi BI & QA Panel). | Setelah Explanation Agent selesai. |
 | `rejected` | Alasan penolakan deterministik (`reject_reason`). | Jika Phase 0 gagal / Hard Reject. |

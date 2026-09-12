@@ -3,7 +3,7 @@ import pytest
 
 from backend.app.models.schemas import (
     ClinicalAssessment, FinancialAssessment, FraudAssessment,
-    ReviewSynthesis, RiskScore, ClaimExplanation,
+    EvidenceItem, ReviewSynthesis, RiskScore, ClaimExplanation,
 )
 from backend.app.agents.review_agent import synthesize_review, compute_rule_signals, deterministic_source_count
 from backend.app.agents.explanation_agent import (
@@ -103,6 +103,28 @@ async def test_review_weak_case(monkeypatch):
     assert review.evidence_level in ("weak", "single_signal")
 
 
+@pytest.mark.asyncio
+async def test_review_discards_unsupported_evidence_ids(monkeypatch):
+    class FakeResp:
+        evidence_level = "strong_multi_signal"
+        evidence_ids = ["relational_pattern:phantom_billing"]
+        corroborating_signals = ["Tindakan tidak terbukti"]
+        reasoning_narrative = "Klaim memiliki phantom billing."
+
+    async def fake_llm(*a, **k):
+        return FakeResp()
+
+    import backend.app.agents.review_agent as ra
+    monkeypatch.setattr(ra, "structured_completion", fake_llm)
+    monkeypatch.setattr(ra, "get_available_model", lambda *a: _async("mistral:7b"))
+
+    review = await synthesize_review(make_claim(), _clinical(), _financial(), _fraud())
+
+    assert review.evidence_ids == []
+    assert review.corroborating_signals == []
+    assert review.evidence_level == "weak"
+
+
 # ---------------------------------------------------------------------------
 # Explanation: validasi angka anti-halusinasi
 # ---------------------------------------------------------------------------
@@ -158,6 +180,44 @@ def test_template_explanation_always_accurate():
 
 
 @pytest.mark.asyncio
+async def test_explanation_rejects_unsupported_evidence_id(monkeypatch):
+    import backend.app.agents.explanation_agent as ea
+
+    class FakeResp:
+        narrative_id = "Klaim X mendapat skor 77 dari 100 dengan deviasi biaya 129.6%."
+        ranked_reasons = ["Tindakan tidak terbukti"]
+        why_top_priority = "Tindakan tidak terbukti"
+        strongest_evidence = "Tindakan tidak terbukti"
+        evidence_ids = ["relational_pattern:phantom_billing"]
+
+    async def fake_llm(*a, **k):
+        return FakeResp()
+
+    monkeypatch.setattr(ea, "structured_completion", fake_llm)
+    monkeypatch.setattr(ea, "get_available_model", lambda *a: _async("qwen2.5:7b"))
+
+    risk = RiskScore(
+        total_score=77.4,
+        breakdown={"financial_anomaly": 30.0},
+        priority_tier="high",
+        evidence=[EvidenceItem(
+            evidence_id="reimbursement_benchmark:benchmark_deviation",
+            source_family="reimbursement_benchmark",
+            signal_type="benchmark_deviation",
+            value=129.6,
+            explanation="Deviasi benchmark.",
+        )],
+    )
+    explanation = await generate_explanation(
+        make_claim(), _clinical(), _financial(anomaly=1.0, dev=129.6),
+        _fraud(), _review("strong_multi_signal"), risk,
+    )
+
+    assert explanation.generated_by == "template_fallback"
+    assert "tindakan tidak terbukti" not in explanation.narrative_id.lower()
+
+
+@pytest.mark.asyncio
 async def test_generate_explanation_action_from_tier_not_llm(monkeypatch):
     """recommended_action WAJIB mengikuti tier, meski LLM mengusulkan lain."""
     import backend.app.agents.explanation_agent as ea
@@ -167,6 +227,7 @@ async def test_generate_explanation_action_from_tier_not_llm(monkeypatch):
         ranked_reasons = ["deviasi 130%"]
         why_top_priority = "deviasi 130%"
         strongest_evidence = "deviasi 130%"
+        evidence_ids = ["reimbursement_benchmark:benchmark_deviation"]
 
     async def fake_llm(*a, **k):
         return FakeResp()
@@ -174,7 +235,18 @@ async def test_generate_explanation_action_from_tier_not_llm(monkeypatch):
     monkeypatch.setattr(ea, "structured_completion", fake_llm)
     monkeypatch.setattr(ea, "get_available_model", lambda *a: _async("qwen2.5:7b"))
 
-    risk = RiskScore(total_score=77.4, breakdown={"financial_anomaly": 30.0}, priority_tier="high")
+    risk = RiskScore(
+        total_score=77.4,
+        breakdown={"financial_anomaly": 30.0},
+        priority_tier="high",
+        evidence=[EvidenceItem(
+            evidence_id="reimbursement_benchmark:benchmark_deviation",
+            source_family="reimbursement_benchmark",
+            signal_type="benchmark_deviation",
+            value=129.6,
+            explanation="Deviasi benchmark.",
+        )],
+    )
     explanation = await generate_explanation(
         make_claim(), _clinical(), _financial(anomaly=1.0, dev=129.6), _fraud(sim=0.0), _review("strong_multi_signal"), risk,
     )

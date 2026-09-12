@@ -101,18 +101,18 @@ export default function Monitoring() {
         ))}
       </div>
 
-      {/* Potensi Penghematan */}
-      <div className="card mb-3" style={{ borderLeft: '4px solid var(--success)' }}>
-        <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <TrendingDown size={16} color="var(--success)" /> Estimasi Potensi Penghematan Dana JKN
+       {/* Potential financial exposure */}
+       <div className="card mb-3" style={{ borderLeft: '4px solid var(--success)' }}>
+         <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+           <TrendingDown size={16} color="var(--success)" /> Potential Financial Exposure
         </div>
         <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--success)' }}>
-          Rp {(stats?.potential_savings || 0).toLocaleString('id-ID')}
+           Rp {(stats?.potential_financial_exposure || 0).toLocaleString('id-ID')}
         </div>
         <p className="text-xs text-muted mt-1">
-           Dihitung dari selisih biaya klaim dengan batas atas perkiraan biaya
-           (hanya klaim prioritas tinggi/sedang). Angka ini adalah perkiraan awal, bukan
-           nilai akhir hasil verifikasi.
+            Dihitung dari selisih claimed amount dengan batas atas benchmark
+            (hanya klaim prioritas tinggi/sedang). Angka ini adalah exposure awal,
+            bukan nilai akhir hasil verifikasi.
         </p>
       </div>
 

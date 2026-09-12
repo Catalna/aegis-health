@@ -1,25 +1,29 @@
 """
 Risk Score Engine — fungsi scoring deterministik (AGENTS.md Section 6).
-TIDAK ADA input LLM yang mengubah skor. Bobot terdokumentasi (MODELS.md Section 4):
+ TIDAK ADA input LLM yang mengubah skor. Bobot terdokumentasi (MODELS.md Section 5):
 
 | Komponen                | Bobot maks | Sumber angka (wajib traceable)                    |
 |-------------------------|-----------|---------------------------------------------------|
 | clinical_rule_flags     | 20        | Rule engine clinical_agent (rule_flags)            |
 | financial_anomaly       | 30        | XGBoost deviation → anomaly_score (atau z-score)   |
-| isolation_forest        | 15        | Isolation Forest normalized score                  |
+| behavioral_context      | 0         | Isolation Forest/provider context, supporting only |
 | similarity_fraud        | 20        | Relasi repeat, cloning, atau pemecahan klaim       |
-| provider_network        | (dalam IF)| graph metrics precomputed → memodulasi skor IF     |
-| synthesis_confidence    | 15        | Jumlah sumber sinyal deterministik, bukan output LLM |
+| evidence_support        | 15        | Keluarga evidence deterministik, bukan output LLM |
 
-Rincian clinical (total 20):
-  - tariff_deviation_high  (>50%)  : +6
-  - tariff_deviation_extreme(>100%): +10 (menggantikan +6)
+Rincian clinical (maksimal 20; tariff deviation berada di reimbursement evidence):
   - severity_proc_mismatch         : +5
   - severity_med_mismatch          : +3
   - los_outlier                    : +2
   - upcoding_risk_diag             : +4
 """
-from backend.app.models.schemas import ClinicalAssessment, FinancialAssessment, FraudAssessment, ReviewSynthesis, RiskScore
+from backend.app.models.schemas import (
+    ClinicalAssessment,
+    EvidenceItem,
+    FinancialAssessment,
+    FraudAssessment,
+    ReviewSynthesis,
+    RiskScore,
+)
 
 CLINICAL_FLAG_WEIGHTS = {
     "tariff_deviation_high": 6.0,
@@ -34,16 +38,67 @@ CLINICAL_FLAG_WEIGHTS = {
 
 def _deterministic_signal_sources(clinical, financial, fraud) -> int:
     """Count independent evidence sources without consulting the review LLM."""
-    clinical_signal = bool(clinical.rule_flags)
+    clinical_signal = any(
+        flag not in {"tariff_deviation_high", "tariff_deviation_extreme"}
+        for flag in clinical.rule_flags
+    )
     financial_signal = financial.anomaly_score > 0.4 or financial.deviation_pct > 30
     fraud_signal = any((
         fraud.repeat_billing_flag,
         fraud.cloning_flag,
         fraud.unbundling_flag,
-        fraud.is_isolation_forest_outlier,
-        fraud.graph_cluster_anomaly_score > 0.5,
     ))
     return sum((clinical_signal, financial_signal, fraud_signal))
+
+
+def _evidence_items(clinical, financial, fraud) -> list[EvidenceItem]:
+    items: list[EvidenceItem] = []
+    for flag in clinical.rule_flags:
+        family = (
+            "reimbursement_benchmark"
+            if flag in {"tariff_deviation_high", "tariff_deviation_extreme"}
+            else "clinical_rule"
+        )
+        items.append(EvidenceItem(
+            evidence_id=f"{family}:{flag}",
+            source_family=family,
+            signal_type=flag,
+            value=clinical.tariff_deviation_pct if flag.startswith("tariff_") else True,
+            explanation=f"Sinyal deterministik: {flag}.",
+        ))
+
+    if financial.anomaly_score > 0.4 or financial.deviation_pct > 30:
+        items.append(EvidenceItem(
+            evidence_id="reimbursement_benchmark:benchmark_deviation",
+            source_family="reimbursement_benchmark",
+            signal_type="benchmark_deviation",
+            value=financial.deviation_pct,
+            explanation=financial.evidence_text or "Deviasi terhadap reimbursement benchmark.",
+        ))
+
+    for signal_type, active in (
+        ("repeat_billing", fraud.repeat_billing_flag),
+        ("cloning", fraud.cloning_flag),
+        ("unbundling", fraud.unbundling_flag),
+    ):
+        if active:
+            items.append(EvidenceItem(
+                evidence_id=f"relational_pattern:{signal_type}",
+                source_family="relational_pattern",
+                signal_type=signal_type,
+                value=True,
+                explanation=f"Relasi klaim konkret terdeteksi: {signal_type}.",
+            ))
+
+    if fraud.is_isolation_forest_outlier or fraud.graph_cluster_anomaly_score > 0.5:
+        items.append(EvidenceItem(
+            evidence_id="behavioral_context:behavioral_context",
+            source_family="behavioral_context",
+            signal_type="behavioral_context",
+            value=max(fraud.isolation_forest_score, fraud.graph_cluster_anomaly_score),
+            explanation="Konteks perilaku ditampilkan sebagai supporting context, bukan bukti independen.",
+        ))
+    return items
 
 
 def calculate_risk_score(
@@ -55,14 +110,10 @@ def calculate_risk_score(
     score = 0.0
     breakdown: dict[str, float] = {}
 
-    # 1. Clinical — HANYA dari rule flags (bukan plausibility LLM)
+    # 1. Clinical consistency — tariff deviation belongs to reimbursement.
     clin_score = 0.0
-    if "tariff_deviation_extreme" in clinical.rule_flags:
-        clin_score += CLINICAL_FLAG_WEIGHTS["tariff_deviation_extreme"]
-    elif "tariff_deviation_high" in clinical.rule_flags:
-        clin_score += CLINICAL_FLAG_WEIGHTS["tariff_deviation_high"]
     for flag, weight in CLINICAL_FLAG_WEIGHTS.items():
-        if flag in ("tariff_deviation_high", "tariff_deviation_extreme"):
+        if flag in {"tariff_deviation_high", "tariff_deviation_extreme"}:
             continue
         if flag in clinical.rule_flags:
             clin_score += weight
@@ -75,11 +126,8 @@ def calculate_risk_score(
     score += fin_score
     breakdown["financial_anomaly"] = round(fin_score, 1)
 
-    # 3. Isolation Forest (max 15) — dimodulasi skor jaringan provider
-    provider_factor = 0.7 + (0.3 * min(1.0, fraud.graph_cluster_anomaly_score))
-    if_score = min(15.0, fraud.isolation_forest_score * 15.0 * provider_factor)
-    score += if_score
-    breakdown["isolation_forest_anomaly"] = round(if_score, 1)
+    # 3. Behavioral context is visible evidence, not an independent score yet.
+    breakdown["isolation_forest_anomaly"] = 0.0
 
     # 4. Similarity / repeat billing / cloning (max 20)
     # Prinsip: kemiripan pola penyakit yang wajar (antar-faskes berbeda) BUKAN sinyal fraud —
@@ -95,13 +143,11 @@ def calculate_risk_score(
     score += sim_score
     breakdown["similarity_fraud"] = round(sim_score, 1)
 
-    # 5. Evidence support (max 15). The review LLM can explain the result but
-    # cannot change the numeric score.
+    # 5. Evidence support (max 15), derived from deterministic families only.
     source_count = _deterministic_signal_sources(clinical, financial, fraud)
-    strong_single_signal = fraud.repeat_billing_flag or fraud.cloning_flag or fraud.unbundling_flag
-    review_score = 15.0 if source_count >= 2 or strong_single_signal else 5.0 if source_count == 1 else 0.0
-    score += review_score
-    breakdown["synthesis_confidence"] = round(review_score, 1)
+    evidence_support = 15.0 if source_count >= 3 else 10.0 if source_count == 2 else 5.0 if source_count == 1 else 0.0
+    score += evidence_support
+    breakdown["evidence_support"] = round(evidence_support, 1)
 
     total = min(100.0, score)
 
@@ -111,4 +157,9 @@ def calculate_risk_score(
     elif total >= 25:
         tier = "medium"
 
-    return RiskScore(total_score=round(total, 1), breakdown=breakdown, priority_tier=tier)
+    return RiskScore(
+        total_score=round(total, 1),
+        breakdown=breakdown,
+        priority_tier=tier,
+        evidence=_evidence_items(clinical, financial, fraud),
+    )

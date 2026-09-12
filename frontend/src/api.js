@@ -63,9 +63,9 @@ export const ACTION_LABELS = {
 // Versi engine analisis — HARUS sinkron dengan ANALYSIS_VERSION di
 // backend/app/agents/orchestrator.py. Hasil tersimpan dengan versi berbeda
 // dianggap stale (skor dihitung logika lama) dan memicu analisis ulang.
-// v5: scoring deterministik tanpa pengaruh level LLM, model biaya tanpa target
-// leakage, serta sinyal prosedur tidak sesuai dan pemecahan klaim.
-export const ANALYSIS_VERSION = 5
+// v6: deterministic evidence contract, no tariff double-counting, behavioral
+// context without score contribution, and grounded explanation IDs.
+export const ANALYSIS_VERSION = 6
 
 export const formatRecommendedAction = (action) => ACTION_LABELS[action] || action || '-'
 

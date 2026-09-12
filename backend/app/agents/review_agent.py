@@ -65,6 +65,40 @@ def deterministic_source_count(
     return sum((clinical_signal, financial_signal, fraud_signal))
 
 
+def compute_evidence_ids(
+    clinical: ClinicalAssessment,
+    financial: FinancialAssessment,
+    fraud: FraudAssessment,
+) -> list[str]:
+    ids: list[str] = []
+    for flag in clinical.rule_flags:
+        family = "reimbursement_benchmark" if flag.startswith("tariff_deviation_") else "clinical_rule"
+        ids.append(f"{family}:{flag}")
+    if financial.anomaly_score > 0.4 or financial.deviation_pct > 30:
+        ids.append("reimbursement_benchmark:benchmark_deviation")
+    for signal_type, active in (
+        ("repeat_billing", fraud.repeat_billing_flag),
+        ("cloning", fraud.cloning_flag),
+        ("unbundling", fraud.unbundling_flag),
+    ):
+        if active:
+            ids.append(f"relational_pattern:{signal_type}")
+    if fraud.is_isolation_forest_outlier or fraud.graph_cluster_anomaly_score > 0.5:
+        ids.append("behavioral_context:behavioral_context")
+    return ids
+
+
+def evidence_descriptions(
+    clinical: ClinicalAssessment,
+    financial: FinancialAssessment,
+    fraud: FraudAssessment,
+) -> dict[str, str]:
+    return {
+        evidence_id: f"Evidence deterministik: {evidence_id}."
+        for evidence_id in compute_evidence_ids(clinical, financial, fraud)
+    }
+
+
 async def synthesize_review(
     claim: ClaimInput,
     clinical: ClinicalAssessment,
@@ -107,10 +141,12 @@ Skor Jaringan Faskes: {fraud.graph_cluster_anomaly_score:.2f}
 Evidence: {fraud.evidence_text}
 
     SINYAL RULE TERDETEKSI ({len(rule_signals)} dari {deterministic_source_count(clinical, financial, fraud)} sumber): {"; ".join(rule_signals) if rule_signals else "tidak ada"}
+    ID EVIDENCE YANG DIIZINKAN: {", ".join(compute_evidence_ids(clinical, financial, fraud)) or "tidak ada"}
 
 Tentukan evidence_level keseluruhan. Nilai harus PERSIS salah satu dari:
 "strong_multi_signal" (≥2 sinyal saling menguatkan), "single_signal" (1 sinyal kuat), "weak" (tidak ada sinyal kuat).
-corroborating_signals: daftar sinyal yang saling menguatkan (kosongkan jika weak).
+    evidence_ids: daftar ID evidence yang dipilih dari ID yang diizinkan.
+    corroborating_signals: ringkasan hanya untuk evidence_ids yang dipilih.
 reasoning_narrative: 1-3 kalimat Bahasa Indonesia yang menjelaskan KENAPA level itu dipilih,
 hanya merujuk fakta di atas — dilarang menambah fakta baru.
 """
@@ -124,6 +160,7 @@ hanya merujuk fakta di atas — dilarang menambah fakta baru.
 
     class LLMSynthesisResponse(BaseModel):
         evidence_level: str
+        evidence_ids: list[str] = []
         corroborating_signals: list[str]
         reasoning_narrative: str
 
@@ -146,13 +183,27 @@ hanya merujuk fakta di atas — dilarang menambah fakta baru.
         if level == "strong_multi_signal" and source_count < 2:
             level = "single_signal" if source_count == 1 else "weak"
 
+        allowed_ids = compute_evidence_ids(clinical, financial, fraud)
+        requested_ids = getattr(response, "evidence_ids", None)
+        selected_ids = allowed_ids if requested_ids is None else [
+            evidence_id for evidence_id in requested_ids if evidence_id in allowed_ids
+        ]
+        indexed_signals = evidence_descriptions(clinical, financial, fraud)
+        selected_signals = [indexed_signals[evidence_id] for evidence_id in selected_ids]
+        source_count = deterministic_source_count(clinical, financial, fraud)
+        level = level if selected_ids else ("single_signal" if source_count == 1 else "weak")
+
         return ReviewSynthesis(
             claim_id=claim.claim_id,
             evidence_level=level,
-            corroborating_signals=response.corroborating_signals or rule_signals[:3],
-            reasoning_narrative=response.reasoning_narrative.strip(),
+            corroborating_signals=selected_signals[:3],
+            reasoning_narrative=(
+                response.reasoning_narrative.strip() if selected_ids
+                else "Tidak ada evidence deterministik yang mendukung sintesis tambahan."
+            ),
             reasoning_source=reasoning_source,
             model_used=model,
+            evidence_ids=selected_ids,
         )
 
     except Exception as e:
@@ -169,4 +220,5 @@ hanya merujuk fakta di atas — dilarang menambah fakta baru.
             ),
             reasoning_source="rule_fallback",
             model_used=None,
+            evidence_ids=compute_evidence_ids(clinical, financial, fraud),
         )

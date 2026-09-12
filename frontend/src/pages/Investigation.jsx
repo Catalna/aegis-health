@@ -153,8 +153,8 @@ export default function Investigation() {
             const ifScore = ((data.fraud.isolation_forest_score || 0) * 100).toFixed(0)
             addLog('phase1_complete',
               `Selesai — Flag klinis: ${data.clinical.rule_flags?.length || 0}, ` +
-              `Perbedaan biaya: ${devPct ?? 'belum tersedia'}%, ` +
-              `Pola yang perlu diperiksa: ${ifScore}%`
+               `Deviasi terhadap benchmark: ${devPct ?? 'belum tersedia'}%, ` +
+               `Konteks perilaku pendukung: ${ifScore}%`
               + (data.partial ? ' (sebagian pemeriksaan memakai data cadangan)' : '')
             )
           },
@@ -333,7 +333,7 @@ export default function Investigation() {
                <div className="text-xs mb-1" style={{ color: 'var(--warning)' }}>⚠ Menggunakan perbandingan biaya cadangan</div>
               )}
               <div className="flex items-center justify-between mb-1">
-                 <span>Perbedaan Biaya dari Perkiraan</span>
+                  <span>Perbedaan Claimed Amount dari Benchmark</span>
                 <span style={{ fontWeight: 700, color: Math.abs(financial.deviation_pct) > 30 ? 'var(--risk-high)' : 'var(--success)' }}>
                   {financial.deviation_pct > 0 ? '+' : ''}{financial.deviation_pct?.toFixed(1)}%
                 </span>

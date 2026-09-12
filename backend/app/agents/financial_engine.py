@@ -93,7 +93,7 @@ def _zscore_fallback(claim: ClaimInput, reason: str) -> FinancialAssessment:
         anomaly_score=anomaly_score,
         evidence_text=(
             f"[Fallback z-score peer — model ML tidak tersedia: {reason}] "
-            f"Biaya klaim Rp {claim.cost_claimed:,.0f} dibanding rata-rata peer "
+            f"Claimed amount Rp {claim.cost_claimed:,.0f} dibanding reimbursement benchmark "
             f"diagnosis {base}: Rp {peer_mean:,.0f} (deviasi "
             f"{'+' if deviation_pct >= 0 else ''}{deviation_pct:.1f}%, z-score {z:.2f})."
         ),
@@ -124,7 +124,7 @@ async def analyze_financial(claim: ClaimInput) -> FinancialAssessment:
     actual_cost = claim.cost_claimed
     deviation_pct = ((actual_cost - predicted_cost) / predicted_cost) * 100 if predicted_cost > 0 else 0.0
 
-    # >50% deviasi dari prediksi = makin anomali, capped di 1.0
+    # >50% deviasi dari reimbursement benchmark = makin anomali, capped di 1.0
     anomaly_score = float(min(abs(deviation_pct) / 50.0, 1.0))
 
     # Top SHAP features dengan label terjemahan
@@ -148,9 +148,9 @@ async def analyze_financial(claim: ClaimInput) -> FinancialAssessment:
         top_features[0].feature_label if top_features else "N/A"
     )
     evidence_text = (
-        f"Biaya klaim Rp {actual_cost:,.0f} berbanding prediksi model Rp {predicted_cost:,.0f} "
+        f"Claimed amount Rp {actual_cost:,.0f} berbanding reimbursement benchmark model Rp {predicted_cost:,.0f} "
         f"(deviasi {'+' if deviation_pct >= 0 else ''}{deviation_pct:.1f}%). "
-        f"Faktor utama perbedaan biaya: {top_driver}."
+        f"Faktor utama deviasi terhadap benchmark: {top_driver}."
     )
 
     return FinancialAssessment(

@@ -78,7 +78,7 @@ Upcoding dalam konteks JKN bukan sekadar "manipulasi angka" — melainkan memani
 | Procedure upcoding | Mengklaim prosedur yang lebih kompleks dari yang dilakukan | Grouper masuk ke CBG group lebih mahal |
 | Unbundling | Memecah satu paket tindakan jadi beberapa klaim terpisah | Pembayaran lebih dari tarif CBG yang seharusnya |
 
-**Implikasi untuk desain J-ARI:** Clinical Agent harus secara eksplisit memodelkan logika grouper — verifikasi "apakah severity level konsisten dengan prosedur dan diagnosis yang diklaim" — bukan sekadar memeriksa konsistensi klinis generik.
+**Implikasi untuk desain J-ARI:** Clinical Agent menggunakan consistency heuristic prototype — bukan official INA-CBG grouper — untuk memeriksa apakah severity level konsisten dengan prosedur dan diagnosis yang diklaim.
 
 ---
 
@@ -91,7 +91,7 @@ Upcoding dalam konteks JKN bukan sekadar "manipulasi angka" — melainkan memani
 **Sinyal yang dicari J-ARI:**
 - Severity >= 3 tanpa prosedur pendukung yang sesuai.
 - Diagnosis sekunder "berisiko upcoding" (A41.9 sepsis, Z87.39 riwayat infeksi, E46 malnutrisi) pada severity tinggi.
-- Biaya yang diklaim jauh di atas tarif referensi CBG simplified grouper.
+- Claimed amount jauh di atas reimbursement benchmark prototype.
 - Obat yang diklaim tidak konsisten dengan tingkat keparahan yang dilaporkan.
 
 ### 3.2 Phantom Billing
@@ -176,13 +176,13 @@ Verifier tidak bisa menindaklanjuti skor tanpa konteks. Evidence yang bisa langs
 - Evidence text menjelaskan mengapa masing-masing agent menandai risiko.
 - Similar claims memberikan preseden konkret untuk investigasi.
 
-### 5.4 Estimasi Potensi Penghematan
+### 5.4 Potential Financial Exposure
 
-J-ARI menghitung potensi penghematan dana klaim abnormal melalui formula:
-$$\text{Potential Savings} = \sum \max(0, \text{cost\_claimed} - \text{predicted\_cost\_upper})$$
+J-ARI menghitung potential financial exposure dari klaim abnormal melalui formula:
+$$\text{Potential Financial Exposure} = \sum \max(0, \text{claimed\_amount} - \text{expected\_benchmark\_upper})$$
 untuk seluruh klaim pada tier *High* dan *Medium*.
 
-Ini bukan angka definitif (tidak semua klaim anomali terbukti fraud), tetapi memberi gambaran order-of-magnitude dari nilai finansial yang dipertaruhkan dalam klaim berisiko yang terdeteksi.
+Ini bukan confirmed savings dan bukan angka definitif (tidak semua klaim anomali terbukti fraud), tetapi memberi gambaran order-of-magnitude dari nilai finansial yang perlu diverifikasi.
 
 ---
 

@@ -3,7 +3,7 @@
 > **J-ARI: JKN Agentic Risk Intelligence**  
 > Healthkathon 2026 BPJS Kesehatan  
 > Versi Dokumen: 1.0  
-> Status: Production Specification  
+> Status: Prototype Specification
 
 ---
 
@@ -54,11 +54,11 @@ Memberikan **prioritisasi presisi berbasis bukti (Evidence-Based Priority Queue)
 
 ### FR-2: Multi-Agent Parallel Screening (Phase 1)
 - **FR-2.1 Clinical Agent**:
-  - Pengecekan berbasis **INA-CBG Simplified Grouper**.
+   - Pengecekan berbasis **INA-CBG consistency heuristic prototype**, bukan official INA-CBG grouper.
   - Pengecekan aturan deterministik: `tariff_deviation_high` (>50%), `tariff_deviation_extreme` (>100%), `severity_proc_mismatch`, `severity_med_mismatch`, `los_outlier`, `upcoding_risk_diag`, dan `unsupported_high_risk_proc`.
   - Dukungan LLM Lapis 2 (`mistral:7b`) untuk analisis plausible klinis jika data tidak tercakup penuh pada tabel grouper.
 - **FR-2.2 Financial Engine**:
-  - Model **XGBoost Regressor** untuk memprediksi kisaran biaya wajar klaim (*fair baseline cost*).
+   - Model **XGBoost Regressor** untuk memprediksi *expected reimbursement benchmark*, bukan biaya medis yang benar.
   - Menghitung persentase deviasi biaya (`deviation_pct`) dan `anomaly_score` (0.0 - 1.0).
   - Ekstraksi kontribusi fitur menggunakan **SHAP TreeExplainer** (*positive/negative impact*).
   - Fallback otomatis ke **Z-Score Peer Group** jika model XGBoost gagal/belum dilatih.
@@ -66,23 +66,23 @@ Memberikan **prioritisasi presisi berbasis bukti (Evidence-Based Priority Queue)
   - Pencarian kemiripan klaim via **LanceDB Vector Store** menggunakan embedding `sentence-transformers` (`all-MiniLM-L6-v2`).
   - Menghitung **Komposit Multi-Faktor Similarity Score**: 40% kode medis (Jaccard) + 30% kedekatan biaya + 15% provider sama + 10% jarak tanggal + 5% pasien sama.
   - Deteksi **Repeat Billing**, **Cloning** (kemiripan tinggi + pasien BERBEDA + faskes SAMA), dan **Unbundling**.
-  - Deteksi anomali **Isolation Forest** yang dimodulasi oleh **Precomputed Graph Network Metrics** (centrality & clustering coefficient provider).
+   - Isolation Forest dan provider context ditampilkan sebagai supporting context sampai ablation study membuktikan nilai tambah.
 
 ### FR-3: Multi-Signal Synthesis & Review (Phase 2)
 - **FR-3.1 Review Agent**:
   - Menyintesis sinyal dari Clinical Agent, Financial Engine, dan Fraud Agent.
   - Mengklasifikasikan `evidence_level` (`strong_multi_signal`, `single_signal`, `weak`).
   - Menyusun daftar `corroborating_signals` yang saling memperkuat.
-  - Menghasilkan narasi penalaran (*reasoning trace*) menggunakan LLM (`deepseek-r1:7b` / `mistral:7b`).
+   - Menghasilkan ringkasan evidence terstruktur. LLM tidak boleh membuat evidence baru atau mengubah score/tier.
 
 ### FR-4: Deterministic Risk Scoring Engine (Phase 3)
 - **FR-4.1 Non-LLM Scoring**: Skor risiko (0 - 100) murni dihitung secara deterministik oleh `risk_engine.py` tanpa manipulasi angka dari LLM.
 - **FR-4.2 Scoring Breakdown**:
   - `clinical_rule_flags`: Bobot maks 20 poin.
   - `financial_anomaly`: Bobot maks 30 poin.
-  - `isolation_forest_anomaly`: Bobot maks 15 poin.
+   - `isolation_forest_anomaly`: 0 poin pada prototype; supporting context.
   - `similarity_fraud`: Bobot maks 20 poin.
-  - `synthesis_confidence`: Bobot maks 15 poin.
+   - `evidence_support`: Bobot maks 15 poin dari keluarga evidence deterministik.
 - **FR-4.3 Priority Tiering**:
   - **High Priority** (Merah): Skor `>= 60.0`.
   - **Medium Priority** (Kuning): Skor `25.0 - 59.9`.
@@ -103,7 +103,7 @@ Memberikan **prioritisasi presisi berbasis bukti (Evidence-Based Priority Queue)
 - **FR-7.2 Audit Trail**: Setiap eksekusi agent, perubahan status, dan keputusan manusia dicatat pada tabel `agent_runs`, `risk_analyses`, `human_decisions`, dan `audit_logs`.
 
 ### FR-8: Dashboard Analytics & ML Evaluation
-- **FR-8.1 Dashboard Metrics**: Menampilkan agregat klaim, distribusi tier risiko, jumlah klaim pending, dan estimasi potensi penghematan dana (`potential_savings`).
+- **FR-8.1 Dashboard Metrics**: Menampilkan agregat klaim, distribusi tier risiko, jumlah klaim pending, dan estimasi potential financial exposure.
 - **FR-8.2 Model Evaluation Page**: Menampilkan metrik evaluasi nyata (*held-out test set*) untuk model XGBoost dan Isolation Forest (Precision, Recall, F1-Score, PR-AUC, MAE, RMSE).
 
 ---
@@ -134,9 +134,9 @@ Memberikan **prioritisasi presisi berbasis bukti (Evidence-Based Priority Queue)
 
 1. **Verification Efficiency**: Mengurangi waktu peninjauan awal klaim berisiko tinggi hingga 60%.
 2. **Precision of High-Risk Tier**: Target PR-AUC `> 0.85` pada deteksi upcoding & anomaly klaim.
-3. **Potential Cost Savings**: Mengkalkulasi potensi penyelamatan dana klaim abnormal melalui formula:
-   $$\text{Savings} = \sum \max(0, \text{cost\_claimed} - \text{predicted\_cost\_upper})$$
-   untuk seluruh klaim pada tier *High* dan *Medium*.
+3. **Potential Financial Exposure**: Mengestimasi exposure awal melalui formula:
+   $$\text{Exposure} = \sum \max(0, \text{claimed\_amount} - \text{expected\_benchmark\_upper})$$
+   untuk klaim tier *High* dan *Medium*. Nilai ini bukan confirmed savings dan harus dikonfirmasi melalui keputusan manusia.
 
 ---
 

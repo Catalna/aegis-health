@@ -153,9 +153,9 @@ export default function Dashboard() {
             <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{(stats?.processed_claims || 0).toLocaleString('id-ID')}</div>
           </div>
           <div>
-            <div className="text-xs text-muted">Perkiraan dana yang dapat ditinjau</div>
+             <div className="text-xs text-muted">Potential Financial Exposure</div>
             <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--success)' }}>
-              Rp {(stats?.potential_savings || 0).toLocaleString('id-ID')}
+               Rp {(stats?.potential_financial_exposure || 0).toLocaleString('id-ID')}
             </div>
           </div>
           <div>

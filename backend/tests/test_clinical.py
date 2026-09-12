@@ -218,7 +218,7 @@ def test_risk_score_high_tier():
         _financial(anomaly=1.0, dev=120), fraud, _review("strong_multi_signal"),
     )
     assert risk.priority_tier == "high"
-    assert risk.total_score >= 75
+    assert risk.total_score >= 60
 
 
 def test_breakdown_sums_to_total():

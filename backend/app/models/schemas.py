@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional, Literal, Tuple, Dict
+from typing import Any, List, Optional, Literal, Tuple, Dict
 from datetime import date
 
 class MedicationLine(BaseModel):
@@ -128,11 +128,22 @@ class ReviewSynthesis(BaseModel):
     reasoning_narrative: str
     reasoning_source: Literal["llm_direct", "llm_reasoning_trace", "rule_fallback"]
     model_used: Optional[str] = None
+    evidence_ids: List[str] = Field(default_factory=list)
+
+class EvidenceItem(BaseModel):
+    evidence_id: str
+    source_family: Literal[
+        "clinical_rule", "reimbursement_benchmark", "relational_pattern", "behavioral_context"
+    ]
+    signal_type: str
+    value: Any = None
+    explanation: str
 
 class RiskScore(BaseModel):
     total_score: float # 0-100
     breakdown: Dict[str, float]
     priority_tier: Literal["high", "medium", "low"]
+    evidence: List[EvidenceItem] = Field(default_factory=list)
 
 class QAPanel(BaseModel):
     why_top_priority: str

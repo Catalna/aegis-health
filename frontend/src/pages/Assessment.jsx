@@ -9,7 +9,7 @@ const COMPONENT_LABELS = {
   similarity_fraud: 'Kemiripan Riwayat Klaim',
   clinical_rule_flags: 'Temuan Medis',
   isolation_forest_anomaly: 'Pola Klaim yang Menyimpang',
-  synthesis_confidence: 'Kekuatan Bukti',
+  evidence_support: 'Kekuatan Evidence Deterministik',
   financial_anomaly: 'Perbedaan Biaya',
 }
 
@@ -182,6 +182,8 @@ export default function Assessment() {
   const shapFeatures = financial?.shap_top_features || []
 
   const similarClaims = fraud?.similar_claims || []
+  const deterministicEvidence = (risk?.evidence || [])
+    .filter(item => item.source_family !== 'behavioral_context')
 
   const DECISION_OPTIONS = [
     { value: 'Verified Valid', label: 'Klaim Valid — Setujui' },
@@ -305,6 +307,25 @@ export default function Assessment() {
 
       <div className="grid-2" style={{ gap: '1.5rem' }}>
         <div className="flex-col" style={{ gap: '1.5rem', display: 'flex' }}>
+          <div className="card">
+            <div className="card-title">Evidence Deterministik</div>
+            <p className="text-xs text-muted mb-2">
+              Temuan berikut berasal dari aturan dan pemeriksaan terukur. Ringkasan AI tidak mengubah skor.
+            </p>
+            {deterministicEvidence.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {deterministicEvidence.map(item => (
+                  <div key={item.evidence_id} style={{ padding: '0.65rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--accent-green)' }}>
+                    <div className="text-xs" style={{ fontWeight: 700 }}>{plainText(item.signal_type)}</div>
+                    <div className="text-sm" style={{ marginTop: 3 }}>{plainText(item.explanation)}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-muted">Belum ada evidence deterministik yang mendukung prioritas.</div>
+            )}
+          </div>
+
           {/* Narasi Sistem */}
           <div className="card">
             <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -359,7 +380,7 @@ export default function Assessment() {
                     <tr>
                       <th>ID Klaim</th>
                       <th>Diagnosis</th>
-                      <th>Biaya</th>
+                       <th>Claimed Amount</th>
                       <th>Kemiripan</th>
                     </tr>
                   </thead>
@@ -461,12 +482,12 @@ export default function Assessment() {
             </div>
           </div>
 
-           {/* Faktor yang memengaruhi perkiraan biaya */}
+           {/* Faktor yang memengaruhi reimbursement benchmark */}
           {shapFeatures.length > 0 && (
             <div className="card">
-              <div className="card-title">Faktor yang Memengaruhi Biaya</div>
-              <p className="text-xs text-muted mb-2">
-                Faktor yang paling memengaruhi perkiraan biaya kasus ini.
+               <div className="card-title">Faktor yang Memengaruhi Reimbursement Benchmark</div>
+               <p className="text-xs text-muted mb-2">
+                 Faktor yang paling memengaruhi benchmark reimbursement kasus ini.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                 {shapFeatures.map((f, i) => (
@@ -474,7 +495,7 @@ export default function Assessment() {
                     <div className="flex justify-between text-xs mb-1">
                        <span>{plainText(f.feature_label || formatFeature(f.feature_name))}</span>
                       <span style={{ fontWeight: 600, color: f.direction === 'positive' ? 'var(--risk-high)' : 'var(--success)' }}>
-                        {f.direction === 'positive' ? '↑ biaya lebih tinggi' : '↓ biaya lebih rendah'}
+                         {f.direction === 'positive' ? '↑ benchmark lebih tinggi' : '↓ benchmark lebih rendah'}
                       </span>
                     </div>
                     <div className="progress-bar" style={{ height: 5 }}>
@@ -502,8 +523,8 @@ export default function Assessment() {
               </div>
               <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--risk-medium)' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
-                   <span>Temuan Biaya</span>
-                   <span>{financial?.method === 'zscore_peer_fallback' ? 'Perbandingan cadangan' : 'Analisis biaya'}</span>
+                    <span>Temuan Reimbursement</span>
+                    <span>{financial?.method === 'zscore_peer_fallback' ? 'Benchmark cadangan' : 'Analisis benchmark'}</span>
                 </div>
                  <div style={{ fontSize: '0.82rem' }}>{plainText(financial?.evidence_text) || 'Biaya berada dalam kisaran yang wajar.'}</div>
               </div>
