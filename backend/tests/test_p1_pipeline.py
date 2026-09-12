@@ -43,3 +43,25 @@ def test_pipeline_is_reproducible_and_detects_in_memory_cloning(monkeypatch):
     assert [r.score for r in results_a] == [r.score for r in results_b]
     assert any(r.breakdown["similarity_fraud"] > 0 for r in results_a)
     assert all(r.breakdown == s.breakdown for r, s in zip(results_a, results_b))
+
+
+def test_behavioral_context_is_candidate_only(monkeypatch):
+    monkeypatch.setattr(pipeline, "analyze_financial", _fake_financial)
+
+    class OutlierModel:
+        def decision_function(self, features):
+            return [-0.25]
+
+        def predict(self, features):
+            return [-1]
+
+    monkeypatch.setattr(pipeline, "_load_isolation_model", lambda: OutlierModel())
+    claim = make_claim(claim_id="P1-BEHAVIOR")
+    raw = [claim.model_dump(mode="json")]
+
+    core = asyncio.run(pipeline.score_claims(raw, include_behavioral_context=False))[0]
+    candidate = asyncio.run(pipeline.score_claims(raw, include_behavioral_context=True))[0]
+
+    assert core.score == 0.0
+    assert candidate.score == 15.0
+    assert candidate.breakdown["behavioral_context_candidate"] == 15.0

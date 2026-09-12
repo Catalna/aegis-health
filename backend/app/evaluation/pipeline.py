@@ -159,6 +159,14 @@ def _fraud_assessment(claim: dict, population: list[dict], include_behavioral_co
     )
 
 
+def _priority_tier(score: float) -> str:
+    if score >= 60:
+        return "high"
+    if score >= 25:
+        return "medium"
+    return "low"
+
+
 async def score_claims(
     claim_dicts: list[dict],
     population: list[dict] | None = None,
@@ -181,13 +189,22 @@ async def score_claims(
             model_used=None,
         )
         risk = calculate_risk_score(clinical, financial, fraud, review)
+        score = risk.total_score
+        breakdown = dict(risk.breakdown)
+        tier = risk.priority_tier
+        if include_behavioral_context:
+            # Candidate-only ablation; production P0 keeps this context at zero.
+            candidate_points = min(15.0, fraud.isolation_forest_score * 15.0)
+            score = min(100.0, score + candidate_points)
+            breakdown["behavioral_context_candidate"] = round(candidate_points, 1)
+            tier = _priority_tier(score)
         results.append(EvaluationResult(
             claim_id=claim.claim_id,
             label=int(bool(raw_claim.get("is_synthetic_anomaly", False))),
             anomaly_type=raw_claim.get("anomaly_type", "none"),
-            score=risk.total_score,
-            priority_tier=risk.priority_tier,
-            breakdown=risk.breakdown,
+            score=round(score, 1),
+            priority_tier=tier,
+            breakdown=breakdown,
             method=financial.method,
             latency_ms=round((time.perf_counter() - started) * 1000, 3),
         ))
