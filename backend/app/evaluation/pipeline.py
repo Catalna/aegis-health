@@ -161,15 +161,17 @@ def _fraud_assessment(claim: dict, population: list[dict], include_behavioral_co
 
 async def score_claims(
     claim_dicts: list[dict],
+    population: list[dict] | None = None,
     include_behavioral_context: bool = True,
 ) -> list[EvaluationResult]:
     results: list[EvaluationResult] = []
+    population = population or claim_dicts
     for raw_claim in claim_dicts:
         started = time.perf_counter()
         claim = ClaimInput.model_validate(raw_claim)
         clinical = _deterministic_clinical(claim)
         financial = await analyze_financial(claim)
-        fraud = _fraud_assessment(raw_claim, claim_dicts, include_behavioral_context)
+        fraud = _fraud_assessment(raw_claim, population, include_behavioral_context)
         review = ReviewSynthesis(
             claim_id=claim.claim_id,
             evidence_level="strong_multi_signal" if any((fraud.repeat_billing_flag, fraud.cloning_flag, fraud.unbundling_flag)) else "weak",
