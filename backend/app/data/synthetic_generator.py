@@ -143,6 +143,7 @@ def _build_base_claim(claim_id: str, scenario: dict, admit_date: date = None) ->
         "discharge_date": discharge_date,
         "is_synthetic_anomaly": False,
         "anomaly_type": "none",
+        "evaluation_group_id": f"claim:{claim_id}",
     }
 
 
@@ -180,6 +181,8 @@ def generate_cloning_case(claim_id1: str, claim_id2: str, fixed_provider_id: str
         claim1["provider_id"] = fixed_provider_id
         claim1["doctor_id"] = generate_random_doctor_id(fixed_provider_id)
 
+    group_id = f"cloning:{claim_id1}"
+    claim1["evaluation_group_id"] = group_id
     claim2 = copy.deepcopy(claim1)
     claim2["claim_id"] = claim_id2
     claim2["patient_id"] = generate_random_patient_id()
@@ -195,6 +198,7 @@ def generate_repeat_billing_case(claim_id: str, original_claim: dict) -> dict:
     """Same claim submitted again with minor cosmetic difference."""
     clone = copy.deepcopy(original_claim)
     clone["claim_id"] = claim_id
+    clone["evaluation_group_id"] = original_claim.get("evaluation_group_id", f"claim:{original_claim['claim_id']}")
     clone["admission_date"] = original_claim["admission_date"] + timedelta(days=random.randint(0, 2))
     clone["is_synthetic_anomaly"] = True
     clone["anomaly_type"] = "repeat_billing"
@@ -244,6 +248,7 @@ def generate_unbundling_case(claim_id_prefix: str) -> list:
     patient_id = generate_random_patient_id()
     doctor_id = generate_random_doctor_id(provider_id)
     num_fragments = random.randint(2, 3)
+    group_id = f"unbundling:{claim_id_prefix}"
     claims = []
     for i in range(num_fragments):
         los_frag = random.randint(1, 3)
@@ -264,6 +269,7 @@ def generate_unbundling_case(claim_id_prefix: str) -> list:
             "discharge_date": admit_date + timedelta(days=(i + 1) * los_frag),
             "is_synthetic_anomaly": True,
             "anomaly_type": "unbundling",
+            "evaluation_group_id": group_id,
         }
         claims.append(claim)
     return claims
