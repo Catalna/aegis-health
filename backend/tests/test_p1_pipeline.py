@@ -1,4 +1,6 @@
 import asyncio
+import subprocess
+import sys
 
 from backend.app.models.schemas import FinancialAssessment
 from backend.app.data.synthetic_generator import generate_cloning_case
@@ -30,6 +32,36 @@ def test_pipeline_scores_without_llm_database_or_vector_store(monkeypatch):
     assert result.score == 0.0
     assert result.breakdown["isolation_forest_anomaly"] == 0.0
     assert result.method == "zscore_peer_fallback"
+
+
+def test_evaluation_pipeline_does_not_load_embedding_model():
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import backend.app.evaluation.runner; print('sentence_transformers' in sys.modules)",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert completed.stdout.strip() == "False"
+
+
+def test_similarity_module_defers_huggingface_model_load():
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import backend.app.ml.similarity; print('sentence_transformers' in sys.modules)",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert completed.stdout.strip() == "False"
 
 
 def test_pipeline_is_reproducible_and_detects_in_memory_cloning(monkeypatch):

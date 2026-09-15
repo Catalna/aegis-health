@@ -23,7 +23,14 @@ def test_ranking_metrics_measure_top_k_and_slices():
     assert metrics["precision_at_k"]["2"]["value"] == 0.5
     assert metrics["recall_at_k"]["2"]["value"] == 0.5
     assert metrics["average_precision"]["value"] > 0.5
-    assert metrics["by_anomaly_type"]["upcoding"]["true_positive_count"] == 1
+    upcoding = metrics["by_anomaly_type"]["upcoding"]
+    phantom = metrics["by_anomaly_type"]["phantom_billing"]
+    assert upcoding["positive_count"] == 1
+    assert upcoding["score_distribution"] == {"min": 90.0, "max": 90.0, "mean": 90.0}
+    assert upcoding["top_k_hits"]["2"] == 1
+    assert upcoding["false_negative_at_k"]["2"] == 0
+    assert phantom["top_k_hits"]["2"] == 0
+    assert phantom["false_negative_at_k"]["2"] == 1
 
 
 def test_metrics_return_not_computable_for_insufficient_k_or_labels():

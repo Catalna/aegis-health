@@ -17,7 +17,6 @@ build/
 .env.local
 
 # Databases / Data
-pgvector_build/
 lancedb_data/
 backend/app/lancedb_data/
 models_trained/

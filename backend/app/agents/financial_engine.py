@@ -7,6 +7,7 @@ Fallback    : z-score terhadap peer group baseline — tetap deterministik,
               dan TIDAK PERNAH memberi anomaly_score maksimum semu.
 """
 import os
+import logging
 import math
 import numpy as np
 import xgboost as xgb
@@ -17,6 +18,8 @@ from backend.app.ml.feature_engineering import (
     COST_FEATURE_NAMES,
     PEER_BASELINE,
 )
+from backend.app.core.errors import ANALYSIS_RETRYABLE_MESSAGE, failure_for_exception
+from backend.app.core.human_language import format_benchmark_finding
 
 # Label ramah pengguna untuk tiap fitur (ditampilkan di UI)
 FEATURE_LABELS = {
@@ -27,11 +30,11 @@ FEATURE_LABELS = {
     "severity_level": "tingkat keparahan",
     "length_of_stay": "lama rawat",
     "has_high_cost_proc": "ada prosedur berbiaya tinggi",
-    "has_phantom_risk_proc": "ada prosedur berisiko phantom billing",
-    "has_upcoding_risk_diag": "ada diagnosis berisiko upcoding",
-    "severity_proc_mismatch": "severity vs prosedur tidak cocok",
-    "severity_med_mismatch": "severity vs obat tidak cocok",
-    "los_outlier": "lama rawat outlier",
+    "has_phantom_risk_proc": "ada tindakan yang perlu dibuktikan pelaksanaannya",
+    "has_upcoding_risk_diag": "ada diagnosis yang perlu diverifikasi",
+    "severity_proc_mismatch": "tingkat keparahan tidak sebanding dengan tindakan",
+    "severity_med_mismatch": "tingkat keparahan tidak sebanding dengan obat",
+    "los_outlier": "lama rawat jauh di atas pola umum",
     "num_total_codes": "jumlah total kode medis",
     "proc_count_ratio": "rasio prosedur vs severity",
     "medication_count": "jumlah obat",
@@ -42,6 +45,7 @@ _MODELS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..
 _xgb_model = None
 _shap_explainer = None
 _load_error: str | None = None
+logger = logging.getLogger(__name__)
 
 
 def get_financial_model():
@@ -92,10 +96,10 @@ def _zscore_fallback(claim: ClaimInput, reason: str) -> FinancialAssessment:
         shap_top_features=[],
         anomaly_score=anomaly_score,
         evidence_text=(
-            f"[Fallback z-score peer — model ML tidak tersedia: {reason}] "
-            f"Claimed amount Rp {claim.cost_claimed:,.0f} dibanding reimbursement benchmark "
-            f"diagnosis {base}: Rp {peer_mean:,.0f} (deviasi "
-            f"{'+' if deviation_pct >= 0 else ''}{deviation_pct:.1f}%, z-score {z:.2f})."
+            "Perkiraan biaya menggunakan data pembanding untuk diagnosis serupa. "
+            + format_benchmark_finding(
+                claim.cost_claimed, peer_mean, deviation_pct, "jenis diagnosis"
+            )
         ),
         method="zscore_peer_fallback",
     )
@@ -105,20 +109,22 @@ async def analyze_financial(claim: ClaimInput) -> FinancialAssessment:
     try:
         model, explainer = get_financial_model()
     except Exception as e:
-        return _zscore_fallback(claim, str(e))
+        logger.exception("Financial model fallback for claim_id=%s", claim.claim_id)
+        return _zscore_fallback(claim, ANALYSIS_RETRYABLE_MESSAGE)
 
     features = np.array([extract_cost_features(claim.model_dump())])
     try:
         predicted_cost = float(model.predict(features)[0])
     except Exception as e:
-        return _zscore_fallback(claim, f"prediksi model gagal: {e}")
+        logger.exception("Financial prediction fallback for claim_id=%s", claim.claim_id)
+        return _zscore_fallback(claim, ANALYSIS_RETRYABLE_MESSAGE)
 
     # SHAP attribution
     try:
         shap_explanation = explainer(features)
         raw_shap = shap_explanation.values[0]
-    except Exception as e:
-        print(f"[SHAP] Warning: {e}. Menggunakan kontribusi nol.")
+    except Exception:
+        logger.exception("SHAP attribution unavailable for claim_id=%s", claim.claim_id)
         raw_shap = np.zeros(features.shape[1])
 
     actual_cost = claim.cost_claimed
@@ -144,13 +150,9 @@ async def analyze_financial(claim: ClaimInput) -> FinancialAssessment:
     lower_bound = max(0.0, predicted_cost * 0.85)
     upper_bound = predicted_cost * 1.15
 
-    top_driver = (
-        top_features[0].feature_label if top_features else "N/A"
-    )
-    evidence_text = (
-        f"Claimed amount Rp {actual_cost:,.0f} berbanding reimbursement benchmark model Rp {predicted_cost:,.0f} "
-        f"(deviasi {'+' if deviation_pct >= 0 else ''}{deviation_pct:.1f}%). "
-        f"Faktor utama deviasi terhadap benchmark: {top_driver}."
+    top_driver = top_features[0].feature_label if top_features else "data yang tersedia"
+    evidence_text = format_benchmark_finding(
+        actual_cost, predicted_cost, deviation_pct, top_driver
     )
 
     return FinancialAssessment(

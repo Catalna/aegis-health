@@ -48,7 +48,7 @@ J-ARI memanfaatkan arsitektur **Multi-Model Intelligence** yang menggabungkan mo
 ### 2.1 Deskripsi Model
 - **Algoritma**: **XGBoost Regressor** (`xgboost.XGBRegressor`).
 - **Tujuan**: Mengestimasi *expected reimbursement benchmark* untuk suatu episode klaim berdasarkan profil medis dan karakteristik fasilitas kesehatan. Model ini bukan official INA-CBG grouper dan tidak menyatakan biaya medis yang benar.
-- **File Artifact**: `backend/app/models_trained/xgboost_cost_model.joblib`.
+- **File Artifact**: `backend/models_trained/xgboost_regressor.json`.
 
 ### 2.2 Feature Engineering Pipeline (`feature_engineering.py`)
 Fitur-fitur yang diekstraksi dari data klaim terstruktur:
@@ -92,7 +92,7 @@ Fitur-fitur yang diekstraksi dari data klaim terstruktur:
 ### 3.1 Isolation Forest Model (`train_isolation_forest.py`)
 - **Algoritma**: `sklearn.ensemble.IsolationForest`.
 - **Tujuan**: Mendeteksi pencilan multidimensi (*multivariate outliers*) secara independen tanpa bergantung pada label historis.
-- **File Artifact**: `backend/app/models_trained/isolation_forest.joblib`.
+- **File Artifact**: `backend/models_trained/isolation_forest.pkl`.
 - **Hyperparameter**:
   - `n_estimators`: 150
   - `contamination`: 0.05 (asumsi 5% anomali pada populasi klaim)
@@ -115,7 +115,7 @@ Fitur-fitur yang diekstraksi dari data klaim terstruktur:
 ### 4.1 Vector Store Engine (`similarity.py`)
 - **Teknologi**: **LanceDB** (Embedded Vector Database, file-based tanpa server terpisah).
 - **Embedding Model**: `sentence-transformers/all-MiniLM-L6-v2` (384-dimensional dense vectors).
-- **Lokasi Penyimpanan**: `backend/app/lancedb_data/claims_index`.
+- **Lokasi Penyimpanan**: `backend/app/lancedb_data/claims_vectors_v3`.
 
 ### 4.2 Formulasi Komposit Multi-Faktor Similarity Score
 Untuk mendeteksi *cloning* dan *repeat billing* secara akurat, sistem **tidak hanya menggunakan cosine similarity vector**, melainkan menggabungkannya menjadi skor komposit:

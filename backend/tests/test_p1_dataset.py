@@ -49,3 +49,23 @@ def test_evaluation_datasets_are_reproducible_and_group_disjoint():
 def test_group_overlap_is_rejected_before_scoring():
     with pytest.raises(ValueError, match="group leakage"):
         validate_group_disjointness({"shared-group"}, {"shared-group"})
+
+
+def test_challenge_profile_adds_hard_controls_without_relabeling_groups():
+    counts = {
+        "num_normal": 8,
+        "num_upcoding": 2,
+        "num_cloning_pairs": 1,
+        "num_repeat_billing": 1,
+        "num_phantom": 1,
+        "num_prolonged_los": 1,
+        "num_inflated": 1,
+        "num_unbundling_groups": 1,
+    }
+    train, holdout = build_evaluation_datasets(profile="challenge", **counts)
+
+    assert train.profile == "standard"
+    assert holdout.profile == "challenge"
+    assert any(claim.get("evaluation_case") == "hard_negative_cost" for claim in holdout.claims)
+    assert any(claim.get("evaluation_case") == "soft_positive" for claim in holdout.claims)
+    assert train.group_ids.isdisjoint(holdout.group_ids)

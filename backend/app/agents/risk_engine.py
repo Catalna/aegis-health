@@ -24,6 +24,7 @@ from backend.app.models.schemas import (
     ReviewSynthesis,
     RiskScore,
 )
+from backend.app.core.human_language import humanize_rule, humanize_signal
 
 CLINICAL_FLAG_WEIGHTS = {
     "tariff_deviation_high": 6.0,
@@ -64,7 +65,7 @@ def _evidence_items(clinical, financial, fraud) -> list[EvidenceItem]:
             source_family=family,
             signal_type=flag,
             value=clinical.tariff_deviation_pct if flag.startswith("tariff_") else True,
-            explanation=f"Sinyal deterministik: {flag}.",
+            explanation=f"Temuan berdasarkan aturan pemeriksaan: {humanize_rule(flag)}.",
         ))
 
     if financial.anomaly_score > 0.4 or financial.deviation_pct > 30:
@@ -87,7 +88,7 @@ def _evidence_items(clinical, financial, fraud) -> list[EvidenceItem]:
                 source_family="relational_pattern",
                 signal_type=signal_type,
                 value=True,
-                explanation=f"Relasi klaim konkret terdeteksi: {signal_type}.",
+                explanation=f"Temuan pola klaim: {humanize_signal(signal_type)}.",
             ))
 
     if fraud.is_isolation_forest_outlier or fraud.graph_cluster_anomaly_score > 0.5:
@@ -96,7 +97,7 @@ def _evidence_items(clinical, financial, fraud) -> list[EvidenceItem]:
             source_family="behavioral_context",
             signal_type="behavioral_context",
             value=max(fraud.isolation_forest_score, fraud.graph_cluster_anomaly_score),
-            explanation="Konteks perilaku ditampilkan sebagai supporting context, bukan bukti independen.",
+            explanation="Pola ini menjadi catatan tambahan dan bukan dasar penilaian yang berdiri sendiri.",
         ))
     return items
 

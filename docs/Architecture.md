@@ -112,9 +112,8 @@ E-Jak/
 │       │   ├── Investigation.jsx
 │       │   ├── Assessment.jsx
 │       │   ├── Monitoring.jsx
-│       │   ├── DemoLoader.jsx
 │       │   └── MLEvaluation.jsx
-│       └── components/
+│       └── Logo.jsx, index.css
 ├── scripts/
 │   ├── train_all.py             # Script training semua model ML
 │   └── smoke_test.py
@@ -123,8 +122,7 @@ E-Jak/
 │   ├── Architecture.md          # (Dokumen ini — Cetak Biru Arsitektur)
 │   ├── BusinessCore.md          # Logika Bisnis & Domain INA-CBG
 │   ├── AgentWorkflow.md         # Detail Pipeline Agent & SSE Protocol
-│   └── Models.md                # Spesifikasi Model ML, Vector & LLM
-├── seed_db.py
+│   └── MODELS.md                # Spesifikasi Model ML, Vector & LLM
 ├── start.bat
 └── .env
 ```
@@ -200,7 +198,7 @@ human_decisions (HumanDecisionRecord)
 ### Vector Store (LanceDB)
 
 ```
-lancedb_data/claims_index
+lancedb_data/claims_vectors_v3
   claim_id     STRING
   vector       FIXED_SIZE_LIST[FLOAT, 384]   (all-MiniLM-L6-v2 embedding)
   provider_id  STRING
@@ -285,7 +283,6 @@ PostgreSQL      LanceDB         Ollama
 | `/monitoring` | `Monitoring.jsx` | Health monitoring komponen sistem (DB, Ollama, ML models). |
 | `/ml-eval` | `MLEvaluation.jsx` | Halaman evaluasi metrik model ML riil (Precision, Recall, F1, PR-AUC, MAE, RMSE). |
 | `/intake` | `ClaimIntake.jsx` | Form penginputan klaim manual. |
-| `/demo-loader` | `DemoLoader.jsx` | Utility injector data demo sintetis. |
 
 ---
 
@@ -293,4 +290,4 @@ PostgreSQL      LanceDB         Ollama
 - [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md) — Product Requirement Document J-ARI.
 - [BusinessCore.md](file:///c:/Users/Radith/E-Jak/docs/BusinessCore.md) — Logika Bisnis & Domain INA-CBG.
 - [AgentWorkflow.md](file:///c:/Users/Radith/E-Jak/docs/AgentWorkflow.md) — Alur Pipeline Multi-Agent & Protokol SSE.
-- [Models.md](file:///c:/Users/Radith/E-Jak/docs/Models.md) — Spesifikasi Model Machine Learning, Vector Store & LLM.
+- [MODELS.md](file:///c:/Users/Radith/E-Jak/docs/MODELS.md) — Spesifikasi Model Machine Learning, Vector Store & LLM.

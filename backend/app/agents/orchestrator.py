@@ -9,6 +9,7 @@ Sesuai AGENTS.md Section 0:
 """
 import asyncio
 import json
+import logging
 import time
 from datetime import date
 
@@ -26,6 +27,16 @@ from backend.app.agents.explanation_agent import generate_explanation
 from backend.app.models.database import (
     AsyncSessionLocal, RiskAnalysisRecord, AgentRunRecord, AuditLogRecord, ClaimRecord,
 )
+from backend.app.core.versions import ANALYSIS_VERSION
+from backend.app.core.errors import (
+    ANALYSIS_FAILURE_MESSAGE,
+    VALIDATION_REJECTED_CODE,
+    VALIDATION_REJECTED_MESSAGE,
+    failure_for_exception,
+    INTERNAL_ANALYSIS_FAILURE_REASON,
+)
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -121,10 +132,12 @@ async def run_with_fallback(agent_name: str, coro_fn, claim: ClaimInput, fallbac
         ), duration_ms, model_used, "success"
     except Exception as e:
         duration_ms = int((time.perf_counter() - start) * 1000)
-        fallback = fallback_factory(claim, str(e))
+        failure = failure_for_exception(e)
+        logger.exception("Agent fallback failed for agent=%s claim_id=%s", agent_name, claim.claim_id)
+        fallback = fallback_factory(claim, failure.message)
         return fallback, AgentError(
             agent_name=agent_name, error_type="tool_failure",
-            raw_output=str(e)[:500], fallback_applied=True,
+            raw_output=None, fallback_applied=True,
         ), duration_ms, None, "fallback"
 
 
@@ -154,13 +167,31 @@ async def _audit(db, claim_id, agent_name, action, details=None):
 # (hasil lama tidak boleh ditampilkan karena skornya dihitung logika berbeda).
 # v6: deterministic evidence contract, no tariff double-counting, no behavioral
 # context score, and grounded explanation IDs.
-ANALYSIS_VERSION = 6
 
 
-async def process_claim(claim: ClaimInput, sse_queue: asyncio.Queue = None) -> RiskAssessment:
+async def process_claim(
+    claim: ClaimInput,
+    sse_queue: asyncio.Queue = None,
+    analysis_generation: str | None = None,
+    terminal_outcome: dict | None = None,
+) -> RiskAssessment:
     async def emit(event_type: str, data: dict):
         if sse_queue:
-            await sse_queue.put({"event": event_type, "data": data})
+            event = {"event": event_type, "data": data}
+            try:
+                sse_queue.put_nowait(event)
+            except asyncio.QueueFull:
+                # A disconnected/manual-less consumer must not hold the
+                # analysis task open. Retain terminal errors when possible.
+                if event_type in {"error", "rejected"}:
+                    try:
+                        sse_queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                    try:
+                        sse_queue.put_nowait(event)
+                    except asyncio.QueueFull:
+                        pass
 
     await emit("status", {"message": f"Klaim {claim.claim_id} diterima, memulai validasi deterministik...", "step": "start"})
 
@@ -178,9 +209,16 @@ async def process_claim(claim: ClaimInput, sse_queue: asyncio.Queue = None) -> R
             if validation.hard_reject:
                 await _audit(db, claim.claim_id, "orchestrator", "hard_reject", validation.reject_reason)
                 await db.commit()
-                await emit("status", {"message": f"VALIDASI GAGAL: {validation.reject_reason}", "step": "validation"})
-                await emit("rejected", {"reason": validation.reject_reason})
-                return RiskAssessment.create_rejected(claim.claim_id, validation.reject_reason)
+                assessment = RiskAssessment.create_rejected(
+                    claim.claim_id,
+                    VALIDATION_REJECTED_MESSAGE,
+                    VALIDATION_REJECTED_CODE,
+                )
+                if terminal_outcome is not None:
+                    terminal_outcome["assessment"] = assessment
+                await emit("status", {"message": VALIDATION_REJECTED_MESSAGE, "step": "validation"})
+                await emit("rejected", {"code": VALIDATION_REJECTED_CODE, "message": VALIDATION_REJECTED_MESSAGE})
+                return assessment
 
             is_duplicate = validation.exact_duplicate_of is not None
 
@@ -240,7 +278,7 @@ async def process_claim(claim: ClaimInput, sse_queue: asyncio.Queue = None) -> R
                 await _save_agent_run(db, claim.claim_id, "fraud_agent", fraud_status, fraud_ms, fraud.model_dump_json(), fraud_model)
 
                 for err in agent_errors:
-                    await emit("status", {"message": f"Peringatan: agent {err.agent_name} gagal, fallback diterapkan ({err.raw_output[:120]}...)", "step": "phase1"})
+                    await emit("status", {"message": "Peringatan: satu pemeriksaan tidak tersedia; data cadangan digunakan.", "step": "phase1"})
 
             partial = any(e.fallback_applied for e in agent_errors)
 
@@ -308,14 +346,26 @@ async def process_claim(claim: ClaimInput, sse_queue: asyncio.Queue = None) -> R
                 recommended_action=explanation.recommended_action,
                 actual_cost=financial.actual_cost,
                 predicted_cost_upper=predicted_upper,
+                analysis_version=ANALYSIS_VERSION,
                 evidence_json=json.dumps(persisted_evidence, default=str),
             )
-            await db.merge(analysis_record)
-
-            result_q = await db.execute(sa_select(ClaimRecord).where(ClaimRecord.claim_id == claim.claim_id))
+            claim_query = sa_select(ClaimRecord).where(ClaimRecord.claim_id == claim.claim_id)
+            if analysis_generation is not None:
+                claim_query = claim_query.with_for_update()
+            result_q = await db.execute(claim_query)
             claim_rec = result_q.scalar_one_or_none()
+            if analysis_generation is not None and (
+                claim_rec is None
+                or claim_rec.status != "scanning"
+                or claim_rec.analysis_generation != analysis_generation
+            ):
+                await db.rollback()
+                return final_assessment
+
+            await db.merge(analysis_record)
             if claim_rec:
-                claim_rec.status = "processed"
+                if analysis_generation is None:
+                    claim_rec.status = "processed"
                 claim_rec.risk_score = risk.total_score
                 claim_rec.priority_tier = risk.priority_tier
 
@@ -328,14 +378,19 @@ async def process_claim(claim: ClaimInput, sse_queue: asyncio.Queue = None) -> R
                 from backend.app.ml.similarity import store_single_claim
                 store_single_claim(claim.model_dump(mode="json"))
             except Exception as e:
-                print(f"[similarity] Gagal index klaim: {e}")
+                logger.exception("Similarity indexing failed for claim_id=%s", claim.claim_id)
 
+            if terminal_outcome is not None:
+                terminal_outcome["assessment"] = final_assessment
             await emit("status", {"message": "Analisis selesai." + (" (partial — beberapa agent fallback)" if partial else ""), "step": "complete"})
             return final_assessment
 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            await emit("error", {"message": str(e)})
+            logger.exception("Analysis orchestration failed for claim_id=%s", claim.claim_id)
             await db.rollback()
-            return RiskAssessment.create_rejected(claim.claim_id, f"Orchestration failed: {str(e)}")
+            failure = failure_for_exception(e)
+            assessment = RiskAssessment.create_rejected(claim.claim_id, failure.message, failure.code)
+            if terminal_outcome is not None:
+                terminal_outcome["assessment"] = assessment
+            await emit("error", {"code": failure.code, "message": failure.message})
+            return assessment

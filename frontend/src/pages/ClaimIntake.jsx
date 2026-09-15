@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { claimsApi } from '../api'
+import { claimsApi, safeErrorMessage } from '../api'
 
 const EMPTY_FORM = {
   claim_id: '',
@@ -77,7 +77,7 @@ export default function ClaimIntake() {
 
   const handleAnalyze = async () => {
     if (clientErrors.some(e => !e.startsWith('Peringatan'))) {
-      setError('Perbaiki error pada form terlebih dahulu.')
+      setError('Perbaiki kesalahan pada data terlebih dahulu.')
       return
     }
     setSubmitting(true)
@@ -85,12 +85,12 @@ export default function ClaimIntake() {
     try {
       const payload = buildClaimPayload()
       const res = await claimsApi.create(payload)
-      if (res.data.status !== 'success') throw new Error(res.data.message || 'Gagal menyimpan klaim.')
+      if (res.data.status !== 'success') throw new Error(res.data.message || 'Klaim belum berhasil disimpan.')
 
       sessionStorage.setItem(`claim_${payload.claim_id}`, JSON.stringify(payload))
       navigate('/claims')
     } catch (e) {
-      setError(e?.response?.data?.detail || e.message)
+      setError(safeErrorMessage(e, 'dependency_unavailable'))
     } finally {
       setSubmitting(false)
     }
@@ -106,12 +106,12 @@ export default function ClaimIntake() {
       <div className="page-header">
         <div className="flex items-center justify-between">
           <div>
-            <h2>Input Klaim Baru</h2>
-            <p>Masukkan data klaim secara manual untuk dianalisis oleh sistem.</p>
+            <h1>Input Klaim Baru</h1>
+            <p>Masukkan data klaim untuk memulai pemeriksaan dan menentukan prioritas tindak lanjut.</p>
           </div>
           <div className="flex gap-1">
-            <button className={`btn btn-ghost ${viewMode === 'form' ? 'active' : ''}`} onClick={() => setViewMode('form')}>Form</button>
-            <button className={`btn btn-ghost ${viewMode === 'json' ? 'active' : ''}`} onClick={() => setViewMode('json')}>Data Terstruktur</button>
+             <button className={`btn btn-ghost ${viewMode === 'form' ? 'active' : ''}`} onClick={() => setViewMode('form')}>Isi data</button>
+             <button className={`btn btn-ghost ${viewMode === 'json' ? 'active' : ''}`} onClick={() => setViewMode('json')}>Lihat data lengkap</button>
           </div>
         </div>
 
@@ -204,7 +204,7 @@ export default function ClaimIntake() {
             </div>
           ) : (
             <div className="card">
-              <div className="card-title">Data Klaim Terstruktur</div>
+               <div className="card-title">Data Klaim Lengkap</div>
               <pre className="form-textarea" style={{ display: 'block', overflow: 'auto', fontSize: '0.72rem', lineHeight: 1.7, padding: '1rem' }}>
                 {JSON.stringify(buildClaimPayload(), null, 2)}
               </pre>
@@ -213,17 +213,17 @@ export default function ClaimIntake() {
 
           {/* Validasi klien real-time */}
           {blockingErrors.length > 0 && (
-            <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: 'var(--risk-high)', fontSize: '0.8rem' }}>
+            <div role="alert" style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: 'var(--error-text)', fontSize: '0.8rem' }}>
               {blockingErrors.map((err, i) => <div key={i}>⚠ {err}</div>)}
             </div>
           )}
           {warnings.length > 0 && (
-            <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, color: 'var(--warning)', fontSize: '0.8rem' }}>
+            <div role="status" style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, color: 'var(--warning-text)', fontSize: '0.8rem' }}>
               {warnings.map((w, i) => <div key={i}>ⓘ {w}</div>)}
             </div>
           )}
           {error && (
-            <div style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: 'var(--risk-high)', fontSize: '0.8rem' }}>
+            <div role="alert" style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: 'var(--error-text)', fontSize: '0.8rem' }}>
               ⚠ {error}
             </div>
           )}
@@ -235,7 +235,7 @@ export default function ClaimIntake() {
               onClick={handleAnalyze}
               disabled={submitting || blockingErrors.length > 0}
             >
-              {submitting ? '⟳ Menyimpan klaim...' : 'Simpan & Masukkan ke Antrian'}
+              {submitting ? '⟳ Menyimpan klaim...' : 'Simpan dan mulai pemeriksaan'}
             </button>
           </div>
         </div>

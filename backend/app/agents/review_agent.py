@@ -1,9 +1,15 @@
 """
 Review Agent — sintesis lintas-sumber via LLM, fallback rule-count (AGENTS.md Section 5).
 """
+import logging
+
 from backend.app.models.schemas import (
     ClaimInput, ClinicalAssessment, FinancialAssessment, FraudAssessment, ReviewSynthesis,
 )
+from backend.app.core.errors import ANALYSIS_RETRYABLE_MESSAGE
+from backend.app.core.human_language import format_rule_finding, humanize_signal
+
+logger = logging.getLogger(__name__)
 from backend.app.core.llm_client import (
     structured_completion, LLMError, REVIEW_MODEL, REVIEW_MODEL_FALLBACK, get_available_model,
 )
@@ -17,33 +23,37 @@ def compute_rule_signals(
     """Hitung sinyal deterministik — dipakai untuk fallback DAN validasi LLM."""
     signals: list[str] = []
     if "tariff_deviation_extreme" in clinical.rule_flags:
-        signals.append("Deviasi tarif CBG ekstrem (>100%)")
+        signals.append("Biaya jauh di atas perkiraan biaya penggantian (lebih dari 100%).")
     elif "tariff_deviation_high" in clinical.rule_flags:
-        signals.append(f"Deviasi tarif CBG tinggi ({clinical.tariff_deviation_pct:.1f}%)")
+        signals.append(
+            f"Biaya berada {clinical.tariff_deviation_pct:.1f}% di atas perkiraan biaya penggantian."
+        )
     if "severity_proc_mismatch" in clinical.rule_flags:
-        signals.append("Severity tinggi tanpa prosedur pendukung")
+        signals.append(format_rule_finding("severity_proc_mismatch"))
     if "severity_med_mismatch" in clinical.rule_flags:
-        signals.append("Severity tinggi dengan obat tidak lengkap")
+        signals.append(format_rule_finding("severity_med_mismatch"))
     if "los_outlier" in clinical.rule_flags:
-        signals.append("Lama rawat melebihi batas klinis")
+        signals.append(format_rule_finding("los_outlier"))
     if "upcoding_risk_diag" in clinical.rule_flags:
-        signals.append("Diagnosis sekunder berisiko upcoding")
+        signals.append(format_rule_finding("upcoding_risk_diag"))
     if "unsupported_high_risk_proc" in clinical.rule_flags:
-        signals.append("Prosedur berbiaya tinggi tidak sesuai diagnosis")
+        signals.append(format_rule_finding("unsupported_high_risk_proc"))
     if financial.anomaly_score > 0.4:
-        signals.append(f"Skor anomali finansial {financial.anomaly_score:.2f}")
+        signals.append("Biaya berbeda cukup jauh dari perkiraan untuk kasus sejenis.")
     if financial.deviation_pct > 30:
-        signals.append(f"Biaya melebihi prediksi model +{financial.deviation_pct:.1f}%")
+        signals.append(f"Biaya lebih tinggi {financial.deviation_pct:.1f}% dari perkiraan kasus sejenis.")
     if fraud.repeat_billing_flag:
-        signals.append("Repeat billing terdeteksi (pasien sama, prosedur sama)")
+        signals.append("Ditemukan kemungkinan pengulangan klaim pada peserta yang sama.")
     if fraud.cloning_flag:
-        signals.append(f"Indikasi cloning: kemiripan {fraud.similarity_max_score:.0%} dengan klaim faskes sama untuk pasien berbeda")
+        signals.append(
+            f"Ditemukan kemiripan {fraud.similarity_max_score:.0%} dengan klaim lain dari fasilitas yang sama untuk peserta berbeda."
+        )
     if fraud.unbundling_flag:
-        signals.append("Indikasi pemecahan satu episode menjadi beberapa klaim")
+        signals.append("Ditemukan kemungkinan pemisahan satu rangkaian layanan menjadi beberapa klaim.")
     if fraud.is_isolation_forest_outlier:
-        signals.append(f"Outlier perilaku (skor {fraud.isolation_forest_score:.2f})")
+        signals.append("Pola klaim berbeda dari pola umum pada data pembanding.")
     if fraud.graph_cluster_anomaly_score > 0.5:
-        signals.append(f"Pola jaringan faskes menyimpang ({fraud.graph_cluster_anomaly_score:.2f})")
+        signals.append("Pola hubungan fasilitas kesehatan berbeda dari pola umum.")
     return signals
 
 
@@ -93,10 +103,24 @@ def evidence_descriptions(
     financial: FinancialAssessment,
     fraud: FraudAssessment,
 ) -> dict[str, str]:
-    return {
-        evidence_id: f"Evidence deterministik: {evidence_id}."
-        for evidence_id in compute_evidence_ids(clinical, financial, fraud)
-    }
+    descriptions = {}
+    for flag in clinical.rule_flags:
+        family = "reimbursement_benchmark" if flag.startswith("tariff_deviation_") else "clinical_rule"
+        descriptions[f"{family}:{flag}"] = f"Temuan berdasarkan aturan pemeriksaan: {format_rule_finding(flag)}"
+    if financial.anomaly_score > 0.4 or financial.deviation_pct > 30:
+        descriptions["reimbursement_benchmark:benchmark_deviation"] = financial.evidence_text
+    for signal_type, active in (
+        ("repeat_billing", fraud.repeat_billing_flag),
+        ("cloning", fraud.cloning_flag),
+        ("unbundling", fraud.unbundling_flag),
+    ):
+        if active:
+            descriptions[f"relational_pattern:{signal_type}"] = f"Temuan pola klaim: {humanize_signal(signal_type)}."
+    if fraud.is_isolation_forest_outlier or fraud.graph_cluster_anomaly_score > 0.5:
+        descriptions["behavioral_context:behavioral_context"] = (
+            "Pola ini menjadi catatan tambahan dan bukan dasar penilaian yang berdiri sendiri."
+        )
+    return descriptions
 
 
 async def synthesize_review(
@@ -206,8 +230,9 @@ hanya merujuk fakta di atas — dilarang menambah fakta baru.
             evidence_ids=selected_ids,
         )
 
-    except Exception as e:
+    except Exception:
         # Fallback rule-count sesuai AGENTS.md Section 5 (tangkap semua kegagalan)
+        logger.exception("Review synthesis fallback for claim_id=%s", claim.claim_id)
         source_count = deterministic_source_count(clinical, financial, fraud)
         level = "strong_multi_signal" if source_count >= 2 else "single_signal" if source_count == 1 else "weak"
         return ReviewSynthesis(
@@ -215,8 +240,8 @@ hanya merujuk fakta di atas — dilarang menambah fakta baru.
             evidence_level=level,
             corroborating_signals=rule_signals,
             reasoning_narrative=(
-                f"[Fallback rule-count — LLM synthesis tidak tersedia: {e}] "
-                f"Terdeteksi {len(rule_signals)} sinyal dari rule engine."
+                "Ringkasan dibuat berdasarkan aturan pemeriksaan karena catatan tambahan belum tersedia. "
+                f"Ditemukan {len(rule_signals)} temuan yang perlu dipertimbangkan."
             ),
             reasoning_source="rule_fallback",
             model_used=None,

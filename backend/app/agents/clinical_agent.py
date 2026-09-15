@@ -7,8 +7,12 @@ Lapis 2 (HANYA kasus ambigu): LLM lokal menilai plausibility untuk kombinasi
   diagnosis-prosedur yang tidak ada di tabel referensi. Output LLM HANYA
   menambah evidence_text + confidence_level — TIDAK mengubah skor numerik.
 """
+import logging
+
 from backend.app.models.schemas import ClaimInput, ClinicalAssessment, CBGLookupResult
 from backend.app.core.llm_client import structured_completion, LLMError, CLINICAL_MODEL
+from backend.app.core.errors import failure_for_exception
+from backend.app.core.human_language import format_rule_finding
 from backend.app.data.ina_cbg_rules import (
     DIAGNOSIS_LABELS, DIAGNOSIS_TO_CBG_MAPPING, PROCEDURE_LABELS,
     calculate_expected_tariff,
@@ -23,6 +27,8 @@ SUPPORTED_HIGH_RISK_PROCS = {
     "C50": {"85.41"},
     "S72": {"81.51"},
 }
+
+logger = logging.getLogger(__name__)
 
 
 def _diag_name(code: str) -> str:
@@ -110,24 +116,15 @@ async def analyze_clinical(claim: ClaimInput) -> ClinicalAssessment:
     parts = []
     if cbg_info:
         parts.append(
-            f"Klaim dipetakan ke CBG {cbg_info.cbg_code} ({cbg_info.cbg_name}); "
+            f"Klaim sesuai dengan kelompok layanan {cbg_info.cbg_code} ({cbg_info.cbg_name}); "
             f"tarif referensi Rp {cbg_info.base_tariff:,.0f}, deviasi klaim "
             f"{'+' if (tariff_deviation or 0) >= 0 else ''}{tariff_deviation:.1f}%."
         )
     else:
-        parts.append(f"Diagnosis {claim.diagnosis_primary} tidak ada di tabel referensi INA-CBG simplified.")
+        parts.append(f"Diagnosis {claim.diagnosis_primary} belum tersedia dalam tabel acuan biaya layanan.")
 
-    flag_labels = {
-        "tariff_deviation_extreme": "deviasi tarif ekstrem (>${100}%)",
-        "tariff_deviation_high": "deviasi tarif tinggi (>50%)",
-        "severity_proc_mismatch": "severity tinggi tanpa prosedur pendukung",
-        "severity_med_mismatch": "severity tinggi dengan obat tidak lengkap",
-        "los_outlier": "lama rawat jauh melebihi batas klinis",
-        "upcoding_risk_diag": "diagnosis sekunder berisiko upcoding",
-        "unsupported_high_risk_proc": "prosedur berbiaya tinggi tidak sesuai diagnosis dan perlu bukti",
-    }
     for f in flags:
-        parts.append(f"Flag: {flag_labels.get(f, f)}.")
+        parts.append(format_rule_finding(f))
 
     # ---------- Keputusan apakah Lapis 2 (LLM) diperlukan ----------
     ambiguous = (not known_diag) or (len(flags) == 1 and rule_plausibility == "questionable")
@@ -137,7 +134,7 @@ async def analyze_clinical(claim: ClaimInput) -> ClinicalAssessment:
         evidence = " ".join(parts)
         if rule_plausibility == "plausible" and not flags:
             evidence = (
-                f"Kombinasi diagnosis-prosedur-severity sesuai tabel referensi. " + evidence
+                f"Kombinasi diagnosis, tindakan, dan tingkat keparahan sesuai tabel acuan. " + evidence
             ).strip()
         return ClinicalAssessment(
             claim_id=claim.claim_id,
@@ -205,9 +202,11 @@ evidence_text: 1-2 kalimat Bahasa Indonesia yang menyebut fakta spesifik dari da
         ) if flags else llm_plausibility
 
         # Label sumber jelas sesuai spek: evidence dari LLM diberi awalan sumber
-        evidence = f"[Penilaian LLM ({CLINICAL_MODEL}) — bukan sumber skor] " + llm.evidence_text
+        evidence = "Catatan tambahan dari penilaian medis: " + llm.evidence_text
         if flags:
-            evidence += " (Flag rule engine tetap aktif: " + ", ".join(flags) + ")"
+            evidence += " Temuan berdasarkan aturan pemeriksaan: " + "; ".join(
+                format_rule_finding(flag).rstrip(".") for flag in flags
+            ) + "."
 
         return ClinicalAssessment(
             claim_id=claim.claim_id,
@@ -223,6 +222,8 @@ evidence_text: 1-2 kalimat Bahasa Indonesia yang menyebut fakta spesifik dari da
         )
     except LLMError as e:
         # Fallback sesuai AGENTS.md: no_data + n/a, bukan menebak
+        logger.exception("Clinical LLM fallback for claim_id=%s", claim.claim_id)
+        failure = failure_for_exception(e)
         return ClinicalAssessment(
             claim_id=claim.claim_id,
             grouper_result=cbg_info,
@@ -230,7 +231,7 @@ evidence_text: 1-2 kalimat Bahasa Indonesia yang menyebut fakta spesifik dari da
             compatibility_status="no_data",
             plausibility="n/a",
             evidence_text=(
-                f"Penilaian klinis LLM tidak tersedia ({e}). "
+                "Catatan tambahan dari penilaian medis belum tersedia. "
                 + " ".join(parts)
             ).strip(),
             confidence_level="low",

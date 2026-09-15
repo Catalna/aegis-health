@@ -20,14 +20,32 @@ def _rank(rows: list[EvaluationResult]) -> list[EvaluationResult]:
     return sorted(rows, key=lambda row: (-row.score, row.claim_id))
 
 
-def _slice_metrics(rows: list[EvaluationResult]) -> dict:
+def _slice_metrics(rows: list[EvaluationResult], k_values) -> dict:
     output = {}
     for anomaly_type in sorted({row.anomaly_type for row in rows if row.label}):
         positives = [row for row in rows if row.anomaly_type == anomaly_type and row.label]
         ranked = _rank(rows)
+        top_k_hits = {
+            str(k): sum(1 for row in ranked[:k] if row.anomaly_type == anomaly_type and row.label)
+            for k in k_values
+            if k <= len(ranked)
+        }
         output[anomaly_type] = {
+            # Keep the original slice fields while adding more actionable breakdowns.
             "count": len(positives),
             "true_positive_count": sum(row.label for row in ranked if row.anomaly_type == anomaly_type),
+            "positive_count": len(positives),
+            "score_distribution": {
+                "min": float(min(row.score for row in positives)),
+                "max": float(max(row.score for row in positives)),
+                "mean": float(np.mean([row.score for row in positives])),
+            },
+            "top_k_hits": top_k_hits,
+            "false_negative_at_k": {
+                str(k): len(positives) - top_k_hits[str(k)]
+                for k in k_values
+                if str(k) in top_k_hits
+            },
             "top_rank": next((index + 1 for index, row in enumerate(ranked) if row.anomaly_type == anomaly_type), None),
         }
     return output
@@ -63,7 +81,7 @@ def evaluate_ranking(rows: list[EvaluationResult], k_values=(50, 100)) -> dict:
         "precision_at_k": precision,
         "recall_at_k": recall,
         "average_precision": aggregate,
-        "by_anomaly_type": _slice_metrics(rows),
+        "by_anomaly_type": _slice_metrics(rows, k_values),
     }
 
 

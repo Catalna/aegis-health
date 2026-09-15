@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from backend.app.evaluation.runner import run_evaluation  # noqa: E402
+from backend.app.core.errors import ANALYSIS_RETRYABLE_MESSAGE  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -15,6 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, default=ROOT / "backend/models_trained/p1_evaluation_results.json")
     parser.add_argument("--train-seed", type=int, default=42)
     parser.add_argument("--holdout-seed", type=int, default=2026)
+    parser.add_argument("--profile", choices=("standard", "challenge"), default="challenge")
     parser.add_argument("--allow-model-fallback", action="store_true")
     parser.add_argument("--num-normal", type=int, default=50)
     parser.add_argument("--num-upcoding", type=int, default=5)
@@ -41,11 +43,12 @@ def main() -> int:
             args.output,
             train_seed=args.train_seed,
             holdout_seed=args.holdout_seed,
+            profile=args.profile,
             generator_counts=counts,
             allow_model_fallback=args.allow_model_fallback,
         )
-    except Exception as exc:
-        print(f"P1 evaluation failed: {exc}", file=sys.stderr)
+    except Exception:
+        print(f"P1 evaluation failed: {ANALYSIS_RETRYABLE_MESSAGE}", file=sys.stderr)
         return 1
     return 0
 

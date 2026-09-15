@@ -1,17 +1,12 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 import { RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
-import { claimsApi, formatRecommendedAction, formatFeature, ANALYSIS_VERSION } from '../api'
+import { claimsApi, formatRecommendedAction, formatFeature, ANALYSIS_VERSION, safeErrorMessage, publicAnalysisProjection } from '../api'
+import { COMPONENT_LABELS as PLAIN_COMPONENT_LABELS, humanizeText } from '../humanLanguage'
 
 // Maps for technical terms -> human readable
-const COMPONENT_LABELS = {
-  similarity_fraud: 'Kemiripan Riwayat Klaim',
-  clinical_rule_flags: 'Temuan Medis',
-  isolation_forest_anomaly: 'Pola Klaim yang Menyimpang',
-  evidence_support: 'Kekuatan Evidence Deterministik',
-  financial_anomaly: 'Perbedaan Biaya',
-}
+const COMPONENT_LABELS = PLAIN_COMPONENT_LABELS
 
 const EVIDENCE_LEVEL_LABELS = {
   strong_multi_signal: 'Banyak Indikasi Kuat',
@@ -20,10 +15,20 @@ const EVIDENCE_LEVEL_LABELS = {
 }
 
 const fmtRp = (x) => `Rp ${Math.round(x || 0).toLocaleString('id-ID')}`
+const INTERNAL_ANALYSIS_TEXT = /(?:\b(?:traceback|stack\s*trace|call\s*stack|exception)\b|\b(?:internal|unexpected|unhandled|runtime|value|type|key|json|sql|database|connection|timeout|permission|assertion)\s*[-_ ]?(?:error|failure|exception)\b|\b(?:failed|failure|error|gagal|tidak\s+tersedia)\b|\bsecret(?:[_\s-]+[a-z0-9]+)+\b|\[[^\]]*\b(?:fallback|error|exception|unavailable)\b[^\]]*\])/i
 
-function plainText(value) {
+function plainText(value, section) {
   if (!value) return value
-  return String(value)
+  const text = String(value)
+  if (
+    ((['clinical', 'financial', 'fraud', 'review'].includes(section)) && INTERNAL_ANALYSIS_TEXT.test(text))
+    || /(?:clinical|financial|fraud)\s+(?:agent|engine)\s+gagal:/i.test(text)
+    || /Penilaian klinis LLM tidak tersedia\s*\(/i.test(text)
+    || /\[Fallback (?:z-score peer|rule-count)[^\]]*:/i.test(text)
+  ) {
+    return safeErrorMessage({ code: 'analysis_retryable' })
+  }
+  return humanizeText(text
     .replace(/phantom billing/gi, 'tindakan yang belum terbukti')
     .replace(/repeat billing/gi, 'pengulangan klaim')
     .replace(/cloning/gi, 'kemiripan tidak wajar antar klaim')
@@ -44,7 +49,7 @@ function plainText(value) {
     .replace(/ACUTE MYOCARDIAL INFARCTION/gi, 'serangan jantung akut')
     .replace(/diagnosis-prosedur-severity/gi, 'diagnosis, tindakan, dan tingkat keparahan')
     .replace(/deviasi/gi, 'perbedaan')
-    .replace(/evidence/gi, 'temuan')
+    .replace(/evidence/gi, 'temuan'))
 }
 
 export default function Assessment() {
@@ -54,87 +59,176 @@ export default function Assessment() {
   const [data, setData] = useState(null)
   const [notFound, setNotFound] = useState(false)
   const [stale, setStale] = useState(false)
+  const [analysisError, setAnalysisError] = useState(null)
+  const [analysisRetryGeneration, setAnalysisRetryGeneration] = useState(0)
   const [expandedSimilar, setExpandedSimilar] = useState(null)
   const [decision, setDecision] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [existingDecision, setExistingDecision] = useState(null)
   const [loadingDecision, setLoadingDecision] = useState(true)
+  const [decisionLoadError, setDecisionLoadError] = useState(null)
+  const [decisionError, setDecisionError] = useState(null)
+  const [decisionRetryGeneration, setDecisionRetryGeneration] = useState(0)
   const [savingDecision, setSavingDecision] = useState(false)
+  const analysisGenerationRef = useRef(0)
+  const analysisClaimRef = useRef(claimId)
+  const decisionGenerationRef = useRef(0)
+  const decisionClaimRef = useRef(claimId)
+  const decisionPostGenerationRef = useRef(0)
+  const decisionPostControllerRef = useRef(null)
 
   // Load analysis result: sessionStorage → fallback DB.
   // Guard versi: hasil dengan analysis_version berbeda = stale (dihitung
   // logika engine lama) → jangan ditampilkan, minta analisis ulang.
   useEffect(() => {
-    const stored = sessionStorage.getItem(`result_${claimId}`)
+    const generation = ++analysisGenerationRef.current
+    let cancelled = false
+    const isCurrent = () => !cancelled && generation === analysisGenerationRef.current
+    const forceFetch = analysisClaimRef.current === claimId && analysisRetryGeneration > 0
+    analysisClaimRef.current = claimId
+
+    if (!forceFetch) setData(null)
+    setNotFound(false)
+    setStale(false)
+    setAnalysisError(null)
+    const stored = forceFetch ? null : sessionStorage.getItem(`result_${claimId}`)
     if (stored) {
       try {
-        const parsed = JSON.parse(stored)
-        if (parsed.analysis_version === ANALYSIS_VERSION) {
+        const parsed = publicAnalysisProjection(JSON.parse(stored))
+        if (isCurrent() && parsed.analysis_version === ANALYSIS_VERSION) {
+          sessionStorage.setItem(`result_${claimId}`, JSON.stringify(parsed))
           setData(parsed)
-          return
+          return () => { cancelled = true }
         }
         sessionStorage.removeItem(`result_${claimId}`)
       } catch { /* fallthrough */ }
     }
-    claimsApi.getAnalysis(claimId).then(res => {
-      const existing = res.data
-      if (existing.status === 'analyzed' && existing.result?.risk && existing.result?.explanation) {
-        if (existing.result.analysis_version !== ANALYSIS_VERSION) {
+    const loadAnalysis = async () => {
+      try {
+        const res = await claimsApi.getAnalysis(claimId)
+        if (!isCurrent()) return
+        const existing = publicAnalysisProjection(res.data)
+        if (existing.status === 'stale') {
           setStale(true)
           setNotFound(true)
           return
         }
-        const rebuilt = {
-          analysis_version: existing.result.analysis_version,
-          clinical: existing.result.clinical,
-          financial: existing.result.financial,
-          fraud: existing.result.fraud,
-          review: existing.result.review,
-          risk: existing.result.risk,
-          explanation: existing.result.explanation,
+        if (existing.status === 'analyzed' && existing.result?.risk && existing.result?.explanation) {
+          if (existing.result.analysis_version !== ANALYSIS_VERSION) {
+            setStale(true)
+            setNotFound(true)
+            return
+          }
+          const rebuilt = publicAnalysisProjection({
+            analysis_version: existing.result.analysis_version,
+            clinical: existing.result.clinical,
+            financial: existing.result.financial,
+            fraud: existing.result.fraud,
+            review: existing.result.review,
+            risk: existing.result.risk,
+            explanation: existing.result.explanation,
+          })
+          if (!isCurrent()) return
+          sessionStorage.setItem(`result_${claimId}`, JSON.stringify(rebuilt))
+          setData(rebuilt)
+        } else {
+          setNotFound(true)
         }
-        sessionStorage.setItem(`result_${claimId}`, JSON.stringify(rebuilt))
-        setData(rebuilt)
-      } else {
-        setNotFound(true)
+      } catch (error) {
+        if (!isCurrent()) return
+        if (error?.response?.status === 404) setNotFound(true)
+        else setAnalysisError(safeErrorMessage(error, 'dependency_unavailable'))
       }
-    }).catch(() => setNotFound(true))
-  }, [claimId])
+    }
+    loadAnalysis()
+    return () => { cancelled = true }
+  }, [claimId, analysisRetryGeneration])
 
   // Keputusan verifier tersimpan di DB — persisten lintas reload
   useEffect(() => {
+    const generation = ++decisionGenerationRef.current
+    let cancelled = false
+    const isCurrent = () => !cancelled && generation === decisionGenerationRef.current
+
+    const preserveDecision = decisionClaimRef.current === claimId && decisionRetryGeneration > 0
+    decisionClaimRef.current = claimId
+    if (!preserveDecision) {
+      setExistingDecision(null)
+      setSubmitted(false)
+      setDecision('')
+    }
+    setLoadingDecision(true)
+    setDecisionLoadError(null)
     const fetchDecision = async () => {
       try {
         const res = await claimsApi.getDecision(claimId)
+        if (!isCurrent()) return
         if (res.data.status === 'decided') {
           setExistingDecision(res.data)
           setSubmitted(true)
           setDecision(res.data.decision)
+        } else {
+          setExistingDecision(null)
+          setSubmitted(false)
+          setDecision('')
         }
-      } catch (e) {
-        console.warn('Could not fetch existing decision:', e.message)
+     } catch (e) {
+         if (isCurrent()) setDecisionLoadError(safeErrorMessage(e, 'dependency_unavailable'))
       } finally {
-        setLoadingDecision(false)
+        if (isCurrent()) setLoadingDecision(false)
       }
     }
     fetchDecision()
-  }, [claimId])
+    return () => {
+      cancelled = true
+      decisionGenerationRef.current += 1
+      decisionPostGenerationRef.current += 1
+      decisionPostControllerRef.current?.abort()
+    }
+  }, [claimId, decisionRetryGeneration])
+
+  const handleAnalysisRetry = () => {
+    setAnalysisError(null)
+    setNotFound(false)
+    setStale(false)
+    setAnalysisRetryGeneration(generation => generation + 1)
+  }
+
+  const handleDecisionRetry = () => {
+    setDecisionLoadError(null)
+    setDecisionRetryGeneration(generation => generation + 1)
+  }
 
   const handleSubmitDecision = async () => {
     if (!decision) return
+    const generation = ++decisionPostGenerationRef.current
+    const controller = new AbortController()
+    decisionPostControllerRef.current = controller
+    const isCurrent = () => generation === decisionPostGenerationRef.current
     setSavingDecision(true)
+    setDecisionError(null)
     try {
-      await claimsApi.submitDecision(claimId, {
+      const response = await claimsApi.submitDecision(claimId, {
         claim_id: claimId,
         decision,
         reviewer: 'BPJS-VERIFIER-01',
-      })
+      }, { signal: controller.signal })
+      if (!isCurrent()) return
       setSubmitted(true)
-      setExistingDecision({ decision, reviewer: 'BPJS-VERIFIER-01', timestamp: new Date().toISOString() })
+      setExistingDecision({
+        decision,
+        reviewer: 'BPJS-VERIFIER-01',
+        verified_at: response.data.verified_at,
+      })
     } catch (e) {
-      alert('Gagal menyimpan keputusan. Pastikan backend aktif.')
+      if (isCurrent() && e?.code !== 'ERR_CANCELED' && e?.name !== 'CanceledError') {
+        setDecisionError(safeErrorMessage(e, 'dependency_unavailable'))
+      }
     } finally {
-      setSavingDecision(false)
+      if (isCurrent()) setSavingDecision(false)
+      if (decisionPostControllerRef.current === controller) {
+        decisionPostControllerRef.current = null
+      }
     }
   }
 
@@ -148,6 +242,16 @@ export default function Assessment() {
       alert('Gagal mereset klaim untuk analisis ulang.')
     }
   }
+
+  if (analysisError && !data) return (
+    <div className="status-message error" role="alert">
+      <strong>Hasil pemeriksaan belum dapat dimuat</strong>
+      <p>{analysisError}</p>
+      <button className="btn btn-outline" style={{ marginTop: '1rem' }} onClick={handleAnalysisRetry}>
+        Coba muat lagi
+      </button>
+    </div>
+  )
 
   if (notFound) return (
     <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -175,7 +279,7 @@ export default function Assessment() {
 
   // Breakdown skor untuk chart
   const shapData = Object.entries(risk.breakdown || {})
-    .map(([key, val]) => ({ name: COMPONENT_LABELS[key] || key, value: val }))
+    .map(([key, val]) => ({ name: COMPONENT_LABELS[key] || 'Komponen pemeriksaan', value: val }))
     .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
 
   // SHAP features asli dari model (bukan breakdown bobot)
@@ -198,7 +302,7 @@ export default function Assessment() {
       <div className="page-header">
         <div className="flex items-center justify-between">
           <div>
-            <h2>Hasil Pemeriksaan Klaim</h2>
+            <h1>Hasil Pemeriksaan Klaim</h1>
             <p className="font-mono text-sm" style={{ color: 'var(--text-muted)' }}>Klaim: {claimId}</p>
           </div>
           <div className="flex gap-1">
@@ -212,8 +316,15 @@ export default function Assessment() {
         </div>
       </div>
 
+      {analysisError && (
+        <div className="alert-disclaimer mb-3" role="alert">
+          <strong>Hasil pemeriksaan terbaru belum dapat dimuat.</strong> {analysisError}
+          <button className="btn btn-ghost" style={{ marginLeft: '0.75rem' }} onClick={handleAnalysisRetry}>Coba muat lagi</button>
+        </div>
+      )}
+
       {data.partial && (
-        <div className="alert-disclaimer mb-3" style={{ borderLeft: '4px solid var(--warning)' }}>
+        <div className="alert-disclaimer mb-3" style={{ borderLeft: '4px solid var(--warning-text)' }}>
          ⚠ <strong>Pemeriksaan belum lengkap</strong> — sebagian data tidak tersedia sehingga temuan perlu dibaca dengan perhatian tambahan.
         </div>
       )}
@@ -237,9 +348,9 @@ export default function Assessment() {
                   Prioritas {risk.priority_tier === 'high' ? 'Tinggi' : risk.priority_tier === 'medium' ? 'Sedang' : 'Rendah'}
                 </span>
               </div>
-              <h3 style={{ fontSize: '1.1rem', marginBottom: '0.2rem' }}>
-                {formatRecommendedAction(explanation.recommended_action)}
-              </h3>
+               <p style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.2rem' }}>
+                 {formatRecommendedAction(explanation.recommended_action)}
+               </p>
               <p className="text-muted text-sm">
                  {clinical?.rule_flags?.length > 0
                    ? `${clinical.rule_flags.length} temuan medis perlu diperhatikan`
@@ -264,9 +375,9 @@ export default function Assessment() {
                     </strong>
                   </p>
                   <p className="text-sm text-muted">Dicatat oleh: {existingDecision.reviewer}</p>
-                  {existingDecision.timestamp && (
+                  {existingDecision.verified_at && (
                     <p className="text-xs text-muted" style={{ marginTop: '0.25rem' }}>
-                      {new Date(existingDecision.timestamp).toLocaleString('id-ID')}
+                      Diverifikasi: {new Date(existingDecision.verified_at).toLocaleString('id-ID')}
                     </p>
                   )}
                 </>
@@ -278,23 +389,52 @@ export default function Assessment() {
               >
                 Ubah Keputusan
               </button>
+              {decisionLoadError && (
+                <div className="status-message error" role="alert" style={{ marginTop: '1rem', textAlign: 'left' }}>
+                  <strong>Riwayat keputusan belum dapat diperbarui</strong>
+                  <p>{decisionLoadError}</p>
+                  <button className="btn btn-outline" style={{ marginTop: '0.75rem' }} onClick={handleDecisionRetry}>
+                    Muat keputusan lagi
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div>
-              {loadingDecision ? (
+              {decisionLoadError ? (
+                <div className="status-message error" role="alert" style={{ padding: '1rem' }}>
+                  <strong>Riwayat keputusan belum dapat dimuat</strong>
+                  <p>{decisionLoadError}</p>
+                  <button className="btn btn-outline" style={{ marginTop: '0.75rem' }} onClick={handleDecisionRetry}>
+                    Muat keputusan lagi
+                  </button>
+                </div>
+              ) : loadingDecision ? (
                 <div className="text-sm text-muted text-center" style={{ padding: '1rem' }}>
                   Memeriksa riwayat keputusan...
                 </div>
               ) : (
                 <>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-                    {DECISION_OPTIONS.map(opt => (
-                      <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.5rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: '6px', border: decision === opt.value ? '1px solid var(--accent-green)' : '1px solid var(--border)' }}>
-                        <input type="radio" name="decision" value={opt.value} checked={decision === opt.value} onChange={e => setDecision(e.target.value)} />
-                        <span style={{ fontSize: '0.85rem' }}>{opt.label}</span>
-                      </label>
-                    ))}
-                  </div>
+                  {decisionError && (
+                    <div className="status-message error" role="alert" style={{ padding: '1rem', marginBottom: '1rem' }}>
+                      <strong>Keputusan belum tersimpan</strong>
+                      <p>{decisionError}</p>
+                      <button className="btn btn-outline" style={{ marginTop: '0.75rem' }} onClick={handleSubmitDecision} disabled={savingDecision}>
+                        Coba simpan lagi
+                      </button>
+                    </div>
+                  )}
+                  <fieldset className="assessment-decision-fieldset">
+                    <legend className="sr-only">Keputusan Petugas Verifier</legend>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+                      {DECISION_OPTIONS.map(opt => (
+                        <label key={opt.value} className="assessment-decision-option" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.5rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: '6px', border: decision === opt.value ? '1px solid var(--accent-green)' : '1px solid var(--border)' }}>
+                          <input type="radio" name="decision" value={opt.value} checked={decision === opt.value} onChange={e => setDecision(e.target.value)} />
+                          <span style={{ fontSize: '0.85rem' }}>{opt.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
                   <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleSubmitDecision} disabled={!decision || savingDecision}>
                     {savingDecision ? '⟳ Menyimpan...' : 'Simpan Keputusan'}
                   </button>
@@ -308,9 +448,9 @@ export default function Assessment() {
       <div className="grid-2" style={{ gap: '1.5rem' }}>
         <div className="flex-col" style={{ gap: '1.5rem', display: 'flex' }}>
           <div className="card">
-            <div className="card-title">Evidence Deterministik</div>
+         <div className="card-title">Dasar Penilaian</div>
             <p className="text-xs text-muted mb-2">
-              Temuan berikut berasal dari aturan dan pemeriksaan terukur. Ringkasan AI tidak mengubah skor.
+               Temuan berikut berasal dari aturan dan pemeriksaan terukur. Ringkasan otomatis tidak mengubah nilai risiko.
             </p>
             {deterministicEvidence.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
@@ -322,7 +462,7 @@ export default function Assessment() {
                 ))}
               </div>
             ) : (
-              <div className="text-sm text-muted">Belum ada evidence deterministik yang mendukung prioritas.</div>
+               <div className="text-sm text-muted">Belum ada temuan yang mendukung tingkat prioritas.</div>
             )}
           </div>
 
@@ -330,18 +470,13 @@ export default function Assessment() {
           <div className="card">
             <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                Ringkasan Pemeriksaan
-              {explanation?.generated_by && (
-                <span className="badge badge-blue" style={{ fontSize: '0.6rem', fontWeight: 400 }}>
-                   {explanation.generated_by === 'template_fallback' ? 'ringkasan aturan' : 'ringkasan otomatis'}
-                </span>
-              )}
             </div>
             <div className="qa-answer mb-2" style={{ marginTop: 0 }}>
                {plainText(explanation?.narrative_id) || 'Ringkasan tidak tersedia.'}
             </div>
             <div className="text-xs text-muted mb-3" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
               <span style={{ color: 'var(--accent-green)' }}>
-                Dihasilkan dari bukti terverifikasi — angka divalidasi silang dengan skor sistem; tidak digunakan untuk menghitung skor akhir.
+                 Angka dalam ringkasan dicocokkan dengan data klaim. Ringkasan ini membantu menentukan prioritas, bukan menggantikan keputusan petugas.
               </span>
             </div>
 
@@ -354,7 +489,7 @@ export default function Assessment() {
                  { label: 'Apakah temuan ini sudah dikonfirmasi?', key: 'is_this_fraud' }
               ].map(q => (
                 <details key={q.key} style={{ background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
-                  <summary style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', cursor: 'pointer', outline: 'none', fontWeight: 500 }}>
+                  <summary className="assessment-qa-summary" style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 500 }}>
                     {q.label}
                   </summary>
                   <div style={{ padding: '1rem', borderTop: '1px solid var(--border)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, background: 'var(--bg-card)' }}>
@@ -378,27 +513,33 @@ export default function Assessment() {
                 <table>
                   <thead>
                     <tr>
-                      <th>ID Klaim</th>
-                      <th>Diagnosis</th>
-                       <th>Claimed Amount</th>
-                      <th>Kemiripan</th>
+                      <th scope="col">ID Klaim</th>
+                      <th scope="col">Diagnosis</th>
+                        <th scope="col">Biaya yang diajukan</th>
+                      <th scope="col">Kemiripan</th>
                     </tr>
                   </thead>
                   <tbody>
                     {similarClaims.map(sc => (
                       <Fragment key={sc.claim_id}>
                         <tr
-                          onClick={() => setExpandedSimilar(expandedSimilar === sc.claim_id ? null : sc.claim_id)}
-                          style={{ cursor: 'pointer' }}
-                          title="Klik untuk rincian faktor kemiripan"
                         >
                           <td className="font-mono" style={{ fontSize: '0.75rem' }}>
-                            <div className="flex items-center gap-1">
-                              {expandedSimilar === sc.claim_id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                            <button
+                              type="button"
+                              className="similar-claim-toggle"
+                              aria-label={`Buka rincian faktor kemiripan untuk klaim ${sc.claim_id}`}
+                              aria-expanded={expandedSimilar === sc.claim_id}
+                              aria-controls={`similar-claim-${sc.claim_id}`}
+                              onClick={() => setExpandedSimilar(expandedSimilar === sc.claim_id ? null : sc.claim_id)}
+                              title="Buka rincian faktor kemiripan"
+                              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', width: '100%', border: 0, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer' }}
+                            >
+                              {expandedSimilar === sc.claim_id ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronRight size={12} aria-hidden="true" />}
                               {sc.claim_id}
-                            </div>
+                            </button>
                             {sc.same_patient && (
-                              <div style={{ fontSize: '0.6rem', color: 'var(--risk-high)' }}>pasien sama</div>
+                              <div style={{ fontSize: '0.6rem', color: 'var(--error-text)' }}>pasien sama</div>
                             )}
                           </td>
                           <td><span className="badge badge-blue" style={{ fontSize: '0.65rem' }}>{sc.diagnosis_primary || '—'}</span></td>
@@ -414,7 +555,7 @@ export default function Assessment() {
                         </tr>
                         {expandedSimilar === sc.claim_id && (
                           <tr>
-                            <td colSpan={4} style={{ background: 'var(--bg-secondary)', padding: '0.75rem 1rem' }}>
+                            <td id={`similar-claim-${sc.claim_id}`} colSpan={4} style={{ background: 'var(--bg-secondary)', padding: '0.75rem 1rem' }}>
                                <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.45rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                                  Alasan kemiripan
                               </div>
@@ -457,9 +598,9 @@ export default function Assessment() {
         </div>
 
         <div className="flex-col" style={{ gap: '1.5rem', display: 'flex' }}>
-          {/* Grafik Kontribusi Skor */}
+           {/* Grafik bagian yang memengaruhi nilai risiko */}
           <div className="card">
-            <div className="card-title">Faktor Penentu Risiko Utama</div>
+             <div className="card-title">Bagian yang Memengaruhi Nilai Risiko</div>
             <p className="text-xs text-muted mb-2">Bagian pemeriksaan yang paling memengaruhi tingkat prioritas klaim.</p>
             <div style={{ height: 250, width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -482,20 +623,20 @@ export default function Assessment() {
             </div>
           </div>
 
-           {/* Faktor yang memengaruhi reimbursement benchmark */}
+           {/* Faktor yang memengaruhi perkiraan biaya */}
           {shapFeatures.length > 0 && (
             <div className="card">
-               <div className="card-title">Faktor yang Memengaruhi Reimbursement Benchmark</div>
+                <div className="card-title">Faktor yang Memengaruhi Perkiraan Biaya</div>
                <p className="text-xs text-muted mb-2">
-                 Faktor yang paling memengaruhi benchmark reimbursement kasus ini.
+                  Faktor yang paling memengaruhi perkiraan biaya untuk kasus ini.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                 {shapFeatures.map((f, i) => (
                   <div key={i}>
                     <div className="flex justify-between text-xs mb-1">
                        <span>{plainText(f.feature_label || formatFeature(f.feature_name))}</span>
-                      <span style={{ fontWeight: 600, color: f.direction === 'positive' ? 'var(--risk-high)' : 'var(--success)' }}>
-                         {f.direction === 'positive' ? '↑ benchmark lebih tinggi' : '↓ benchmark lebih rendah'}
+                       <span style={{ fontWeight: 600, color: f.direction === 'positive' ? 'var(--error-text)' : 'var(--success)' }}>
+                          {f.direction === 'positive' ? '↑ perkiraan biaya lebih tinggi' : '↓ perkiraan biaya lebih rendah'}
                       </span>
                     </div>
                     <div className="progress-bar" style={{ height: 5 }}>
@@ -517,27 +658,27 @@ export default function Assessment() {
               <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--accent-green)' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
                    <span>Temuan Medis</span>
-                   <span>{clinical?.evidence_source === 'llm_local' ? 'Analisis tambahan' : clinical?.evidence_source === 'fallback_no_data' ? 'Data cadangan' : 'Aturan pemeriksaan'}</span>
+                    <span>{clinical?.evidence_source === 'llm_local' ? 'Catatan tambahan' : clinical?.evidence_source === 'fallback_no_data' ? 'Data pembanding' : 'Aturan pemeriksaan'}</span>
                 </div>
-                 <div style={{ fontSize: '0.82rem' }}>{plainText(clinical?.evidence_text) || 'Tidak ada temuan medis yang signifikan.'}</div>
+                  <div style={{ fontSize: '0.82rem' }}>{plainText(clinical?.evidence_text, 'clinical') || 'Tidak ada temuan medis yang signifikan.'}</div>
               </div>
-              <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--risk-medium)' }}>
+               <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--warning-text)' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Temuan Reimbursement</span>
-                    <span>{financial?.method === 'zscore_peer_fallback' ? 'Benchmark cadangan' : 'Analisis benchmark'}</span>
+                     <span>Temuan Perkiraan Biaya</span>
+                     <span>{financial?.method === 'zscore_peer_fallback' ? 'Data pembanding' : 'Perkiraan biaya'}</span>
                 </div>
-                 <div style={{ fontSize: '0.82rem' }}>{plainText(financial?.evidence_text) || 'Biaya berada dalam kisaran yang wajar.'}</div>
+                  <div style={{ fontSize: '0.82rem' }}>{plainText(financial?.evidence_text, 'financial') || 'Biaya berada dalam kisaran yang wajar.'}</div>
               </div>
-              <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--risk-high)' }}>
+               <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--error-text)' }}>
                  <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Temuan Pola Klaim</div>
-                 <div style={{ fontSize: '0.82rem' }}>{plainText(fraud?.evidence_text) || 'Tidak ditemukan pola pengulangan klaim yang perlu ditindaklanjuti.'}</div>
+                  <div style={{ fontSize: '0.82rem' }}>{plainText(fraud?.evidence_text, 'fraud') || 'Tidak ditemukan pola pengulangan klaim yang perlu ditindaklanjuti.'}</div>
               </div>
               <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--border)' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
                    <span>Ringkasan Temuan</span>
                    <span>{review?.reasoning_source === 'rule_fallback' ? 'Aturan pemeriksaan' : 'Analisis tambahan'}</span>
                 </div>
-                 <div style={{ fontSize: '0.82rem' }}>{plainText(review?.reasoning_narrative) || '—'}</div>
+                  <div style={{ fontSize: '0.82rem' }}>{plainText(review?.reasoning_narrative, 'review') || '—'}</div>
               </div>
             </div>
           </div>

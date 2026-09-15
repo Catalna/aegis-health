@@ -144,4 +144,4 @@ Memberikan **prioritisasi presisi berbasis bukti (Evidence-Based Priority Queue)
 - [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md) — Cetak biru arsitektur teknis dan database schema.
 - [BusinessCore.md](file:///c:/Users/Radith/E-Jak/docs/BusinessCore.md) — Logika domain bisnis JKN, INA-CBG, dan strategi mitigasi upcoding.
 - [AgentWorkflow.md](file:///c:/Users/Radith/E-Jak/docs/AgentWorkflow.md) — Detail alur pipeline multi-agent dan protokol SSE.
-- [Models.md](file:///c:/Users/Radith/E-Jak/docs/Models.md) — Spesifikasi teknis model ML, Vector Store, Graph Metrics, dan LLM.
+- [MODELS.md](file:///c:/Users/Radith/E-Jak/docs/MODELS.md) — Spesifikasi teknis model ML, Vector Store, Graph Metrics, dan LLM.

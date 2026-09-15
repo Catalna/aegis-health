@@ -18,6 +18,13 @@ from backend.app.core.llm_client import (
     structured_completion, LLMError,
     EXPLANATION_MODEL, EXPLANATION_MODEL_FALLBACK, get_available_model,
 )
+from backend.app.core.human_language import (
+    RULE_LABELS,
+    SIGNAL_LABELS,
+    format_rule_finding,
+    humanize_rule,
+    humanize_signal,
+)
 
 FRAUD_ANSWER = (
     "Sistem ini tidak menetapkan status fraud secara definitif. Skor dan temuan yang ditampilkan "
@@ -37,12 +44,12 @@ _JARGON_MAP = {
     "similarity_fraud": "kemiripan riwayat klaim",
     "clinical_rule_flags": "kewajaran medis",
     "clinical_plausibility": "kewajaran medis",
-    "isolation_forest_anomaly": "anomali pola perilaku",
-    "isolation_forest": "pola anomali klaim",
-    "financial_anomaly": "anomali finansial",
-    "evidence_support": "kekuatan bukti deterministik",
+    "isolation_forest_anomaly": "pola klaim yang menyimpang",
+    "isolation_forest": "pola klaim yang menyimpang",
+    "financial_anomaly": "perbedaan biaya",
+    "evidence_support": "kekuatan dasar penilaian",
     "SHAP": "analisis faktor biaya",
-    "XGBoost": "model prediksi biaya",
+    "XGBoost": "perkiraan biaya",
     "Jaccard": "kemiripan kode medis",
 }
 
@@ -50,6 +57,16 @@ _JARGON_MAP = {
 def _sanitize_jargon(text: str) -> str:
     for key, label in _JARGON_MAP.items():
         text = text.replace(key, label)
+    for key in (*RULE_LABELS, *SIGNAL_LABELS):
+        text = text.replace(key, humanize_rule(key) if key in RULE_LABELS else humanize_signal(key))
+    text = re.sub(r"\[[^\]]*(?:mistral|deepseek|qwen|llama)[^\]]*\]\s*", "Catatan tambahan: ", text, flags=re.I)
+    text = text.replace("Flag", "Temuan").replace("flag", "temuan")
+    text = text.replace("rule engine", "aturan pemeriksaan")
+    text = text.replace("deterministik", "berdasarkan aturan pemeriksaan")
+    text = text.replace("anomaly score", "nilai perbedaan")
+    text = text.replace("repeat billing", "pengulangan klaim")
+    text = text.replace("cloning", "kemiripan tidak wajar antar klaim")
+    text = text.replace("unbundling", "pemisahan tindakan")
     return text
 
 
@@ -61,11 +78,11 @@ def build_priority_reason(risk: RiskScore) -> str:
     """Deterministic QA wording so a clean claim is not described as a change."""
     if risk.priority_tier == "low":
         return (
-            f"Prioritas rendah (skor {risk.total_score:.0f}/100) karena sistem tidak menemukan "
-            "ketidakwajaran atau sinyal risiko signifikan yang memenuhi ambang investigasi."
+            f"Prioritas rendah (nilai risiko {risk.total_score:.0f}/100) karena sistem tidak menemukan "
+            "ketidakwajaran atau temuan risiko penting yang perlu ditindaklanjuti."
         )
     tier = "tinggi" if risk.priority_tier == "high" else "sedang"
-    return f"Prioritas {tier} (skor {risk.total_score:.0f}/100) ditentukan dari kontribusi sinyal risiko yang terverifikasi."
+    return f"Prioritas {tier} (nilai risiko {risk.total_score:.0f}/100) ditentukan dari beberapa temuan risiko yang saling mendukung."
 
 
 def _normalize_tokens(text: str) -> list[float]:
@@ -116,7 +133,7 @@ def _similar_claim_text(fraud: FraudAssessment, claim_cost: float = 0.0) -> str:
     """Teks klaim serupa DENGAN konteks faktor — bukan sekadar persen."""
     if not fraud.similar_claims:
         if fraud.similarity_matched_claim_id:
-            return f"Klaim paling mirip: {fraud.similarity_matched_claim_id} (skor kemiripan {fraud.similarity_max_score*100:.0f}%)."
+            return f"Klaim yang paling mirip: {fraud.similarity_matched_claim_id} (tingkat kemiripan {fraud.similarity_max_score*100:.0f}%)."
         return "Tidak ada riwayat klaim yang mirip."
     top = fraud.similar_claims[0]
     faktor = [f"kode medis {top.code_similarity*100:.0f}% sama"]
@@ -130,7 +147,7 @@ def _similar_claim_text(fraud: FraudAssessment, claim_cost: float = 0.0) -> str:
     if top.days_apart is not None:
         faktor.append(f"jarak {top.days_apart} hari")
     return (
-        f"Klaim {top.claim_id} paling mirip (skor gabungan {top.similarity*100:.0f}%: "
+        f"Klaim {top.claim_id} paling mirip (tingkat kemiripan gabungan {top.similarity*100:.0f}%: "
         f"{', '.join(faktor)}; biaya klaim lain {_fmt_rp(top.cost_claimed)}, "
         f"diagnosis {top.diagnosis_primary or 'N/A'}, faskes {top.provider_id or 'N/A'})."
     )
@@ -148,23 +165,23 @@ def _template_explanation(
     ][:4]
     if not reasons:
         if financial.deviation_pct > 20:
-            reasons.append(f"Biaya melebihi prediksi model {financial.deviation_pct:+.1f}%")
+            reasons.append(f"Biaya lebih tinggi {financial.deviation_pct:+.1f}% dari perkiraan kasus sejenis")
         if fraud.repeat_billing_flag:
-            reasons.append("Indikasi repeat billing pada pasien yang sama")
+            reasons.append("Kemungkinan pengulangan klaim pada peserta yang sama")
         if clinical.rule_flags:
-            reasons.append("Terdeteksi flag klinis: " + ", ".join(clinical.rule_flags))
+            reasons.extend(format_rule_finding(flag) for flag in clinical.rule_flags)
     if not reasons:
         reasons.append("Tidak ditemukan indikasi anomali signifikan.")
 
     tier_label = {"high": "tinggi", "medium": "sedang", "low": "rendah"}[risk.priority_tier]
     top_reason = reasons[0].rstrip(".")
     narrative = (
-        f"Klaim {claim.claim_id} mendapat skor risiko {facts['score']:.0f} dari 100 "
+        f"Klaim {claim.claim_id} mendapat nilai risiko {facts['score']:.0f} dari 100 "
         f"(prioritas {tier_label}). "
         + (f"Temuan utama: {top_reason}. " if reasons else "")
         + f"Biaya diklaim {_fmt_rp(claim.cost_claimed)}"
         + (
-            f" vs prediksi model {_fmt_rp(financial.predicted_cost_range[1] / 1.15)} (deviasi {financial.deviation_pct:+.1f}%)."
+            f" dibandingkan perkiraan biaya penggantian {_fmt_rp(financial.predicted_cost_range[1] / 1.15)} (perbedaan {financial.deviation_pct:+.1f}%)."
             if financial.method == "xgboost_model" else "."
         )
     )
@@ -173,12 +190,12 @@ def _template_explanation(
 
     strongest = max(risk.breakdown, key=risk.breakdown.get) if risk.breakdown else "financial_anomaly"
     strongest_label = {
-        "financial_anomaly": "Anomali finansial",
-        "clinical_rule_flags": "Flag klinis (rule engine)",
+        "financial_anomaly": "Perbedaan biaya",
+        "clinical_rule_flags": "Temuan medis",
         "similarity_fraud": "Kemiripan klaim historis",
-        "isolation_forest_anomaly": "Anomali pola perilaku",
-        "evidence_support": "Kekuatan bukti deterministik",
-    }.get(strongest, strongest)
+        "isolation_forest_anomaly": "Pola klaim yang menyimpang",
+        "evidence_support": "Kekuatan dasar penilaian",
+    }.get(strongest, _sanitize_jargon(strongest))
 
     return ClaimExplanation(
         claim_id=claim.claim_id,
@@ -328,7 +345,7 @@ SINTESIS REVIEW: {review.reasoning_narrative}
             qa_panel=QAPanel(
                 why_top_priority=build_priority_reason(risk),
                 most_similar_claim=similar_claim_text,
-                strongest_evidence=" ".join(item.explanation for item in selected_evidence[:2]),
+            strongest_evidence=_sanitize_jargon(" ".join(item.explanation for item in selected_evidence[:2])),
                 is_this_fraud=FRAUD_ANSWER,  # hardcoded, tidak pernah dari LLM
             ),
             generated_by=model,

@@ -14,6 +14,7 @@ import httpx
 from typing import Protocol, Optional, runtime_checkable
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from backend.app.core.errors import DEPENDENCY_UNAVAILABLE_CODE
 
 load_dotenv()
 
@@ -35,7 +36,9 @@ MAX_RETRIES = 2  # 1 percobaan awal + 2 retry dengan feedback error
 
 
 class LLMError(Exception):
-    pass
+    def __init__(self, message: str, error_code: str | None = None):
+        super().__init__(message)
+        self.error_code = error_code
 
 
 # ---------------------------------------------------------------------------
@@ -168,9 +171,9 @@ class OllamaClient:
                 response.raise_for_status()
                 return response.json().get("response", "")
             except httpx.HTTPStatusError as e:
-                raise LLMError(f"HTTP error dari Ollama: {e}")
+                raise LLMError(f"HTTP error dari Ollama: {e}", DEPENDENCY_UNAVAILABLE_CODE)
             except httpx.RequestError as e:
-                raise LLMError(f"Koneksi ke Ollama gagal: {e}")
+                raise LLMError(f"Koneksi ke Ollama gagal: {e}", DEPENDENCY_UNAVAILABLE_CODE)
 
     async def structured_call(
         self,
@@ -181,7 +184,10 @@ class OllamaClient:
         temperature: float = 0.0,
     ) -> BaseModel:
         if not await self.model_available(model):
-            raise LLMError(f"Model '{model}' tidak tersedia di Ollama")
+            raise LLMError(
+                f"Model '{model}' tidak tersedia di Ollama",
+                DEPENDENCY_UNAVAILABLE_CODE,
+            )
 
         augmented = _build_json_instruction(system_prompt, output_schema)
         last_error = ""
@@ -224,7 +230,7 @@ class GeminiClient:
         temperature: float = 0.0,
     ) -> BaseModel:
         if not self.is_configured():
-            raise LLMError("GEMINI_API_KEY tidak dikonfigurasi di .env")
+            raise LLMError("GEMINI_API_KEY tidak dikonfigurasi di .env", DEPENDENCY_UNAVAILABLE_CODE)
 
         fields = output_schema.model_fields
         props = {}

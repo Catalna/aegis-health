@@ -72,7 +72,7 @@ def test_review_source_count_does_not_double_count_one_agent():
 async def test_review_fallback_on_llm_error(monkeypatch):
     """LLM error → rule-count fallback: 3/3 sinyal → strong_multi_signal (AGENTS.md)."""
     async def boom(*a, **k):
-        raise Exception("LLM down")
+        raise Exception("SECRET_PERSISTED_EXCEPTION")
     import backend.app.agents.review_agent as ra
     monkeypatch.setattr(ra, "structured_completion", boom)
     monkeypatch.setattr(ra, "get_available_model", lambda *a: _async("mistral:7b"))
@@ -84,6 +84,7 @@ async def test_review_fallback_on_llm_error(monkeypatch):
     )
     assert review.evidence_level == "strong_multi_signal"
     assert review.reasoning_source == "rule_fallback"
+    assert "SECRET_PERSISTED_EXCEPTION" not in review.reasoning_narrative
 
 
 async def _async(x):
@@ -338,4 +339,4 @@ def test_sanitize_jargon_replaces_keys():
     assert "similarity_fraud" not in clean
     assert "isolation_forest" not in clean
     assert "kemiripan riwayat klaim" in clean
-    assert "anomali pola perilaku" in clean
+    assert "pola klaim yang menyimpang" in clean

@@ -1,5 +1,5 @@
 from backend.app.agents.orchestrator import ANALYSIS_VERSION
-from backend.app.api.claims import is_current_analysis
+from backend.app.core.versions import is_current_analysis
 from backend.app.models.schemas import EvidenceItem, RiskScore
 
 
@@ -26,6 +26,6 @@ def test_risk_score_serializes_traceable_evidence_items():
 
 
 def test_old_persisted_analysis_is_stale_at_api_boundary():
-    assert is_current_analysis({"analysis_version": ANALYSIS_VERSION})
-    assert not is_current_analysis({"analysis_version": ANALYSIS_VERSION - 1})
-    assert not is_current_analysis({})
+    assert is_current_analysis(ANALYSIS_VERSION, '{"analysis_version": 6}')
+    assert not is_current_analysis(ANALYSIS_VERSION - 1, '{"analysis_version": 6}')
+    assert not is_current_analysis(ANALYSIS_VERSION, '{}')

@@ -1,13 +1,6 @@
-import { useState, useEffect } from 'react'
-import { mlApi, formatFeature } from '../api'
-
-const METRIC_LABELS = {
-  precision: 'Ketepatan temuan',
-  recall: 'Cakupan temuan',
-  f1: 'Keseimbangan hasil',
-  roc_auc: 'Kemampuan membedakan',
-  pr_auc: 'Ketepatan berdasarkan prioritas',
-}
+import { useCallback, useEffect, useState } from 'react'
+import { mlApi } from '../api'
+import { humanizeText } from '../humanLanguage'
 
 const TYPE_LABELS = {
   upcoding: 'Tingkat keparahan tidak sesuai',
@@ -19,165 +12,188 @@ const TYPE_LABELS = {
   unbundling: 'Pemisahan tagihan',
 }
 
+const formatNumber = (value) => Number(value || 0).toLocaleString('id-ID')
+
+const measuredValue = (metric, formatter = (value) => `${(value * 100).toFixed(1)}%`) => (
+  metric?.status === 'measured' ? formatter(metric.value) : 'Belum dapat dihitung'
+)
+
+const deltaValue = (metric) => {
+  if (typeof metric === 'number') {
+    return `${metric >= 0 ? '+' : ''}${(metric * 100).toFixed(2)} poin`
+  }
+  return 'Belum dapat dihitung'
+}
+
+function MetricCell({ metric, formatter }) {
+  if (metric?.status !== 'measured') {
+    return <span className="evaluation-unavailable">{humanizeText(metric?.reason) || 'Belum dapat dihitung'}</span>
+  }
+  return <strong>{formatter ? formatter(metric.value) : `${(metric.value * 100).toFixed(1)}%`}</strong>
+}
+
+function LoadingState() {
+  return (
+    <div className="status-message" aria-live="polite">
+       <strong>Menyiapkan ringkasan penilaian sistem</strong>
+       <p>Mengambil hasil pemeriksaan ketepatan penentuan prioritas.</p>
+    </div>
+  )
+}
+
+function ErrorState({ message, onRetry, retrying }) {
+  return (
+    <div className="status-message error" role="alert">
+      <strong>Ringkasan penilaian belum dapat dimuat</strong>
+      <p>{message}</p>
+      <button type="button" className="btn btn-outline" onClick={onRetry} disabled={retrying} aria-busy={retrying}>
+        {retrying ? 'Mencoba kembali...' : 'Coba lagi'}
+      </button>
+    </div>
+  )
+}
+
 export default function MLEvaluation() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [retrying, setRetrying] = useState(false)
   const [error, setError] = useState(null)
 
-  useEffect(() => {
-    mlApi.evaluation()
-      .then(res => setData(res.data))
-      .catch(err => {
-        if (err?.response?.status === 404) setError('Hasil evaluasi belum tersedia. Jalankan: python scripts/train_all.py')
-        else setError('Gagal memuat hasil evaluasi. Pastikan layanan pemeriksaan aktif.')
-      })
-      .finally(() => setLoading(false))
+  const loadEvaluation = useCallback(async (isRetry = false) => {
+    if (isRetry) setRetrying(true)
+    else setLoading(true)
+    setError(null)
+    try {
+      const response = await mlApi.p1Evaluation()
+      setData(response.data)
+    } catch (err) {
+      if (err?.response?.status === 404) {
+        setError('Ringkasan penilaian belum tersedia. Minta administrator memperbarui data penilaian sistem.')
+      } else {
+        setError('Periksa koneksi backend, lalu coba lagi.')
+      }
+    } finally {
+      setLoading(false)
+      setRetrying(false)
+    }
   }, [])
 
-  if (loading) return <div className="status-message" aria-live="polite"><strong>Menyiapkan evaluasi</strong><p>Ketepatan pemeriksaan sedang dimuat.</p></div>
-  if (error) return <div className="status-message error" role="alert"><strong>Hasil evaluasi belum dapat dimuat</strong><p>{error}</p></div>
+  useEffect(() => {
+    loadEvaluation()
+  }, [loadEvaluation])
 
-  const importance = Object.entries(data.feature_importance || {}).slice(0, 7)
-  const perType = data.recall_per_anomaly_type || {}
-  const ifMetrics = data.isolation_forest || {}
+  if (loading) return <LoadingState />
+  if (error) return <ErrorState message={error} onRetry={() => loadEvaluation(true)} retrying={retrying} />
+  if (!data?.metrics) return <ErrorState message="Ringkasan penilaian tidak memiliki data yang dapat ditampilkan." onRetry={() => loadEvaluation(true)} retrying={retrying} />
+
+  const metrics = data.metrics
+  const candidate = data.ablation?.find(item => item.config_version === 'behavioral-context-candidate')
+  const slices = Object.entries(metrics.by_anomaly_type || {})
+  const hasErrors = (data.errors || []).length > 0
+  const profile = data.dataset?.profile || 'standard'
 
   return (
-    <div className="max-w-4xl mx-auto py-8">
-      <div className="page-header mb-8">
-        <div className="page-kicker">Pemeriksaan kualitas</div>
-        <h2 className="glow-text">Evaluasi Ketepatan Sistem</h2>
-        <p>
-           Ringkasan ketepatan pemeriksaan pada data uji terpisah yang tidak digunakan saat penyusunan aturan.
-        </p>
-        {data.methodology?.note && (
-          <div className="alert-disclaimer mt-2" style={{ fontSize: '0.75rem' }}>
-             ⓘ Data uji dibuat terpisah agar angka ketepatan menggambarkan kemampuan pemeriksaan pada kasus baru.
+    <div className="evaluation-page">
+      <header className="evaluation-header">
+        <div>
+          <div className="page-kicker">Penilaian kualitas sistem</div>
+          <h1 className="evaluation-title">Ketepatan Penentuan Prioritas</h1>
+          <p>Ringkasan seberapa tepat sistem menempatkan klaim yang perlu perhatian lebih dahulu berdasarkan data uji.</p>
+        </div>
+        <button type="button" className="btn btn-outline" onClick={() => loadEvaluation(true)} disabled={retrying} aria-busy={retrying}>
+          {retrying ? 'Memuat...' : 'Muat ulang'}
+        </button>
+      </header>
+
+      {hasErrors && (
+        <div className="evaluation-notice warning" role="status">
+          Sebagian klaim gagal dinilai. Metrik hanya dihitung dari baris yang berhasil dan daftar error tersedia di artifact.
+        </div>
+      )}
+
+      <section className="evaluation-hero" aria-labelledby="evaluation-headline">
+        <div>
+          <p className="evaluation-label">Ketepatan rata-rata urutan</p>
+          <h2 id="evaluation-headline">{measuredValue(metrics.average_precision)}</h2>
+          <p className="evaluation-note">Mengukur kualitas urutan prioritas, bukan kepastian bahwa suatu klaim bermasalah.</p>
+        </div>
+        <dl className="evaluation-facts">
+           <div><dt>Jenis data uji</dt><dd>{profile === 'standard' ? 'Data standar' : humanizeText(profile)}</dd></div>
+           <div><dt>Jumlah klaim uji</dt><dd>{formatNumber(data.dataset?.counts ? Object.values(data.dataset.counts).reduce((sum, count) => sum + count, 0) : 0)} klaim</dd></div>
+           <div><dt>Nomor pengulangan</dt><dd>{data.dataset?.seed ?? '-'}</dd></div>
+           <div><dt>Waktu tanggap terlama</dt><dd>{metrics.latency?.p95_ms != null ? `${metrics.latency.p95_ms.toFixed(1).replace('.', ',')} milidetik` : 'Belum tersedia'}</dd></div>
+        </dl>
+      </section>
+
+      <div className="evaluation-grid">
+        <section className="card" aria-labelledby="ranking-title">
+           <h3 id="ranking-title" className="card-title">Ukuran Ketepatan Urutan</h3>
+          <div className="table-container">
+            <table className="evaluation-table">
+              <caption className="sr-only">Metrik ranking pada data holdout</caption>
+              <thead><tr><th scope="col">Metrik</th><th scope="col">Hasil</th><th scope="col">Keterangan</th></tr></thead>
+              <tbody>
+                 <tr><th scope="row">Ketepatan 50 prioritas teratas</th><td><MetricCell metric={metrics.precision_at_k?.['50']} /></td><td>Bagian dari 50 klaim teratas yang memang perlu perhatian</td></tr>
+                 <tr><th scope="row">Cakupan 50 prioritas teratas</th><td><MetricCell metric={metrics.recall_at_k?.['50']} /></td><td>Bagian dari seluruh klaim penting yang berhasil masuk 50 teratas</td></tr>
+                 <tr><th scope="row">Ketepatan rata-rata urutan</th><td><MetricCell metric={metrics.average_precision} /></td><td>Ketepatan urutan secara keseluruhan</td></tr>
+                 <tr><th scope="row">Waktu tanggap (median / terlama)</th><td><strong>{metrics.latency?.p50_ms?.toFixed(1) ?? '-'} / {metrics.latency?.p95_ms?.toFixed(1) ?? '-'} milidetik</strong></td><td>{metrics.latency?.count || 0} klaim berhasil dinilai</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="card" aria-labelledby="ablation-title">
+           <h3 id="ablation-title" className="card-title">Perbandingan Tambahan</h3>
+           <p className="evaluation-copy">Catatan pola perilaku diuji sebagai perbandingan dan belum mengubah penilaian utama.</p>
+          <div className="ablation-result">
+             <span>Perubahan ketepatan rata-rata</span>
+            <strong>{deltaValue(candidate?.delta_vs_p0_core?.average_precision)}</strong>
+          </div>
+          <dl className="evaluation-detail-list">
+             <div><dt>Perubahan ketepatan 50 teratas</dt><dd>{deltaValue(candidate?.delta_vs_p0_core?.precision_at_k?.['50'])}</dd></div>
+             <div><dt>Perubahan cakupan 50 teratas</dt><dd>{deltaValue(candidate?.delta_vs_p0_core?.recall_at_k?.['50'])}</dd></div>
+          </dl>
+        </section>
+      </div>
+
+      <section className="card" aria-labelledby="slice-title">
+        <div className="section-heading-row">
+          <div>
+             <h3 id="slice-title" className="card-title">Hasil Berdasarkan Jenis Temuan</h3>
+             <p className="evaluation-copy">Temuan terlewat adalah klaim penting yang tidak masuk 50 prioritas teratas.</p>
+          </div>
+          <span className="badge badge-neutral">{slices.length} jenis</span>
+        </div>
+        {slices.length === 0 ? (
+           <p className="evaluation-empty">Belum ada jenis temuan yang dapat dihitung.</p>
+        ) : (
+          <div className="table-container">
+            <table className="evaluation-table evaluation-table-wide">
+               <caption className="sr-only">Metrik per jenis temuan</caption>
+               <thead><tr><th scope="col">Jenis</th><th scope="col">Jumlah temuan</th><th scope="col">Masuk 50 teratas</th><th scope="col">Temuan terlewat</th><th scope="col">Rentang nilai</th></tr></thead>
+              <tbody>
+                {slices.map(([type, slice]) => (
+                  <tr key={type}>
+                    <th scope="row">{TYPE_LABELS[type] || 'Jenis temuan lainnya'}</th>
+                    <td>{slice.positive_count}</td>
+                    <td>{slice.top_k_hits?.['50'] ?? '-'}</td>
+                    <td>{slice.false_negative_at_k?.['50'] ?? '-'}</td>
+                    <td>{slice.score_distribution ? `${slice.score_distribution.min.toFixed(1)} – ${slice.score_distribution.max.toFixed(1)}` : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
-      </div>
+      </section>
 
-      <div className="grid-2 mb-6">
-        <div className="card">
-           <h3 className="card-title">Data Pengujian</h3>
-          <ul className="space-y-2 mt-4 text-sm">
-            <li className="flex justify-between"><span>Total Klaim</span> <strong>{(data.dataset.total_samples || 0).toLocaleString('id-ID')}</strong></li>
-             <li className="flex justify-between"><span>Data penyusunan</span> <strong>{(data.dataset.train_size || 0).toLocaleString('id-ID')}</strong></li>
-             <li className="flex justify-between"><span>Data penyesuaian</span> <strong>{(data.dataset.val_size || 0).toLocaleString('id-ID')}</strong></li>
-             <li className="flex justify-between"><span>Data uji terpisah</span> <strong>{(data.dataset.test_size || 0).toLocaleString('id-ID')}</strong></li>
-             <li className="flex justify-between"><span>Proporsi klaim bermasalah</span> <strong>{((data.dataset.fraud_rate || 0) * 100).toFixed(1)}%</strong></li>
-          </ul>
-          {data.xgboost_regressor && (
-            <div className="mt-4 text-sm" style={{ borderTop: '1px solid var(--border)', paddingTop: '0.75rem' }}>
-              <div className="flex justify-between">
-                 <span>Rata-rata perbedaan perkiraan biaya</span>
-                <strong>{data.xgboost_regressor.mape_pct_normal_holdout != null
-                  ? `${data.xgboost_regressor.mape_pct_normal_holdout.toFixed(1)}%`
-                   : 'Belum tersedia'}</strong>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="card">
-           <h3 className="card-title">Perbandingan Ketepatan</h3>
-           <div className="table-container">
-           <table className="w-full text-sm text-left">
-            <thead>
-              <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
-                <th className="py-2">Metric</th>
-                 <th>Pemeriksaan utama</th>
-                 <th>Pembanding awal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {['precision', 'recall', 'f1', 'roc_auc', 'pr_auc'].map(metric => (
-                <tr key={metric} className="border-b" style={{ borderColor: 'var(--border)' }}>
-                  <td className="py-2">{METRIC_LABELS[metric]}</td>
-                  <td className="font-bold" style={{ color: 'var(--accent-green)' }}>
-                    {((data.xgboost_classifier?.[metric] ?? 0) * 100).toFixed(1)}%
-                  </td>
-                  <td className="text-muted">
-                    {((data.logistic_regression_baseline?.[metric] ?? 0) * 100).toFixed(1)}%
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-           </table>
-           </div>
-        </div>
-      </div>
-
-      {/* Recall per jenis anomali */}
-      {Object.keys(perType).length > 0 && (
-        <div className="card mb-6">
-           <h3 className="card-title">Cakupan per Jenis Temuan</h3>
-           <p className="text-xs text-muted mb-4">Seberapa banyak tiap pola klaim bermasalah yang berhasil ditemukan.</p>
-          <div className="grid-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            {Object.entries(perType).map(([type, info]) => (
-              <div key={type} style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span>{TYPE_LABELS[type] || type}</span>
-                  <strong style={{ color: info.recall >= 0.8 ? 'var(--success)' : info.recall >= 0.5 ? 'var(--warning)' : 'var(--risk-high)' }}>
-                    {(info.recall * 100).toFixed(0)}%
-                  </strong>
-                </div>
-                <div className="progress-bar" style={{ height: 4 }}>
-                  <div className="progress-fill" style={{ width: `${info.recall * 100}%` }} />
-                </div>
-                <div className="text-xs text-muted mt-1">{info.count} sampel</div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4" style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' }}>
-             <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.25rem' }}>Catatan: pengulangan dan kemiripan antar klaim dinilai melalui hubungan antar data.</div>
-            <div className="text-xs text-muted" style={{ lineHeight: 1.6 }}>
-               Pengulangan dan kemiripan antar klaim membutuhkan perbandingan beberapa klaim sekaligus,
-               bukan hanya melihat satu klaim. Karena itu, pola ini diperiksa melalui hubungan peserta,
-               fasilitas kesehatan, tindakan, biaya, dan tanggal.
-            </div>
-          </div>
-        </div>
-      )}
-      {ifMetrics.detection_rate_anomalies != null && (
-        <div className="card mb-6">
-           <h3 className="card-title">Pemeriksaan Pola Tidak Biasa</h3>
-          <div className="grid-2 mt-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8 }}>
-              <div className="text-xs text-muted">Deteksi pada klaim anomali</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--accent-green)' }}>
-                {(ifMetrics.detection_rate_anomalies * 100).toFixed(1)}%
-              </div>
-            </div>
-            <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8 }}>
-               <div className="text-xs text-muted">Temuan keliru pada klaim wajar</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: ifMetrics.false_positive_rate_normal > 0.15 ? 'var(--risk-high)' : 'var(--success)' }}>
-                {((ifMetrics.false_positive_rate_normal || 0) * 100).toFixed(1)}%
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="card">
-         <h3 className="card-title">Faktor yang Paling Berpengaruh</h3>
-        <div className="mt-4">
-          {importance.map(([feature, score]) => (
-            <div key={feature} className="mb-4">
-              <div className="flex justify-between text-sm mb-1">
-                <span>{formatFeature(feature)}</span>
-                <span>{(score * 100).toFixed(1)}%</span>
-              </div>
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${score * 100}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="text-xs text-muted mt-4">
-           Angka dihitung dari data uji terpisah untuk mengurangi bias. Data yang digunakan tetap
-           merupakan data simulasi, bukan data klaim JKN nyata.
-        </p>
-      </div>
+      <section className="evaluation-notice" aria-labelledby="limitations-title">
+        <h3 id="limitations-title">Batasan interpretasi</h3>
+        <ul>
+           {(data.limitations || ['Data contoh belum menggantikan pengujian di lapangan']).map(limitation => <li key={limitation}>{humanizeText(limitation)}</li>)}
+           <li>Data uji berisi contoh yang sengaja dibuat menantang agar penilaian tidak terlihat terlalu mudah.</li>
+        </ul>
+      </section>
     </div>
   )
 }

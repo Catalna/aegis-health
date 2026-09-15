@@ -19,6 +19,8 @@ Cosine embedding murni hanya dipakai sebagai prefilter kandidat.
 """
 import os
 
+from dotenv import load_dotenv
+
 try:
     import lancedb
     from lancedb.pydantic import Vector, LanceModel
@@ -31,23 +33,43 @@ except Exception as e:
     LanceModel = None
     _lancedb_import_error = e
 
-from sentence_transformers import SentenceTransformer
+from backend.app.ml.similarity_scoring import (
+    RELATIONSHIP_WINDOW_DAYS,
+    _days_between,
+    compute_jaccard_similarity,
+    composite_similarity,
+    cost_proximity,
+    is_investigation_candidate,
+)
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "lancedb_data")
 os.makedirs(DB_PATH, exist_ok=True)
 
 db = lancedb.connect(DB_PATH) if lancedb is not None else None
 
-try:
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-except Exception as e:
-    print(f"Failed to load SentenceTransformer: {e}")
-    model = None
+load_dotenv()
+model = None
+_model_load_error = None
 
-DIM = model.get_sentence_embedding_dimension() if model else 384
+DIM = 384
 
 # Tabel v3 — skema multi-faktor (admission_date utk faktor waktu)
 TABLE_NAME = "claims_vectors_v3"
+
+
+def get_embedding_model():
+    global model, _model_load_error
+    if model is not None:
+        return model
+    if _model_load_error is not None:
+        return None
+    try:
+        from sentence_transformers import SentenceTransformer
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+    except Exception as exc:
+        _model_load_error = exc
+        print(f"Failed to load SentenceTransformer: {exc}")
+    return model
 
 
 if LanceModel is not None and Vector is not None:
@@ -94,92 +116,13 @@ def _normalize(vec: list[float]) -> list[float]:
 
 
 # ---------------------------------------------------------------------------
-# Skor komposit
-# ---------------------------------------------------------------------------
-
-W_CODE, W_COST, W_PROVIDER, W_TEMPORAL, W_PATIENT = 0.40, 0.30, 0.15, 0.10, 0.05
-
-# Batas waktu yang sama dengan pemeriksaan repeat billing di database.
-RELATIONSHIP_WINDOW_DAYS = 45
-
-
-def cost_proximity(cost_a: float, cost_b: float) -> float:
-    """1.0 = biaya hampir identik; →0 = sangat berbeda."""
-    if cost_a <= 0 and cost_b <= 0:
-        return 0.0
-    hi = max(cost_a, cost_b)
-    if hi <= 0:
-        return 0.0
-    return max(0.0, 1.0 - abs(cost_a - cost_b) / hi)
-
-
-def temporal_proximity(days_apart: int | None) -> float:
-    """1.0 jika ≤7 hari, meluruh ke 0 di 90 hari; None (tanpa tanggal) = 0."""
-    if days_apart is None:
-        return 0.0
-    d = max(0, days_apart)
-    if d <= 7:
-        return 1.0
-    return max(0.0, 1.0 - (d - 7) / 83)
-
-
-def composite_similarity(
-    code_sim: float,
-    cost_prox: float,
-    same_provider: bool,
-    same_patient: bool,
-    days_apart: int | None,
-) -> float:
-    """Skor kemiripan mencurigakan 0-1 dari gabungan faktor (lihat docstring modul)."""
-    temporal = temporal_proximity(days_apart)
-    return (
-        W_CODE * code_sim
-        + W_COST * cost_prox
-        + W_PROVIDER * (1.0 if same_provider else 0.0)
-        + W_TEMPORAL * temporal
-        + W_PATIENT * (1.0 if same_patient else 0.0)
-    )
-
-
-def is_investigation_candidate(
-    code_similarity: float,
-    cost_proximity: float,
-    same_provider: bool,
-    same_patient: bool,
-    days_apart: int | None,
-) -> bool:
-    """Return whether two claims have a relationship worth investigating.
-
-    Similar clinical profiles across different patients and providers are expected
-    in claims data. A candidate must instead satisfy a concrete repeat-billing or
-    cloning relationship; the composite score only ranks those candidates.
-    """
-    if days_apart is None or days_apart > RELATIONSHIP_WINDOW_DAYS:
-        return False
-    if same_patient:
-        return code_similarity >= 0.8
-    return same_provider and code_similarity > 0.9 and cost_proximity > 0.95
-
-
-def _days_between(date_a: str, date_b: str) -> int | None:
-    if not date_a or not date_b:
-        return None
-    from datetime import date as _date
-    try:
-        a = _date.fromisoformat(str(date_a)[:10])
-        b = _date.fromisoformat(str(date_b)[:10])
-        return abs((a - b).days)
-    except ValueError:
-        return None
-
-
-# ---------------------------------------------------------------------------
 # Store / search
 # ---------------------------------------------------------------------------
 
 def embed_and_store(claims: list[dict]):
     """Embed dan simpan daftar klaim ke LanceDB (idempotent per claim_id)."""
-    if not model or db is None:
+    embedding_model = get_embedding_model()
+    if not embedding_model or db is None:
         print("[LanceDB] Model embedding tidak tersedia, lewati.")
         return 0
     table = get_table()
@@ -194,7 +137,7 @@ def embed_and_store(claims: list[dict]):
         if c.get("claim_id") in existing_ids:
             continue
         text = generate_claim_text(c)
-        emb = _normalize(model.encode(text).tolist())
+        emb = _normalize(embedding_model.encode(text).tolist())
         procs = c.get("procedure_codes", [])
         if isinstance(procs, str):
             procs = [p.strip() for p in procs.split(",") if p.strip()]
@@ -252,12 +195,13 @@ def find_similar_claims(claim_id: str, claim_data: dict, limit: int = 5) -> list
     Cari klaim historis serupa. Urutan berdasarkan SKOR KOMPOSIT (bukan cosine).
     Cosine embedding hanya prefilter kandidat (profil medis mirip).
     """
-    if not model or db is None:
+    embedding_model = get_embedding_model()
+    if not embedding_model or db is None:
         return []
 
     table = get_table()
     text = generate_claim_text(claim_data)
-    emb = _normalize(model.encode(text).tolist())
+    emb = _normalize(embedding_model.encode(text).tolist())
 
     # Prefilter: ambil kandidat profil medis terdekat (lebih banyak untuk disaring)
     results = table.search(emb).limit(limit * 4 + 4).to_list()
@@ -316,23 +260,3 @@ def find_similar_claims(claim_id: str, claim_data: dict, limit: int = 5) -> list
     # Urutkan berdasar skor komposit
     scored.sort(key=lambda s: s["similarity"], reverse=True)
     return scored[:limit]
-
-
-def compute_jaccard_similarity(claim1: dict, claim2: dict) -> float:
-    """Kemiripan eksak kode medis (diagnosis + prosedur) antara dua klaim."""
-    def codes(c: dict) -> set:
-        secondary = c.get("diagnosis_secondary", [])
-        if isinstance(secondary, str):
-            secondary = [s.strip() for s in secondary.split(",") if s.strip()]
-        procs = c.get("procedure_codes", [])
-        if isinstance(procs, str):
-            procs = [p.strip() for p in procs.split(",") if p.strip()]
-        s = {c.get("diagnosis_primary", "")} | set(secondary) | set(procs)
-        s.discard("")
-        return s
-
-    set1, set2 = codes(claim1), codes(claim2)
-    if not set1 and not set2:
-        return 0.0
-    union = len(set1 | set2)
-    return len(set1 & set2) / union if union else 0.0

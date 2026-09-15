@@ -297,4 +297,4 @@ Fitur yang sengaja di-scope-out dari MVP tetapi logis untuk pengembangan lanjuta
 - [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md) — Spesifikasi Kebutuhan Produk.
 - [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md) — Cetak Biru Arsitektur Teknis.
 - [AgentWorkflow.md](file:///c:/Users/Radith/E-Jak/docs/AgentWorkflow.md) — Detail Pipeline Agent & SSE Protocol.
-- [Models.md](file:///c:/Users/Radith/E-Jak/docs/Models.md) — Spesifikasi Model ML, Vector Database & LLM.
+- [MODELS.md](file:///c:/Users/Radith/E-Jak/docs/MODELS.md) — Spesifikasi Model ML, Vector Database & LLM.

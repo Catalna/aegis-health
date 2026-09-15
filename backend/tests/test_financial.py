@@ -12,7 +12,7 @@ def test_zscore_fallback_never_max_score_for_normal_cost():
     result = _zscore_fallback(claim, "mock model error")
     assert result.method == "zscore_peer_fallback"
     assert result.anomaly_score < 0.3
-    assert "fallback" in result.evidence_text.lower()
+    assert "data pembanding" in result.evidence_text.lower()
 
 
 def test_zscore_fallback_high_score_for_inflated_cost():
@@ -34,8 +34,8 @@ def test_zscore_fallback_predicted_range_sane():
 def test_financial_evidence_uses_benchmark_and_claimed_amount_terms():
     result = _zscore_fallback(make_claim(cost_claimed=72_000_000), "mock")
     evidence = result.evidence_text.lower()
-    assert "claimed amount" in evidence
-    assert "reimbursement benchmark" in evidence
+    assert "biaya yang diajukan" in evidence
+    assert "perkiraan biaya penggantian" in evidence
     assert "biaya klaim" not in evidence
 
 
@@ -47,6 +47,19 @@ async def test_analyze_financial_with_model_or_fallback(normal_claim):
     assert 0.0 <= result.anomaly_score <= 1.0
     assert result.evidence_text  # selalu ada evidence
     assert result.method in ("xgboost_model", "zscore_peer_fallback")
+
+
+@pytest.mark.asyncio
+async def test_financial_model_failure_does_not_enter_fallback_evidence(monkeypatch, normal_claim):
+    import backend.app.agents.financial_engine as financial_engine
+
+    def fail():
+        raise RuntimeError("SECRET_PERSISTED_EXCEPTION")
+
+    monkeypatch.setattr(financial_engine, "get_financial_model", fail)
+    result = await financial_engine.analyze_financial(normal_claim)
+
+    assert "SECRET_PERSISTED_EXCEPTION" not in result.evidence_text
 
 
 @pytest.mark.asyncio

@@ -12,5 +12,4 @@ backend/app/lancedb_data
 **/__pycache__
 **/.pytest_cache
 *.log
-pgvector_build
 venv

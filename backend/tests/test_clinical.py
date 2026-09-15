@@ -71,6 +71,20 @@ async def test_unknown_diagnosis_goes_to_llm_layer():
 
 
 @pytest.mark.asyncio
+async def test_clinical_llm_failure_does_not_enter_fallback_evidence(monkeypatch):
+    import backend.app.agents.clinical_agent as clinical_agent
+    from backend.app.core.llm_client import LLMError
+
+    async def fail(*args, **kwargs):
+        raise LLMError("SECRET_PERSISTED_EXCEPTION")
+
+    monkeypatch.setattr(clinical_agent, "structured_completion", fail)
+    result = await clinical_agent.analyze_clinical(make_claim(claim_id="CLM-SECRET-CLINICAL", diagnosis_primary="Z99.9"))
+
+    assert "SECRET_PERSISTED_EXCEPTION" not in result.evidence_text
+
+
+@pytest.mark.asyncio
 async def test_los_outlier_flag():
     claim = make_claim(claim_id="CLM-LOS", length_of_stay=40)  # AMI max 10 → outlier
     flags = _rule_flags(claim, tariff_deviation=5.0, known_diag=True)

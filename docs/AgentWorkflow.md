@@ -248,5 +248,5 @@ Setelah Phase 4 selesai, `orchestrator.py` secara otomatis melakukan transaksi d
 ## 6. Referensi Dokumen Terkait
 - [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md) — Spesifikasi kebutuhan produk J-ARI.
 - [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md) — Arsitektur teknis dan schema database.
-- [Models.md](file:///c:/Users/Radith/E-Jak/docs/Models.md) — Detail spesifikasi model XGBoost, SHAP, Isolation Forest, dan LLM.
+- [MODELS.md](file:///c:/Users/Radith/E-Jak/docs/MODELS.md) — Detail spesifikasi model XGBoost, SHAP, Isolation Forest, dan LLM.
 - [BusinessCore.md](file:///c:/Users/Radith/E-Jak/docs/BusinessCore.md) — Aturan bisnis INA-CBG dan mitigasi upcoding.

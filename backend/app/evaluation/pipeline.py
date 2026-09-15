@@ -13,7 +13,7 @@ from backend.app.agents.financial_engine import analyze_financial
 from backend.app.agents.risk_engine import calculate_risk_score
 from backend.app.data.ina_cbg_rules import DIAGNOSIS_TO_CBG_MAPPING, calculate_expected_tariff
 from backend.app.ml.feature_engineering import PEER_BASELINE, extract_features
-from backend.app.ml.similarity import (
+from backend.app.ml.similarity_scoring import (
     RELATIONSHIP_WINDOW_DAYS,
     composite_similarity,
     compute_jaccard_similarity,

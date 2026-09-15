@@ -30,6 +30,7 @@ services:
       REVIEW_MODEL_FALLBACK: ${REVIEW_MODEL_FALLBACK:-mistral:7b}
       EXPLANATION_MODEL: ${EXPLANATION_MODEL:-qwen2.5:7b}
       EXPLANATION_MODEL_FALLBACK: ${EXPLANATION_MODEL_FALLBACK:-mistral:7b}
+      HF_TOKEN: ${HF_TOKEN:-}
       HF_HOME: /root/.cache/huggingface
     depends_on:
       db:

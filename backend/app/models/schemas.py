@@ -175,11 +175,12 @@ class RiskAssessment(BaseModel):
     agent_errors: List[AgentError] = Field(default_factory=list)
     rejected: bool = False
     reject_reason: Optional[str] = None
+    error_code: Optional[str] = None
     exact_duplicate: bool = False
 
     @classmethod
-    def create_rejected(cls, claim_id: str, reason: str):
-        return cls(claim_id=claim_id, rejected=True, reject_reason=reason)
+    def create_rejected(cls, claim_id: str, reason: str, error_code: str | None = None):
+        return cls(claim_id=claim_id, rejected=True, reject_reason=reason, error_code=error_code)
 
 class HumanDecision(BaseModel):
     claim_id: str

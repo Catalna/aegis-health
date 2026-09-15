@@ -55,6 +55,13 @@ Dataset menggunakan generator yang sudah memiliki label `is_synthetic_anomaly` d
 
 Label evaluasi biner adalah `is_synthetic_anomaly`. Label multiclass `anomaly_type` dipakai untuk slice analysis, bukan untuk mengubah risk score.
 
+CLI memakai profile `challenge` sebagai default held-out evaluation. Profile ini hanya
+memodifikasi fitur holdout, bukan label: 10% claim normal dipilih sebagai hard negative
+dengan variasi biaya tinggi dan 20% anomaly non-relasional dipilih sebagai soft positive
+dengan sinyal biaya yang dilemahkan. Fraksi, rentang multiplier, seed, dan profile wajib
+ditulis ke artifact agar AP tidak diturunkan secara arbitrary dan hasil tetap dapat diaudit.
+Profile `standard` tetap tersedia sebagai baseline generator murni.
+
 ## 6. Metrics
 
 Evaluator mengurutkan claim berdasarkan `RiskScore.total_score` descending dan memakai label held-out.
@@ -85,7 +92,7 @@ Evaluator menulis satu artifact JSON dengan bentuk konseptual berikut:
 ```json
 {
   "schema_version": 1,
-  "dataset": {"version": "p1-synthetic-v1", "seed": 2026, "counts": {}},
+  "dataset": {"version": "p1-synthetic-v1-challenge", "seed": 2026, "profile": "challenge", "counts": {}},
   "engine": {"analysis_version": 6, "config_version": "p0-default"},
   "metrics": {"aggregate": {}, "by_anomaly_type": {}, "latency": {}},
   "ablation": [],
