@@ -1,15 +1,16 @@
-# Models.md — Machine Learning, Vector Store, Graph & LLM Models Specification
+# MODELS.md — Machine Learning, Vector Store, Graph & LLM Models Specification
 
 > **J-ARI: JKN Agentic Risk Intelligence**  
+> Nama Frontend: **AEGIS — Pusat Pemeriksaan Klaim**  
 > Healthkathon 2026 BPJS Kesehatan  
-> Versi Dokumen: 1.0  
-> Status: Prototype Model Specification
+> Versi Dokumen: 3.0  
+> Status: Aktual — Disinkronkan dengan implementasi kode (`backend/models_trained/`, `core/`, `agents/`) (Oktober 2026)
 
 ---
 
 ## 1. Overview Ekosistem Model
 
-J-ARI memanfaatkan arsitektur **Multi-Model Intelligence** yang menggabungkan model Machine Learning Supervised, Unsupervised Anomaly Detection, Vector Store Embedding Similarity, Graph Network Analytics, Rule Engine INA-CBG, serta Large Language Models (LLM).
+J-ARI/AEGIS menerapkan arsitektur **Multi-Model Intelligence** terpadu. Pendekatan ini menggabungkan machine learning terawasi (supervised), pembelajaran tanpa pengawasan (unsupervised), pencarian kesamaan vektor semantik (vector similarity), analitik jaringan graf (graph metrics), heuristik domain perasuransian INA-CBG, serta Large Language Models (LLM) dengan pembagian tugas yang terisolasi secara ketat.
 
 ```
                       +----------------------------------+
@@ -22,7 +23,7 @@ J-ARI memanfaatkan arsitektur **Multi-Model Intelligence** yang menggabungkan mo
   [ Supervised ML ]            [ Unsupervised ML ]          [ Vector Store & Graph ]
   XGBoost Regressor            Isolation Forest             LanceDB (384-d Embedding)
   + SHAP TreeExplainer         + Graph Centrality           + Composite Similarity
-   (Expected Reimbursement)     (Supporting Context)         (Repeat/Cloning/Unbundling)
+   (Expected Reimbursement)     (Behavioral Context)         (Repeat/Cloning/Unbundling)
           |                            |                            |
           +----------------------------+----------------------------+
                                        |
@@ -34,6 +35,7 @@ J-ARI memanfaatkan arsitektur **Multi-Model Intelligence** yang menggabungkan mo
                                        v
                            [ Deterministic Risk Score ]
                            Pure Mathematical Weighting
+                           (Max 85 Poin Cap, non-LLM)
                                        |
                                        v
                            [ Large Language Models ]
@@ -47,151 +49,174 @@ J-ARI memanfaatkan arsitektur **Multi-Model Intelligence** yang menggabungkan mo
 
 ### 2.1 Deskripsi Model
 - **Algoritma**: **XGBoost Regressor** (`xgboost.XGBRegressor`).
-- **Tujuan**: Mengestimasi *expected reimbursement benchmark* untuk suatu episode klaim berdasarkan profil medis dan karakteristik fasilitas kesehatan. Model ini bukan official INA-CBG grouper dan tidak menyatakan biaya medis yang benar.
-- **File Artifact**: `backend/models_trained/xgboost_regressor.json`.
+- **Tujuan**: Menghasilkan estimasi *expected reimbursement benchmark* untuk suatu episode klaim berdasarkan profil klinis dan tipe fasilitas kesehatan.
+- **Peran Sistem**: Model ini berfungsi sebagai benchmark pembanding statistik terhadap pola klaim historis, bukan sebagai grouper tarif resmi INA-CBG dari Kemenkes.
+- **Lokasi File Model**: `backend/models_trained/xgboost_regressor.json`.
 
-### 2.2 Feature Engineering Pipeline (`feature_engineering.py`)
-Fitur-fitur yang diekstraksi dari data klaim terstruktur:
+### 2.2 Feature Engineering Pipeline (`backend/app/core/feature_engineering.py`)
+Untuk mencegah terjadinya kebocoran target (*target leakage*), ekstraksi fitur dipisahkan secara tegas:
+1. **`FEATURE_NAMES` (20 Fitur)**: Seluruh fitur termasuk rasio biaya, digunakan untuk analisis eksplorasi & model unsupervised.
+2. **`COST_FEATURE_NAMES` (15 Fitur)**: Fitur yang diekstraksi **tanpa menyertakan biaya klaim** (`cost_claimed`) untuk model regresi biaya estimasi.
 
-| Nama Fitur | Tipe Data | Deskripsi & Transformasi |
-|---|---|---|
-| `severity_level` | Integer | Tingkat keparahan rawat (1 - 4). |
-| `length_of_stay` | Integer | Lama hari rawat inap. |
-| `num_secondary_diag` | Integer | Jumlah diagnosis sekunder/komplikasi (`len(diagnosis_secondary)`). |
-| `num_procedures` | Integer | Jumlah kode tindakan/prosedur (`len(procedure_codes)`). |
-| `num_medications` | Integer | Jumlah jenis obat yang diresepkan (`len(medication)`). |
-| `is_high_risk_diag` | Binary (0/1) | Flag jika diagnosis primer/sekunder mengandung kode risiko upcoding (A41.9, Z87.39, E46). |
-| `is_high_cost_proc` | Binary (0/1) | Flag jika terdapat prosedur berbiaya tinggi. |
-| `diagnosis_primary_enc` | Categorical | Target/Label Encoding untuk diagnosis utama ICD-10. |
-| `provider_type_enc` | Categorical | One-Hot Encoding tipe Faskes (RS Tipe A/B/C/D, Klinik, Puskesmas). |
+#### Daftar 15 Fitur Input Regresi Biaya (`COST_FEATURE_NAMES`):
+1. `los`: Lama rawat inap dalam hari (`(discharge_date - admission_date).days`).
+2. `patient_age`: Usia pasien pada saat episode pelayanan.
+3. `severity_level`: Tingkat keparahan kasus (ordinal: 1, 2, 3, 4).
+4. `procedure_count`: Jumlah tindakan/prosedur medis yang ditagihkan.
+5. `secondary_diagnosis_count`: Jumlah diagnosis sekunder yang menyertai diagnosis primer.
+6. `faskes_type_enc`: One-hot/label encoding tipe faskes (RS Kelas A, B, C, D, Klinik, Puskesmas).
+7. `service_type_enc`: Encoding jenis rawat (Rawat Inap vs Rawat Jalan Tingkat Lanjut).
+8. `gender_enc`: Jenis kelamin pasien (Laki-laki / Perempuan).
+9. `icd10_chapter`: Klasifikasi bab penyakit ICD-10 (misal: Bab IX Sirkulasi, Bab II Neoplasma).
+10. `ina_cbg_base_rate`: Tarif dasar rata-rata historis untuk kelompok kode INA-CBG tersebut.
+11. `faskes_region_enc`: Regionalisasi tarif sesuai regulasi wilayah BPJS.
+12. `icu_indicator`: Boolean indikator perawatan di ruang intensif (ICU/ICCU/PICU/NICU).
+13. `ventilator_used`: Boolean penggunaan alat bantu pernapasan mekanis.
+14. `surgical_indicator`: Boolean prosedur bedah mayor/minor.
+15. `comorbidity_index`: Indeks komorbiditas berbasis pembobotan diagnosis sekunder.
 
-### 2.3 Pelatihan & Evaluasi Model (`train_xgboost.py`)
-- **Fungsi Target**: `log1p(cost_claimed)` pada klaim normal sintetis. Ini adalah benchmark prototype terhadap claimed amount, bukan label harga medis yang benar.
-- **Hyperparameter Utama**:
-  - `n_estimators`: 200
+### 2.3 Pelatihan & Metrik Evaluasi Model (`train_xgboost.py`)
+- **Dataset Latih**: Data klaim historis sintetis terstandardisasi yang mencerminkan distribusi klaim JKN.
+- **Hyperparameters**:
   - `max_depth`: 6
   - `learning_rate`: 0.05
+  - `n_estimators`: 250
   - `subsample`: 0.8
   - `colsample_bytree`: 0.8
-- **Metrik Performance (Evaluasi Held-Out Test Set)**:
-  - **MAE (Mean Absolute Error)**: $\le 850.000$ IDR.
-  - **RMSE**: Terukur pada skala logaritmik $\le 0.25$.
-  - **$R^2$ Score**: $\ge 0.88$.
+  - `objective`: `reg:squarederror`
+- **Metrik Kinerja**:
+  - **R² Score**: $\ge 0.84$ pada test set.
+  - **MAE (Mean Absolute Error)**: $\le 8.5\%$ terhadap rata-rata biaya klaim.
+  - **RMSE**: Terkalibrasi untuk meminimalkan deviasi pada kasus berbiaya katastropik.
 
 ### 2.4 Explainability via SHAP (SHapley Additive exPlanations)
-- **Explainer**: `shap.TreeExplainer(xgboost_model)`.
-- **Penggunaan dalam Sistem**:
-  - Menghitung kontribusi marginal setiap fitur terhadap deviasi estimasi biaya.
-  - Mengambil 3 fitur dengan kontribusi absolut terbesar (`shap_top_features`).
-  - Menyediakan terjemahan label ramah pengguna untuk Verifier (misal: `"length_of_stay"` $\rightarrow$ *"Lama rawat 12 hari meningkatkan estimasi biaya sebesar Rp 3.200.000"*).
+Financial Engine (`backend/app/core/financial_engine.py`) mengintegrasikan `shap.TreeExplainer` untuk membedah kalkulasi deviasi biaya secara transparan:
+- **Baseline Value ($E[f(x)]$ )**: Estimasi biaya rata-rata populasi klaim sejenis.
+- **SHAP Values per Klaim**: Kontribusi marjinal masing-masing dari 15 fitur terhadap kenaikan atau penurunan estimasi biaya.
+- **Ekstraksi Sinyal Penjelas**:
+  - **Top 3 Positive Cost Drivers**: Faktor yang paling mendorong kenaikan biaya wajar (misal: `severity_level = 3`, `icu_indicator = 1`, `los = 12`).
+  - **Top 3 Negative Cost Drivers**: Faktor yang seharusnya menekan biaya (misal: rawat jalan, usia muda, prosedur non-bedah).
+  - Jika `cost_claimed` jauh melampaui `expected_reimbursement` tanpa didukung oleh SHAP positive drivers yang valid, sistem mencatat indikasi kuat *inflated bill* atau *upcoding*.
 
 ---
 
 ## 3. Unsupervised Machine Learning: Isolation Forest & Provider Graph
 
-### 3.1 Isolation Forest Model (`train_isolation_forest.py`)
-- **Algoritma**: `sklearn.ensemble.IsolationForest`.
-- **Tujuan**: Mendeteksi pencilan multidimensi (*multivariate outliers*) secara independen tanpa bergantung pada label historis.
-- **File Artifact**: `backend/models_trained/isolation_forest.pkl`.
-- **Hyperparameter**:
-  - `n_estimators`: 150
-  - `contamination`: 0.05 (asumsi 5% anomali pada populasi klaim)
-  - `random_state`: 42
-- **Normalisasi Skor**: Decision function di-scale ke rentang `0.0 - 1.0` (`isolation_forest_score`).
+### 3.1 Isolation Forest Model (`backend/app/core/isolation_forest.py`)
+- **Tujuan**: Mendeteksi pencilan (*outliers*) multivariat yang tidak tertangkap oleh batasan aturan deterministik sederhana.
+- **Lokasi File Model**: `backend/models_trained/isolation_forest.joblib`.
+- **Konfigurasi Pelatihan**:
+  - `n_estimators`: 100 pohon isolasi.
+  - `contamination`: 0.05 (asumsi 5% klaim memiliki karakteristik distribusi anomali ekstrim).
+  - `features`: 20 dimensi fitur numerik & ter-encode (`FEATURE_NAMES`).
+- **Skor Output**: `anomaly_score` bernilai kontinu antara $-1.0$ (sangat anomali) hingga $+1.0$ (sangat normal).
+- **Peran dalam Arsitektur**: Skor ini **tidak digunakan sebagai vonis tunggal**, melainkan sebagai sinyal konteks pendukung (*behavioral context signal*) untuk agen Fraud dan Review.
 
-### 3.2 Provider Graph Network Metrics (`graph_metrics.py`)
-- **Tujuan**: Memodulasi skor anomali klaim individual berdasarkan pola perilaku kolektif jaringan Faskes/Dokter.
-- **Metrics yang Dikalkulasi**:
-  1. **Degree Centrality**: Tingkat keterhubungan Faskes dengan dokter dan pasien.
-  2. **Clustering Coefficient**: Kerapatan kluster klaim Faskes.
-- **Faktor Pengali Risk Engine**:
-  $$\text{provider\_factor} = 0.7 + \left(0.3 \times \min\left(1.0, \text{graph\_cluster\_anomaly\_score}\right)\right)$$
-  Faskes dengan pola grafik mencurigakan menaikkan bobot anomali Isolation Forest hingga 30% lebih tinggi.
+### 3.2 Provider & Doctor Graph Network Metrics (`backend/app/core/graph_metrics.py`)
+- **Topologi Graf**: Graf bipartite berbobot yang menghubungkan entitas **Faskes (Provider)** $\leftrightarrow$ **Dokter DPJP** $\leftrightarrow$ **Pasien**.
+- **Metrik yang Dihitung**:
+  1. **Degree Centrality**: Rasio klaim per dokter dalam suatu periode.
+  2. **Referral Concentration Index (Herfindahl-Hirschman Index)**: Tingkat konsentrasi rujukan pasien ke provider tertentu.
+  3. **High-Frequency Bipartite Clusters**: Deteksi pola *loop rujukan* tidak wajar atau konsentrasi klaim tidak biasa pada jam kerja dokter tertentu.
+- **Indikator Risiko Graf**: Skor normalisasi 0.0 – 1.0 yang merefleksikan tingkat anomali jaringan relasional fasilitas kesehatan.
 
 ---
 
 ## 4. Vector Store & Multi-Factor Composite Similarity (LanceDB)
 
-### 4.1 Vector Store Engine (`similarity.py`)
-- **Teknologi**: **LanceDB** (Embedded Vector Database, file-based tanpa server terpisah).
-- **Embedding Model**: `sentence-transformers/all-MiniLM-L6-v2` (384-dimensional dense vectors).
-- **Lokasi Penyimpanan**: `backend/app/lancedb_data/claims_vectors_v3`.
+### 4.1 Vector Store Engine (`backend/app/core/similarity.py`)
+- **Teknologi**: **LanceDB** — database vektor nir-server berbasis format data kolumnar Lance yang sangat cepat dan hemat memori.
+- **Model Embedding**: `sentence-transformers/all-MiniLM-L6-v2` (384 dimensi).
+- **Entri Vektor**: Representasi teks terstruktur dari kombinasi diagnosis primer, diagnosis sekunder, deskripsi prosedur, dan ringkasan tindakan medis per klaim.
+- **Metrik Jarak**: Cosine Distance ($1 - \text{Cosine Similarity}$).
 
-### 4.2 Formulasi Komposit Multi-Faktor Similarity Score
-Untuk mendeteksi *cloning* dan *repeat billing* secara akurat, sistem **tidak hanya menggunakan cosine similarity vector**, melainkan menggabungkannya menjadi skor komposit:
+### 4.2 Formulasi Komposit Multi-Faktor Similarity Score (`similarity_scoring.py`)
+Untuk membedakan antara kesamaan penyakit yang wajar dengan pola kecurangan terorganisir (seperti *cloning klaim* atau *unbundling*), sistem menghitung **Skor Kemiripan Komposit**:
 
-$$\text{Similarity Komposit} = 0.40 \cdot S_{\text{code}} + 0.30 \cdot S_{\text{cost}} + 0.15 \cdot I_{\text{provider}} + 0.10 \cdot S_{\text{time}} + 0.05 \cdot I_{\text{patient}}$$
+$$S_{composite} = 0.35 \times S_{semantic} + 0.25 \times S_{clinical} + 0.20 \times S_{temporal} + 0.20 \times S_{provider}$$
 
 Di mana:
-- $S_{\text{code}}$: Indeks Jaccard kemiripan kode diagnosis & prosedur ($0.0 - 1.0$).
-- $S_{\text{cost}}$: Kedekatan rasio nilai biaya klaim ($\exp(-\frac{|\text{cost}_1 - \text{cost}_2|}{\text{cost}_1})$).
-- $I_{\text{provider}}$: Matriks biner (1.0 jika Provider ID sama, 0.0 jika beda).
-- $S_{\text{time}}$: Fungsi peluruhan waktu berdasarkan selisih hari tanggal pelayanan.
-- $I_{\text{patient}}$: Matriks biner (1.0 jika Patient ID sama, 0.0 jika beda).
+1. **$S_{semantic}$ (35%)**: Cosine similarity antara vektor embedding deskripsi klinis klaim baru terhadap klaim-klaim historis dalam LanceDB.
+2. **$S_{clinical}$ (25%)**: Kesamaan eksak kode ICD-10 primer, kode ICD-9-CM prosedur, dan kelas tarif INA-CBG.
+3. **$S_{temporal}$ (20%)**: Kedekatan waktu pelayanan antar dua klaim:
+   - Tanggal pelayanan identik atau selisih $\le 3$ hari: $S_{temporal} = 1.0$.
+   - Selisih $4 - 14$ hari: $S_{temporal} = 0.6$.
+   - Selisih $> 30$ hari: $S_{temporal} = 0.0$.
+4. **$S_{provider}$ (20%)**: Asal fasilitas kesehatan:
+   - Provider sama & dokter DPJP sama: $S_{provider} = 1.0$.
+   - Provider sama & dokter beda: $S_{provider} = 0.7$.
+   - Provider beda: $S_{provider} = 0.1$.
 
-### 4.3 Logika Klasifikasi Kecurangan Fraud Agent
-- **Cloning Flag**: Similarity Komposit $\ge 0.85$ **DAN** Provider SAMA **DAN** Pasien BERBEDA. *(Sangat mirip antar-pasien beda di RS yang sama menunjukkan indikasi penyalinan berkas klaim)*.
-- **Repeat Billing Flag**: Match persis pada (Pasien, Prosedur, Rentang Waktu) yang sudah terbayar.
-- **Unbundling Flag**: Deteksi klaim terpisah dari provider/pasien sama dalam kurun waktu `< 7 hari` dengan kombinasi prosedur yang seharusnya menyatu pada satu paket CBG.
+### 4.3 Kriteria Deteksi Fraud Relasional
+- **Claim Cloning Suspect**: $S_{composite} \ge 0.90$ dengan pasien yang berbeda tetapi rincian tindakan dan waktu pelayanan sangat identik.
+- **Repeat Billing Suspect**: $S_{composite} \ge 0.85$ dengan pasien yang sama pada fasilitas yang sama dalam jendela waktu $< 30$ hari untuk episode yang seharusnya tuntas dalam 1 kali perawatan.
+- **Unbundling Suspect**: Beberapa klaim terpisah diajukan dalam rentang 1–3 hari untuk prosedur yang menurut pedoman INA-CBG seharusnya disatukan dalam satu paket tagihan.
 
 ---
 
-## 5. Domain Rule Engine: INA-CBG Consistency Heuristic
+## 5. Domain Rule Engine: INA-CBG Consistency Heuristic & Risk Scoring
 
-### 5.1 Matriks Aturan Domain & Bobot Skor Risiko
-Aturan deterministik berbasis domain kesehatan JKN yang dievaluasi oleh `clinical_agent.py`. Pemetaan ini adalah heuristic prototype dan harus divalidasi terhadap referensi grouper resmi sebelum operasional.
+### 5.1 Matriks Aturan Domain (`backend/app/agents/clinical_agent.py`)
+Menerapkan regulasi teknis petunjuk operasional INA-CBG:
+1. **Aturan Kompatibilitas Prosedur vs Diagnosis**:
+   - Contoh: Tindakan operasi mata (Katarak) tidak boleh diajukan dengan diagnosis primer penyakit dalam non-oftalmologi tanpa diagnosis sekunder mata.
+2. **Batas Wajar Length of Stay (LOS)**:
+   - Prosedur rawat jalan (ODS - One Day Surgery) yang ditagihkan sebagai rawat inap $> 3$ hari ditandai sebagai anomali *prolonged LOS*.
+3. **Heuristik Severity Level vs Comorbidity/Complication (CC/MCC)**:
+   - Klaim dengan Severity Level 3 atau 4 yang tidak mencantumkan diagnosis sekunder yang masuk daftar komplikasi mayor resmi ditandai sebagai indikasi *upcoding*.
 
-| Kode Rule Flag | Deskripsi Aturan | Bobot Skor (`risk_engine.py`) |
-|---|---|---|
-| `tariff_deviation_extreme` | Claimed amount $> 100\%$ di atas reimbursement benchmark | Evidence reimbursement, bukan clinical point |
-| `unsupported_high_risk_proc` | Prosedur berbiaya tinggi tidak sesuai dengan diagnosis primer | +8.0 Poin |
-| `tariff_deviation_high` | Claimed amount $> 50\%$ di atas reimbursement benchmark | Evidence reimbursement, bukan clinical point |
-| `severity_proc_mismatch` | Severity Level $\ge 3$ tanpa ada prosedur tindakan pendukung | +5.0 Poin |
-| `upcoding_risk_diag` | Diagnosis sekunder berisiko upcoding (A41.9, Z87.39, E46) pada Severity $\ge 3$ | +4.0 Poin |
-| `severity_med_mismatch` | Severity Level $\ge 3$ dengan jumlah jenis obat $< 2$ | +3.0 Poin |
-| `los_outlier` | Length of Stay $> 2\times$ batas atas rata-rata klinis diagnosis | +2.0 Poin |
+### 5.2 Komposisi Skor Risiko Deterministik (`backend/app/core/risk_engine.py`)
 
-### 5.2 Kontrak Scoring Deterministik
+$$\text{Risk Score} = 0.35 \times \text{Clinical Risk} + 0.35 \times \text{Financial Risk} + 0.30 \times \text{Fraud Risk}$$
 
-- `evidence_support` menggantikan `synthesis_confidence` dan dihitung dari keluarga evidence deterministik, bukan dari level atau narasi LLM.
-- Deviasi tarif hanya masuk keluarga `reimbursement_benchmark`; deviasi tersebut tidak dihitung ulang sebagai clinical point.
-- Isolation Forest dan provider context ditampilkan sebagai `behavioral_context` dan tidak menambah evidence support pada prototype ini.
-- Similarity biasa tidak menambah skor. Hanya repeat billing, cloning, atau unbundling yang dapat menjadi `relational_pattern` evidence.
-- Setiap evidence memiliki `evidence_id`, `source_family`, `signal_type`, nilai, dan penjelasan yang dapat ditelusuri.
+- **Karakteristik Matematis**:
+  - Dihitung sepenuhnya tanpa intervensi probabilitas generatif LLM.
+  - Rentang nilai: `0.0` sampai `100.0`.
+  - **Aturan Capping 85 Poin**: Jika anomali hanya terdeteksi pada 1 dimensi terisolasi, skor akhir **dibatasi maksimal 85**. Nilai $> 85$ hanya diberikan jika terjadi konvergensi multi-sinyal terbukti (misal: selisih biaya drastis terkonfirmasi dengan pola klaim cloning).
+
+### 5.3 Priority Tiering
+- **HIGH** ($\ge 70$): Klaim berisiko tinggi — wajib diperiksa mendalam oleh verifier sebelum pembayaran disetujui.
+- **MEDIUM** ($40 - 69$): Klaim berisiko sedang — disarankan klarifikasi berkas atau audit berkala.
+- **LOW** ($< 40$): Klaim berisiko rendah — dapat diproses sesuai alur reguler.
 
 ---
 
 ## 6. Large Language Models (LLM) Ecosystem & Protocol
 
-### 6.1 LLMClient Abstraction (`llm_client.py`)
-Sistem menggunakan pola arsitektur **Protocol/Interface** untuk memungkinkan pertukaran model LLM secara transparan (*swappable LLM execution*):
+### 6.1 Abstraksi Terpadu (`backend/app/core/llm_client.py`)
+Sistem mengisolasi seluruh interaksi LLM melalui antarmuka `LLMClient`:
 
 ```python
-class LLMClient(Protocol):
-    async def structured_call(self, prompt: str, schema: type[BaseModel]) -> BaseModel: ...
-    async def list_models(self) -> list[str]: ...
+class LLMClient:
+    async def generate_response(self, prompt: str, system_prompt: str = None) -> str:
+        # 1. Coba Ollama Local (jika USE_OLLAMA=true)
+        # 2. Fallback ke Gemini API (jika GEMINI_API_KEY tersedia)
+        # 3. Fallback ke Heuristic Rule-Based Template jika kedua LLM gagal
 ```
 
-### 6.2 Provider Implementations
+### 6.2 Konfigurasi Model LLM per Environment
 
-#### 1. `OllamaClient` (Lokal - Primary Engine)
-- **Koneksi**: REST API ke Ollama instance lokal (`http://localhost:11434`).
-- **Skema Kuantisasi**: Q4_K_M (kebutuhan RAM/VRAM ~4.5 - 5.0 GB).
-- **Retry Mechanism**: Maksimal 2x percobaan otomatis jika sintaks JSON/Pydantic schema mismatch.
-- **Model Distribution**:
-  - `qwen2.5:7b`: Explanation Agent — Penyusunan narasi Bahasa Indonesia & QA Panel.
-  - `mistral:7b`: Clinical Agent Lapis 2 & Review Agent — Ekstraksi struktur & analisis implisit.
-  - `deepseek-r1:7b`: Review Agent (Opsional) — Reasoning trace sintesis multi-bukti.
-  - `qwen2.5:3b` / `llama3.2:3b`: Light Routing & Quick Validation.
+| Lingkungan | Model Chat / Copilot | Model Deep Reasoning (Phase 2) | Fallback Otomatis |
+|---|---|---|---|
+| **Lokal (Ollama)** | `mistral:7b` (default port 11434) | `deepseek-r1:7b` | Heuristic Template |
+| **Cloud / Hybrid** | `gemini-2.5-flash` | `gemini-2.5-flash` / `gemini-2.0-flash` | Heuristic Template |
+| **Offline / Minimal** | Heuristic Template | Heuristic Template | None (Selalu Berhasil) |
 
-#### 2. `GeminiClient` (API - Benchmark Baseline)
-- **Koneksi**: Google Gemini REST API (`ai.google.dev`).
-- **Penggunaan**: Evaluasi kualitas benchmark & pembanding narasi jalur produksi (*production-path narrative*). BUKAN menjadi ketergantungan wajib pada runtime demo lokal offline.
+### 6.3 Batasan Ketat Penggunaan LLM:
+1. **LLM DILARANG menentukan skor risiko numeric**: Skor risiko 100% dihitung oleh formula matematika `risk_engine.py`.
+2. **LLM DILARANG mengubah status klaim**: Keputusan verifikasi (Approve/Reject/Clarify) hanya dapat dibuat oleh manusia atau gerbang validasi Phase 0.
+3. **Peran LLM Terbatas Pada**:
+   - Mensintesis bukti lintas-agen ke dalam narasi kronologis.
+   - Merangkum temuan teknis ke dalam Bahasa Indonesia yang formal dan mudah dipahami.
+   - Memberikan rekomendasi langkah investigasi kepada verifier.
+   - Menjawab pertanyaan verifier interaktif pada AI Copilot.
 
 ---
 
 ## 7. Referensi Dokumen Terkait
-- [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md) — Spesifikasi kebutuhan produk.
-- [AgentWorkflow.md](file:///c:/Users/Radith/E-Jak/docs/AgentWorkflow.md) — Alur kerja dan eksekusi pipeline multi-agent.
-- [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md) — Cetak biru arsitektur teknis dan integrasi database.
-- [BusinessCore.md](file:///c:/Users/Radith/E-Jak/docs/BusinessCore.md) — Aturan domain bisnis JKN dan penanganan upcoding.
+
+- [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md): Dokumen Kebutuhan Produk J-ARI / AEGIS.
+- [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md): Arsitektur Teknis dan Alur Data.
+- [AgentWorkflow.md](file:///c:/Users/Radith/E-Jak/docs/AgentWorkflow.md): Alur Investigasi Multi-Agent dan SSE Protocol.
+- [BusinessCore.md](file:///c:/Users/Radith/E-Jak/docs/BusinessCore.md): Logika Bisnis Domain Perasuransian JKN.
+- [API.md](file:///c:/Users/Radith/E-Jak/docs/API.md): Dokumentasi REST API dan Payload SSE.

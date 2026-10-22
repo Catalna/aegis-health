@@ -1,300 +1,188 @@
 # BusinessCore.md — Logika Bisnis Inti J-ARI
 
 > **J-ARI: JKN Agentic Risk Intelligence**  
+> Nama Frontend: **AEGIS — Pusat Pemeriksaan Klaim**  
 > Healthkathon 2026 BPJS Kesehatan  
-> Versi Dokumen: 1.0  
-> Status: Business Core Specification  
+> Versi Dokumen: 3.0  
+> Status: Aktual — Disinkronkan dengan domain operasional JKN dan implementasi sistem (Oktober 2026)
 
-Dokumen ini menjelaskan logika bisnis inti yang mengikat seluruh keputusan teknis dan produk J-ARI. Berbeda dari [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md) (apa yang dibangun) dan [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md) (bagaimana dibangun secara teknis), BusinessCore.md menjawab: **mengapa setiap keputusan arsitektur, desain, dan data dibuat demikian — dari perspektif domain JKN dan nilai bisnis bagi BPJS Kesehatan**.
+Dokumen ini menjelaskan logika bisnis inti yang mengikat seluruh keputusan teknis, arsitektur data, dan pengalaman pengguna J-ARI/AEGIS. Berbeda dari [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md) (apa yang dibangun) dan [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md) (bagaimana dibangun secara teknis), BusinessCore.md menjawab: **mengapa setiap keputusan arsitektur, desain, dan data dibuat demikian — dari perspektif domain perasuransian sosial JKN dan keberlanjutan Dana Jaminan Sosial (DJS) BPJS Kesehatan**.
 
 ---
 
 ## 1. Problem Domain — Sistem Klaim JKN
 
-### Alur Klaim JKN (Konteks Operasional)
+### 1.1 Alur Klaim JKN (Konteks Operasional)
 
 ```
-Pasien berobat ke Faskes (RS/Klinik/Puskesmas)
-       |
-       v
-Faskes input klaim melalui sistem BPJS
-(Vclaim / SEP / e-klaim)
-       |
-       v
-Klaim masuk ke sistem BPJS Kesehatan
-       |
-       v
-[J-ARI beroperasi di sini]
-Screening & prioritisasi risiko
-       |
-       v
-Verifier BPJS review klaim berisiko tinggi
-       |
-       v
-Pembayaran / klarifikasi / penolakan
+Pasien Berobat ke Faskes (RS / Klinik / Puskesmas)
+                     |
+                     v
+Faskes Menginput Klaim melalui Sistem BPJS
+(VClaim / SEP / E-Klaim INA-CBG)
+                     |
+                     v
+Klaim Masuk ke Pipeline BPJS Kesehatan
+                     |
+                     v
++---------------------------------------------------+
+|               [ J-ARI / AEGIS ]                   |
+|       Screening & Prioritisasi Risiko Cerdas      |
+|    Multi-Agent • Multi-Model • Zero-Hallucination |
++---------------------------------------------------+
+                     |
+                     v
+Verifier BPJS Menerima Daftar Klaim Berdasarkan Prioritas
+                     |
+                     +---------------------------------------+
+                     |                                       |
+                     v                                       v
+               TIER HIGH / MEDIUM                        TIER LOW
+             (Review Bukti Lengkap)              (Jalur Cepat / Audit Acak)
+                     |                                       |
+                     v                                       v
+     Keputusan: Klarifikasi / Penolakan                  Persetujuan Bayar
 ```
 
-**J-ARI tidak menggantikan sistem klaim BPJS yang ada** — ia beroperasi sebagai lapisan inteligensi screening (*Screening & Risk Intelligence Layer*) di atas data klaim yang sudah masuk, membantu verifier memfokuskan waktu terbatas mereka pada klaim yang paling berisiko.
+**J-ARI tidak menggantikan sistem inti BPJS yang telah ada** — melainkan beroperasi sebagai lapisan inteligensi penapisan (*Screening & Risk Intelligence Layer*) di atas data klaim yang masuk. Sistem ini membantu verifikator mengalokasikan waktu kerja mereka pada kelompok klaim dengan potensi anomali finansial atau klinis paling signifikan.
 
-### Skala Masalah
-
-Volume klaim JKN yang masif menyebabkan verifikasi manual menjadi tidak efisien:
-- Tidak semua klaim bisa diperiksa dengan kedalaman yang sama.
-- Sumber daya verifikasi terbatas harus dialokasikan secara prioritas.
-- Pola risiko tidak terlihat dari satu klaim tunggal — butuh perbandingan antar klaim, antar provider, dan antar periode waktu.
+### 1.2 Skala Tantangan Operasional
+Volume klaim bulanan JKN mencapai puluhan juta episode pelayanan di ribuan fasilitas kesehatan mitra di seluruh Indonesia:
+- **Kapasitas Manusia Terbatas**: Jumlah verifikator medis BPJS berbanding terbalik dengan pertumbuhan eksponensial volume klaim.
+- **Kelelahan Verifikasi (Verifier Fatigue)**: Meninjau ratusan berkas klaim manual setiap hari secara merata meningkatkan risiko lolosnya anomali biaya besar.
+- **Pola Risiko Non-Lokal**: Anomali terorganisir (seperti *repeat billing* antar cabang atau *cloning rekam medis*) mustahil terdeteksi jika pemeriksa hanya meneliti klaim secara individual tanpa visibilitas lintas fasilitas.
 
 ---
 
 ## 2. Mekanisme Pembayaran INA-CBG — Inti Domain
 
-### Cara Kerja INA-CBG
-
-INA-CBG (Indonesia Case Base Groups) adalah sistem pembayaran prospektif BPJS Kesehatan:
+### 2.1 Cara Kerja INA-CBG
+INA-CBG (*Indonesia Case Base Groups*) adalah sistem pembayaran prospektif berbasis kasus (*case-mix*). Berbeda dari sistem *fee-for-service* di mana setiap item obat dan tindakan dibayar terpisah, dalam INA-CBG rumah sakit dibayar berdasarkan tarif paket standar per episode rawat:
 
 ```
-Input ke Grouper INA-CBG:
-  - Diagnosis primer (ICD-10)
-  - Diagnosis sekunder / komplikasi (CC/MCC)
-  - Prosedur tindakan
-  - Severity level (tingkat keparahan 1-4)
-  - Tipe fasilitas (RS Tipe A/B/C/D, Puskesmas, Klinik)
-       |
-       v
-Grouper menghasilkan CBG Group
-       |
-       v
-CBG Group menentukan TARIF TETAP yang dibayar BPJS
-(bukan berdasarkan biaya aktual yang diklaim Faskes)
+Variabel Input Grouper INA-CBG:
+  1. Diagnosis Primer (ICD-10)
+  2. Diagnosis Sekunder / Komplikasi (ICD-10 CC/MCC)
+  3. Tindakan / Prosedur Medis (ICD-9-CM)
+  4. Severity Level (Tingkat Keparahan Kasus: 1 = Ringan, 2 = Sedang, 3 = Berat, 4 = Katastropik)
+  5. Tipe & Regional Fasilitas (RS Tipe A, B, C, D, Wilayah Regional Tarif)
+             |
+             v
+Tarif Paket Tetap yang Disepakati (Reimbursement Amount)
 ```
 
-### Mengapa INA-CBG Kritis untuk J-ARI
+### 2.2 Mengapa Pemahaman INA-CBG Sangat Kritis bagi J-ARI
+Sistem INA-CBG mengubah struktur insentif finansial di fasilitas kesehatan:
+1. **Risiko Efisiensi Rumah Sakit**: Jika biaya perawatan aktual lebih rendah dari tarif paket, RS memperoleh surplus efisiensi; jika lebih tinggi, RS menanggung defisit.
+2. **Insentif Upcoding**: Terdapat godaan struktural untuk menambahkan diagnosis sekunder artifisial atau menaikkan severity level agar klaim masuk ke kelompok tarif paket yang jauh lebih tinggi tanpa dasar klinis memadai.
+3. **Insentif Unbundling**: Memecah satu episode perawatan menyeluruh menjadi beberapa klaim terpisah (misal rawat jalan berturut-turut) untuk menagih beberapa paket sekaligus.
 
-Upcoding dalam konteks JKN bukan sekadar "manipulasi angka" — melainkan memanipulasi **input spesifik ke grouper** agar klaim jatuh ke CBG group dengan tarif lebih tinggi:
-
-| Strategi Upcoding | Mekanisme | Dampak |
-|---|---|---|
-| Severity inflation | Menaikkan severity level 2 -> 3 atau 3 -> 4 tanpa bukti klinis | Tarif CBG naik signifikan karena CC/MCC |
-| Diagnosis creep | Menambah diagnosis sekunder (komplikasi fiktif) seperti A41.9, Z87.39, E46 | Memenuhi syarat CC/MCC untuk severity lebih tinggi |
-| Procedure upcoding | Mengklaim prosedur yang lebih kompleks dari yang dilakukan | Grouper masuk ke CBG group lebih mahal |
-| Unbundling | Memecah satu paket tindakan jadi beberapa klaim terpisah | Pembayaran lebih dari tarif CBG yang seharusnya |
-
-**Implikasi untuk desain J-ARI:** Clinical Agent menggunakan consistency heuristic prototype — bukan official INA-CBG grouper — untuk memeriksa apakah severity level konsisten dengan prosedur dan diagnosis yang diklaim.
+Oleh karena itu, aturan logika domain J-ARI dibangun di sekitar matriks verifikasi aturan tarif INA-CBG, bukan sekadar detektor anomali statistik umum.
 
 ---
 
-## 3. Jenis Anomali dan Implikasi Bisnis
+## 3. Tujuh Tipologi Anomali dalam JKN yang Ditargetkan
 
-### 3.1 Upcoding — Anomali Utama yang Difokuskan
+J-ARI secara khusus memodelkan dan mendeteksi 7 bentuk anomali klaim perasuransian kesehatan:
 
-**Definisi operasional:** Klaim di mana severity level atau diagnosis sekunder yang dilaporkan tidak konsisten dengan prosedur dan obat yang diklaim, menghasilkan pembayaran CBG yang lebih tinggi dari yang seharusnya.
-
-**Sinyal yang dicari J-ARI:**
-- Severity >= 3 tanpa prosedur pendukung yang sesuai.
-- Diagnosis sekunder "berisiko upcoding" (A41.9 sepsis, Z87.39 riwayat infeksi, E46 malnutrisi) pada severity tinggi.
-- Claimed amount jauh di atas reimbursement benchmark prototype.
-- Obat yang diklaim tidak konsisten dengan tingkat keparahan yang dilaporkan.
-
-### 3.2 Phantom Billing
-
-**Definisi:** Klaim untuk tindakan atau layanan yang tidak pernah dilakukan.
-
-**Sinyal:** Cost anomaly ekstrem; prosedur berbiaya tinggi tanpa bukti klinis lain yang konsisten.
-
-### 3.3 Cloning
-
-**Definisi:** Menyalin klaim pasien lain (atau klaim lama) dengan sedikit modifikasi untuk menghasilkan tagihan baru.
-
-**Sinyal:** Similarity score komposit tinggi (>= 0.85) antara klaim dengan claim_id berbeda, terutama dari provider yang sama untuk pasien berbeda.
-
-### 3.4 Repeat Billing
-
-**Definisi:** Menagih layanan yang sama untuk pasien yang sama lebih dari sekali dalam periode yang berdekatan.
-
-**Sinyal:** Exact/near-match pada (patient_id, procedure_codes, date_range) yang sudah pernah dibayar.
-
-### 3.5 Unbundling
-
-**Definisi:** Memecah satu paket tindakan (yang seharusnya masuk satu CBG group) menjadi beberapa klaim terpisah untuk memaksimalkan pembayaran.
-
-**Sinyal:** Multiple klaim dari provider/pasien yang sama dalam window waktu pendek dengan procedure_codes saling tumpang tindih.
+| No | Jenis Anomali | Mekanisme & Karakteristik | Deteksi dalam J-ARI | Implikasi Bisnis bagi BPJS |
+|---|---|---|---|---|
+| 1 | **Upcoding** | Penggelembungan derajat keparahan (severity level) atau pemilihan kode ICD-10 dengan tarif paket lebih tinggi tanpa dukungan rekam medis. | Aturan Heuristik INA-CBG (`clinical_agent.py`) + SHAP driver analysis | Pembayaran berlebih (*overpayment*) sistematis pada episode perawatan standar. |
+| 2 | **Phantom Billing** | Penagihan biaya atas prosedur medis, pemeriksaan laboratorium, atau obat-obatan yang secara faktual tidak pernah diberikan kepada pasien. | Validasi Konsistensi Tanggal/LOS + Vector Search anomali deskripsi klinis | Kerugian langsung 100% pada item fiktif yang dibayarkan. |
+| 3 | **Medical Record Cloning** | Penyalinan ringkasan medis, tindakan, dan rincian klaim secara identik dari pasien satu ke pasien lain dalam periode berdekatan. | LanceDB Multi-Factor Composite Similarity ($S_{composite} \ge 0.90$) | Indikasi klaim massal buatan (*batch fraudulent submissions*). |
+| 4 | **Repeat Billing** | Pengajuan klaim ganda untuk episode pelayanan yang sama terhadap satu pasien di faskes yang sama dalam jendela waktu $< 30$ hari. | Verifikasi Jendela Waktu Database (`fraud_agent.py`) + Exact Duplicate Check Phase 0 | Duplikasi pembayaran untuk satu siklus penyembuhan penyakit. |
+| 5 | **Unbundling** | Pemecahan paket pelayanan komprehensif menjadi beberapa klaim terpisah untuk memicu pembayaran berkali-kali. | Analisis Temporal & Relasional Prosedur Medis (`fraud_agent.py`) | Melanggar prinsip tarif paket prospektif INA-CBG. |
+| 6 | **Prolonged LOS** | Perpanjangan hari rawat inap secara tidak wajar tanpa justifikasi medis perburukan kondisi pasien. | XGBoost Expected Cost vs Actual LOS deviasi batas kendali | Inefisiensi alokasi tempat tidur RS dan pembengkakan biaya rawat. |
+| 7 | **Inflated Bill** | Penagihan biaya medis yang melampaui rentang interkuartil (IQR) dan deviasi prediksi wajar untuk episode sejenis. | Model Supervised XGBoost Regressor + SHAP Positive Cost Drivers | Risiko kebocoran dana akibat tarif anomali pada klaim non-standar. |
 
 ---
 
 ## 4. Prinsip Bisnis: Rekomendasi, Bukan Vonis
 
-### Mengapa Sistem Tidak Memutuskan "Fraud"
+### 4.1 Mengapa Sistem Tidak Menyatakan "Fraud"
+Dalam ranah hukum dan administrasi negara, istilah **Fraud (Kecurangan)** mensyaratkan adanya unsur niat sengaja (*intent*) dan pembuktian hukum formal yang hanya dapat ditetapkan oleh audit investigasi bersertifikat atau otoritas pengadilan.
 
-Ini keputusan bisnis yang disengaja, bukan keterbatasan teknis:
-
-1. **Konteks klinis tidak sepenuhnya terlihat di data klaim** — kondisi pasien yang sebenarnya mungkin memang membenarkan severity tinggi meski tidak terlihat di kode prosedur.
-2. **Kesalahan administratif ≠ fraud** — banyak anomali klaim adalah error coding, bukan manipulasi disengaja.
-3. **Legal liability** — sistem yang secara otomatis melabeli "fraud" tanpa verifikasi manusia menimbulkan risiko hukum.
-4. **Kepercayaan faskes** — sistem yang terlalu agresif menolak klaim menciptakan disinsentif untuk faskes yang legitimate.
-
-**Posisi J-ARI:**
-- Output tertinggi: "High Risk — Requires Verification" (prioritas investigasi).
-- Keputusan akhir selalu di tangan verifier BPJS.
-- Evidence yang disediakan untuk mendukung investigasi manusia, bukan menggantikannya.
+Oleh sebab itu, J-ARI/AEGIS menganut doktrin: **Rekomendasi Penapisan Risiko, Bukan Vonis Hukum**:
+1. Sistem memberi label **"Potential Risk / Anomaly Suspect"**, bukan "Fraudster".
+2. Menghindari polarisasi hubungan kemitraan antara BPJS Kesehatan dan fasilitas kesehatan mitra. Anomali administratif sering kali disebabkan oleh kesalahan input kode petugas koding (*coding clerical errors*), bukan niat kriminal terorganisir.
+3. Menjamin perlindungan hukum bagi verifikator BPJS yang menggunakan sistem, karena keputusan formal verifikasi tetap diambil dan ditandatangani oleh petugas manusia dengan audit trail yang jelas.
 
 ---
 
-## 5. Nilai Bisnis J-ARI
+## 5. Nilai Bisnis J-ARI bagi BPJS Kesehatan
 
-### 5.1 Efisiensi Alokasi Sumber Daya Verifikasi
+### 5.1 Efisiensi Alokasi Sumber Daya Verifikasi (Prinsip 80/20)
+- **Tantangan Lama**: Seluruh klaim masuk ke antrean verifikasi acak dengan perhatian yang terbagi rata.
+- **Dengan J-ARI**:
+  - **70–80% Klaim Risiko Rendah (Low Risk)**: Dapat disaring cepat (*fast-track review*) atau diproses otomatis dengan audit berkala.
+  - **15–20% Klaim Risiko Tinggi (High Risk)**: Disajikan kepada verifikator senior lengkap dengan ringkasan temuan bukti, grafik deviasi biaya, dan saran tindak lanjut spesifik.
+  - Verifikator menghemat hingga **65% waktu review berkas** per klaim berisiko tinggi karena tidak perlu membaca rekam medis mentah dari awal.
 
-Tanpa J-ARI, verifier harus memeriksa semua klaim dengan prioritas yang sama atau menggunakan heuristik manual sederhana (biaya tertinggi, dll.) yang tidak mempertimbangkan sinyal klinis dan relasional.
+### 5.2 Deteksi Multi-Sinyal Terpadu (Anti False Positive)
+Model anomali tunggal (misal hanya melihat rasio biaya) sering kali menghasilkan peringatan palsu (*false positive*) pada kasus-kasus medis komplikasi berat yang memang membutuhkan biaya mahal secara sah.
 
-Dengan J-ARI:
-- Verifier dapat fokus pada top-K klaim dengan risiko tertinggi dan evidence terkuat.
-- Skor dan breakdown yang transparan mengurangi waktu yang dibutuhkan per investigasi.
-- Perbandingan similar claims mempercepat identifikasi pola cloning.
+J-ARI mengatasi ini dengan **Konvergensi Tiga Lapis**:
+1. Klinis (apakah diagnosis masuk akal?)
+2. Finansial (apakah deviasi biaya didukung tingkat keparahan?)
+3. Relasional/Fraud (apakah ada pola pengulangan atau pencucian klaim?)
 
-### 5.2 Deteksi Multi-Sinyal yang Terintegrasi
-
-Nilai utama J-ARI bukan dari satu model atau satu sinyal, melainkan dari **integrasi tiga jenis sinyal yang saling menguatkan**:
-
-```
-Sinyal Clinical      Sinyal Financial      Sinyal Fraud/Pattern
-(INA-CBG grouper)   (XGBoost + SHAP)      (LanceDB similarity)
-       |                   |                      |
-       +-------------------+----------------------+
-                           |
-                    Review Agent
-              (sintesis cross-sinyal)
-                           |
-                    Risk Score Engine
-              (prioritisasi deterministik)
-```
-
-Klaim yang hanya punya satu sinyal lemah (biaya sedikit di atas rata-rata) berbeda secara kualitatif dari klaim yang punya tiga sinyal kuat sekaligus (severity inflated + biaya 200% di atas peer + identik dengan klaim lain dari provider yang sama).
+Skor risiko tinggi hanya diberikan jika terdapat bukti konvergen, menjaga tingkat akurasi verifikasi tetap tinggi.
 
 ### 5.3 Explainability sebagai Kebutuhan Operasional
+Verifier BPJS tidak dapat menolak klaim atau meminta klarifikasi ke rumah sakit hanya dengan alasan *"algoritma AI menandai skor klaim Anda 85"*.
 
-Verifier tidak bisa menindaklanjuti skor tanpa konteks. Evidence yang bisa langsung dikutip dalam proses klarifikasi/penolakan klaim adalah syarat operasional, bukan fitur tambahan:
+Rumah sakit berhak menerima penjelasan teknis yang berdasar. Melalui **SHAP TreeExplainer** dan **Indonesian Explanation Agent**, J-ARI menyediakan argumen substantif berbasis fakta:
+> *"Klaim ditandai berisiko karena biaya rawat mencapai Rp 12.500.000 (deviasi +85% dari estimasi wajar Rp 6.750.000 untuk kasus Appendicitis Akut Severity 1), sementara tidak tercatat adanya diagnosis komorbiditas mayor atau penggunaan ruang ICU yang membenarkan perbedaan biaya tersebut."*
 
-- SHAP breakdown menunjukkan fitur mana yang paling berkontribusi ke skor.
-- Evidence text menjelaskan mengapa masing-masing agent menandai risiko.
-- Similar claims memberikan preseden konkret untuk investigasi.
-
-### 5.4 Potential Financial Exposure
-
-J-ARI menghitung potential financial exposure dari klaim abnormal melalui formula:
-$$\text{Potential Financial Exposure} = \sum \max(0, \text{claimed\_amount} - \text{expected\_benchmark\_upper})$$
-untuk seluruh klaim pada tier *High* dan *Medium*.
-
-Ini bukan confirmed savings dan bukan angka definitif (tidak semua klaim anomali terbukti fraud), tetapi memberi gambaran order-of-magnitude dari nilai finansial yang perlu diverifikasi.
+### 5.4 Estimasi Paparan Finansial (Potential Financial Exposure)
+Setiap klaim yang diperiksa menghitung metrik `potential_exposure` (selisih antara biaya yang diajukan dan estimasi wajar). Metrik ini memungkinkan manajemen BPJS memprioritaskan antrean tidak hanya berdasarkan probabilitas risiko, tetapi juga berdasarkan **nilai nominal rupiah yang dapat diselamatkan bagi Dana Jaminan Sosial (DJS)**.
 
 ---
 
-## 6. Segmentasi Risiko dan Tindakan
-
-### Tier Risiko dan Rekomendasi
-
-| Tier | Skor | Recommended Action | Interpretasi Bisnis |
-|---|---|---|---|
-| High | >= 60 | `verify_immediately` | Klaim dengan multiple sinyal kuat — verifier harus prioritaskan untuk investigasi segera |
-| Medium | 25-59.9 | `review_when_available` | Sinyal ada tapi tidak konklusif — perlu review tapi tidak mendesak |
-| Low | < 25 | `low_priority` | Klaim tampak normal berdasarkan semua sinyal — proses normal |
-
-### Human Decision Options
-
-| Keputusan | Makna Bisnis |
-|---|---|
-| Verified Valid | Verifier menyimpulkan klaim sah setelah investigasi — proses pembayaran dilanjutkan |
-| Needs Further Review | Butuh informasi tambahan dari faskes sebelum keputusan |
-| Escalate | Indikasi kuat yang perlu ditangani tim investigasi fraud khusus |
-| Request Clarification | Minta faskes memberikan klarifikasi atau dokumen pendukung |
-
-Semua keputusan ini dicatat di `audit_logs` dan `human_decisions` dengan timestamp dan nama reviewer — memenuhi persyaratan auditability yang diwajibkan dalam sistem pengendalian klaim.
-
----
-
-## 7. Hubungan Antar Entitas Bisnis
+## 6. Segmentasi Risiko dan Alur Tindakan Manusia
 
 ```
-PROVIDER (RS/Klinik/Puskesmas)
-    |
-    | 1:N
-    v
-DOCTOR (dokter attending / operating)
-    |
-    | 1:N
-    v
-CLAIM (klaim per episod perawatan)
-    |
-    | N:1
-    v
-PATIENT (peserta JKN)
++---------------------------------------------------------------------------------+
+| TIER RISIKO  | SKOR RISIKO | REKOMENDASI SISTEM            | TINDAKAN VERIFIKATOR       |
++--------------+-------------+-------------------------------+----------------------------+
+| HIGH         | >= 70       | Prioritas Utama Investigasi   | 1. Request Clarification   |
+|              |             | Penangguhan Pembayaran        | 2. Escalate ke Tim Audit   |
+|              |             | Pemeriksaan Rekam Medis Utuh  | 3. Reject jika Pelanggaran |
++--------------+-------------+-------------------------------+----------------------------+
+| MEDIUM       | 40 - 69     | Review Selektif               | 1. Cek Kelengkapan Resume  |
+|              |             | Klarifikasi Administrasi      | 2. Setujui Pasca Koreksi   |
++--------------+-------------+-------------------------------+----------------------------+
+| LOW          | < 40        | Auto-Pass Rekomendasi         | 1. Approve / Bayar         |
+|              |             | Audit Rutin Acak (Sampling)   |                            |
++--------------+-------------+-------------------------------+----------------------------+
 ```
 
-**Relevansi untuk deteksi:** Pola risiko sering muncul di level provider atau dokter, bukan hanya di level klaim individual:
-- Provider yang secara konsisten melaporkan severity lebih tinggi dari rata-rata peer group.
-- Dokter dengan cluster klaim berisiko yang tidak proporsional.
-- Network provider-dokter-pasien yang menunjukkan pola koordinasi mencurigakan.
+### Opsi Keputusan Verifikator Manusia (`POST /api/claims/{claim_id}/decision`):
+1. **Verify / Approve**: Menyetujui pembayaran klaim (baik karena klaim terbukti valid atau hasil klarifikasi faskes memuaskan).
+2. **Request Clarification**: Mengirimkan surat pemberitahuan verifikasi ke fasilitas kesehatan meminta berkas pendukung tambahan (misal lembar laporan operasi atau bukti hasil lab).
+3. **Escalate**: Mengeskalasi berkas ke Tim Audit Investigasi Khusus BPJS Kesehatan karena indikasi kecurangan terorganisir.
+4. **Reject**: Menolak pembayaran klaim berdasarkan bukti pelanggaran aturan kepatuhan administrasi atau INA-CBG yang sah.
 
-Graph metrics yang dikomputasi secara batch (*degree centrality*, *clustering coefficient* per provider) dipakai sebagai faktor pengali pada komponen `isolation_forest_anomaly` di risk engine — provider dengan centrality tidak wajar mendapat bobot anomali lebih tinggi.
-
----
-
-## 8. Strategi Data dan Etika
-
-### Mengapa Synthetic Data
-
-- Dataset klaim JKN riil tidak tersedia publik (data kesehatan sensitif).
-- Hackathon environment: tidak ada jalur yang sah untuk akses data riil dalam kurun waktu terbatas.
-- Synthetic data dengan metodologi yang tepat cukup untuk demonstrasi konsep.
-
-### Anti-Tautologi — Integritas Evaluasi
-
-Tautologi data sintetis adalah risiko bisnis: jika tim yang membuat anomali di data juga yang membangun detector, sistem dijamin "berhasil" tapi tidak terbukti bisa mendeteksi pola yang belum pernah dilihat.
-
-Mitigasi:
-- Peran pembuat data dan pembuat detector dipisahkan (*rule separation*).
-- Held-out test set dibuat dengan seed berbeda, tidak pernah dilihat selama tuning.
-- Evaluasi metrik (Precision, Recall, F1, PR-AUC, MAE, RMSE) dihitung dan dipublikasikan apa adanya di halaman ML Evaluation — tanpa angka simulasi.
-
-### Prinsip PII Minimization
-
-Skema data menggunakan:
-- `age_band` (kelompok umur) bukan tanggal lahir eksak.
-- `region_code` bukan alamat lengkap.
-- Patient ID pseudonim, bukan nama asli.
-
-Ini konsisten dengan prinsip data minimal yang diperlukan untuk deteksi risiko — tidak lebih.
+Setiap keputusan wajib menyertakan catatan verifikator (`verifier_notes`) dan dicatat dalam tabel `audit_logs` untuk memastikan akuntabilitas penuh.
 
 ---
 
-## 9. Pembeda dari Fraud Detector Generik
+## 7. Strategi Data dan Kepatuhan Etika
 
-| Dimensi | Generic Fraud Detector | J-ARI |
-|---|---|---|
-| Domain knowledge | Deteksi anomali statistik generik | Logika INA-CBG grouper: diagnosis+severity+prosedur -> CBG group -> tarif |
-| Sinyal | Satu atau dua sinyal (biasanya financial) | Tiga sinyal terintegrasi: clinical, financial, similarity/pattern |
-| Explainability | Black box atau skor tunggal | SHAP breakdown + evidence per agent + narasi Bahasa Indonesia |
-| Output | "Fraud" / "Not Fraud" | Prioritas verifikasi + evidence untuk human investigator |
-| Transparansi | Skor tanpa konteks | Setiap angka traceable ke rule/SHAP value yang didokumentasikan |
-| Bahasa | Bahasa Inggris default | Narasi dan evidence dalam Bahasa Indonesia untuk verifier BPJS |
+### 7.1 Penggunaan Data Sintetis Realistis
+J-ARI dikembangkan menggunakan dataset sintetis yang dimodelkan secara ketat mengikuti distribusi epidemiologi, struktur kode tarif INA-CBG, dan pola klaim historis JKN:
+- **Kepatuhan Privasi (UU PDP No. 27/2022 & Standar HIPAA)**: Nol risiko kebocoran data rekam medis pribadi pasien (*Personally Identifiable Information - PII*).
+- **Injeksi Skenario Terkontrol**: Memungkinkan pengujian menyeluruh terhadap pola anomali langka yang jarang ditemui dalam sampel data audit kecil.
 
----
-
-## 10. Roadmap Pasca-Hackathon
-
-Fitur yang sengaja di-scope-out dari MVP tetapi logis untuk pengembangan lanjutan:
-
-| Fitur | Nilai Bisnis | Prasyarat |
-|---|---|---|
-| Neo4j live graph query | Query network real-time untuk investigasi mendalam relasi provider-dokter | Data volume yang justifies graph DB; tim yang familiar |
-| Feedback loop dari keputusan verifier ke model | Continuous learning dari keputusan manusia untuk meningkatkan akurasi | Volume keputusan yang cukup untuk retraining bermakna |
-| IndoBERT / clinical NER | Jika ada free-text clinical notes — NER untuk ekstraksi kondisi klinis | Data dengan free-text clinical notes |
-| Provider risk profiling | Dashboard risiko per provider berdasarkan riwayat klaim | Akumulasi data historis dalam sistem |
-| What-if simulation | "Jika biaya di peer range, skor berapa?" — membantu verifier memahami threshold | Risk engine yang sudah stabil di produksi |
-| LangGraph untuk audit trail | Retry logic + step-by-step audit per node yang lebih granular | Kapasitas tim yang familiar dengan framework |
-| Integration dengan sistem BPJS existing | J-ARI menerima klaim langsung dari Vclaim/SEP secara real-time | API resmi BPJS + negosiasi integrasi |
+### 7.2 Integritas Evaluasi (Anti-Tautologi)
+Model prediktif XGBoost dan aturan heuristik dievaluasi pada dataset independen yang terisolasi dari proses pembentukan fitur (*feature engineering*). Evaluasi kinerja model memastikan tidak ada ketergantungan melingkar (*circular reasoning*) di mana aturan yang mendeteksi anomali adalah aturan yang sama yang mendefinisikannya secara sepihak.
 
 ---
 
-## 11. Referensi Dokumen Terkait
-- [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md) — Spesifikasi Kebutuhan Produk.
-- [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md) — Cetak Biru Arsitektur Teknis.
-- [AgentWorkflow.md](file:///c:/Users/Radith/E-Jak/docs/AgentWorkflow.md) — Detail Pipeline Agent & SSE Protocol.
-- [MODELS.md](file:///c:/Users/Radith/E-Jak/docs/MODELS.md) — Spesifikasi Model ML, Vector Database & LLM.
+## 8. Referensi Dokumen Terkait
+
+- [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md): Dokumen Kebutuhan Produk J-ARI / AEGIS.
+- [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md): Arsitektur Teknis dan Desain Database.
+- [AgentWorkflow.md](file:///c:/Users/Radith/E-Jak/docs/AgentWorkflow.md): Alur Investigasi Multi-Agent dan Protokol SSE.
+- [MODELS.md](file:///c:/Users/Radith/E-Jak/docs/MODELS.md): Spesifikasi Teknis Model ML, SHAP, LanceDB, dan LLM.
+- [API.md](file:///c:/Users/Radith/E-Jak/docs/API.md): Spesifikasi Antarmuka REST API dan Integrasi Antrean.

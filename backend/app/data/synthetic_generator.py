@@ -195,11 +195,15 @@ def generate_cloning_case(claim_id1: str, claim_id2: str, fixed_provider_id: str
 
 
 def generate_repeat_billing_case(claim_id: str, original_claim: dict) -> dict:
-    """Same claim submitted again with minor cosmetic difference."""
+    """Same claim submitted again as a separate episode (10-25 days apart)."""
     clone = copy.deepcopy(original_claim)
     clone["claim_id"] = claim_id
     clone["evaluation_group_id"] = original_claim.get("evaluation_group_id", f"claim:{original_claim['claim_id']}")
-    clone["admission_date"] = original_claim["admission_date"] + timedelta(days=random.randint(0, 2))
+    shift = timedelta(days=random.randint(10, 25))
+    clone["admission_date"] = original_claim["admission_date"] + shift
+    # Tanggal keluar ikut digeser agar episode tetap masuk akal (LOS sama) —
+    # kalau tidak, keluar lebih awal dari masuk menjadi ditolak validator.
+    clone["discharge_date"] = original_claim["discharge_date"] + shift
     clone["is_synthetic_anomaly"] = True
     clone["anomaly_type"] = "repeat_billing"
     return clone

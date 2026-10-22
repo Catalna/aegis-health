@@ -132,6 +132,13 @@ def _validate_narrative(narrative: str, facts: dict) -> list[str]:
 def _similar_claim_text(fraud: FraudAssessment, claim_cost: float = 0.0) -> str:
     """Teks klaim serupa DENGAN konteks faktor — bukan sekadar persen."""
     if not fraud.similar_claims:
+        # Prioritaskan repeat billing dari SQL (lebih konkret dari vector similarity)
+        if fraud.repeat_billing_matched_claim_id:
+            return (
+                f"Terdeteksi pengulangan klaim dengan {fraud.repeat_billing_matched_claim_id} "
+                f"— pasien dan tindakan yang sama ditemukan dalam rentang 45 hari. "
+                f"Periksa apakah dua episode perawatan ini terpisah secara klinis."
+            )
         if fraud.similarity_matched_claim_id:
             return f"Klaim yang paling mirip: {fraud.similarity_matched_claim_id} (tingkat kemiripan {fraud.similarity_max_score*100:.0f}%)."
         return "Tidak ada riwayat klaim yang mirip."
@@ -352,5 +359,7 @@ SINTESIS REVIEW: {review.reasoning_narrative}
         )
 
     except Exception as e:
-        print(f"[explanation] LLM gagal/divalidasi ulang → template fallback: {e}")
+        # print() harus aman cp1252 (console Windows): karakter Unicode seperti
+        # '→' memicu UnicodeEncodeError pada fallback path dan mematikan analisis.
+        print(f"[explanation] LLM gagal/divalidasi ulang -> template fallback: {e}")
         return _template_explanation(claim, clinical, financial, fraud, review, risk, facts)

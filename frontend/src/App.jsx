@@ -28,7 +28,7 @@ function Sidebar() {
       <div className="sidebar-logo">
         <Logo width={34} height={34} />
         <div className="sidebar-brand-copy">
-          <div className="sidebar-brand-title">J-ARI</div>
+          <div className="sidebar-brand-title">AEGIS</div>
           <p>Pusat Pemeriksaan Klaim</p>
         </div>
       </div>

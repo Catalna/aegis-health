@@ -11,7 +11,10 @@ import logging
 import math
 import numpy as np
 import xgboost as xgb
-import shap
+try:
+    import shap
+except Exception:
+    shap = None
 from backend.app.models.schemas import ClaimInput, FinancialAssessment, SHAPFeature
 from backend.app.ml.feature_engineering import (
     extract_cost_features,
@@ -65,10 +68,13 @@ def get_financial_model():
                     "Model biaya lama tidak kompatibel dengan fitur tanpa target leakage. "
                     "Jalankan scripts/train_all.py."
                 )
-            _shap_explainer = shap.Explainer(
-                model.predict,
-                shap.maskers.Independent(np.zeros((1, len(COST_FEATURE_NAMES))), max_samples=50),
-            )
+            if shap is not None:
+                _shap_explainer = shap.Explainer(
+                    model.predict,
+                    shap.maskers.Independent(np.zeros((1, len(COST_FEATURE_NAMES))), max_samples=10),
+                )
+            else:
+                _shap_explainer = None
             _xgb_model = model
             _load_error = None
         except Exception as e:
@@ -120,11 +126,14 @@ async def analyze_financial(claim: ClaimInput) -> FinancialAssessment:
         return _zscore_fallback(claim, ANALYSIS_RETRYABLE_MESSAGE)
 
     # SHAP attribution
-    try:
-        shap_explanation = explainer(features)
-        raw_shap = shap_explanation.values[0]
-    except Exception:
-        logger.exception("SHAP attribution unavailable for claim_id=%s", claim.claim_id)
+    if explainer is not None:
+        try:
+            shap_explanation = explainer(features)
+            raw_shap = shap_explanation.values[0]
+        except Exception:
+            logger.exception("SHAP attribution unavailable for claim_id=%s", claim.claim_id)
+            raw_shap = np.zeros(features.shape[1])
+    else:
         raw_shap = np.zeros(features.shape[1])
 
     actual_cost = claim.cost_claimed

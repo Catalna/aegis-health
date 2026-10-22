@@ -1,147 +1,225 @@
-# PRD.md â€” Product Requirement Document (J-ARI)
+# PRD.md — Product Requirement Document (J-ARI / AEGIS)
 
-> **J-ARI: JKN Agentic Risk Intelligence**  
-> Healthkathon 2026 BPJS Kesehatan  
-> Versi Dokumen: 1.0  
-> Status: Prototype Specification
+> **J-ARI: JKN Agentic Risk Intelligence**
+> Nama Frontend: **AEGIS — Pusat Pemeriksaan Klaim**
+> Healthkathon 2026 BPJS Kesehatan
+> Versi Dokumen: 3.0
+> Status: Aktual — Disinkronkan dengan implementasi kode (Oktober 2026)
 
 ---
 
 ## 1. Executive Summary
 
-**J-ARI (JKN Agentic Risk Intelligence)** adalah sistem inteligensi risiko multi-agent berbasis kecerdasan buatan (AI & ML) yang dirancang khusus untuk memprioritaskan dan menganalisis klaim kesehatan berisiko tinggi pada program Jaminan Kesehatan Nasional (JKN) BPJS Kesehatan.
+**J-ARI (JKN Agentic Risk Intelligence)**, yang ditampilkan kepada pengguna sebagai **AEGIS**, adalah sistem *risk prioritization & evidence intelligence* multi-agent berbasis AI dan ML yang dirancang untuk membantu verifier BPJS Kesehatan memprioritaskan klaim JKN yang paling perlu diperiksa lebih dahulu.
 
-Sistem ini tidak menggantikan peran verifier manusia, melainkan berfungsi sebagai **lapisan inteligensi screening (Screening & Risk Intelligence Layer)** yang mengintegrasikan aturan deterministik INA-CBG, model machine learning supervised (XGBoost + SHAP) dan unsupervised (Isolation Forest + Graph Metrics), similarity search berbasis vector store (LanceDB), serta Large Language Models (LLM) swappable (Ollama lokal / Gemini API) untuk sintesis bukti investigasi dalam Bahasa Indonesia.
+Sistem ini **tidak menggantikan verifier manusia** dan **tidak menyatakan sebuah klaim adalah fraud**. AEGIS berfungsi sebagai **lapisan screening deterministik** yang mengintegrasikan:
+
+- Aturan domain INA-CBG (deterministik, skor utama)
+- Model ML supervised (XGBoost + SHAP) untuk estimasi biaya wajar
+- Model ML unsupervised (Isolation Forest) sebagai konteks perilaku pendukung
+- Similarity search berbasis vector store (LanceDB) untuk deteksi cloning/repeat/unbundling
+- Graph network metrics provider untuk anomali jaringan klaim
+- LLM modular (Ollama lokal / Gemini API) **hanya** untuk sintesis narasi — tidak mengubah skor
+
+Keputusan akhir selalu berada di tangan **verifier manusia**, dicatat dengan audit trail penuh.
 
 ---
 
 ## 2. Problem Statement & Business Context
 
 ### 2.1 Tantangan Operasional BPJS Kesehatan
-1. **Volume Klaim Masif**: Jutaan klaim diproses setiap bulan dari ribuan Fasilitas Kesehatan (Faskes) Tipe A, B, C, D, Klinik, dan Puskesmas di seluruh Indonesia.
-2. **Kapasitas Verifikasi Terbatas**: Verifier BPJS Kesehatan menghadapi batasan waktu dalam meninjau setiap klaim dengan tingkat kedalaman yang sama.
-3. **Kompleksitas Manipulasi Klaim (Upcoding & Fraud)**:
-   - **Severity Inflation**: Menaikkan tingkat keparahan (severity level 2 ke 3/4) tanpa bukti klinis pendukung untuk mendapatkan pembayaran tarif INA-CBG yang lebih tinggi.
-   - **Diagnosis Creep / Secondary Diagnosis Inflation**: Menambahkan diagnosis sekunder fiktif (seperti sepsis A41.9, malnutrisi E46, riwayat infeksi Z87.39) demi memenuhi syarat komplikasi (CC/MCC).
-   - **Phantom Billing**: Klaim tindakan atau layanan fiktif.
-   - **Cloning & Repeat Billing**: Duplikasi klaim antar-pasien atau klaim berulang untuk prosedur dan rentang waktu yang sama.
-   - **Unbundling**: Memecah satu paket pelayanan prospektif INA-CBG menjadi beberapa tagihan terpisah.
 
-### 2.2 Visi Produk
-Memberikan **prioritisasi presisi berbasis bukti (Evidence-Based Priority Queue)** dan **ringkasan investigasi otomatis (AI Investigation Timeline)** sehingga verifier BPJS Kesehatan dapat memfokuskan 80% energi mereka pada 20% klaim paling berisiko tinggi, mempercepat siklus klarifikasi, serta menghemat potensi kerugian dana jaminan sosial kesehatan secara terukur.
+1. **Volume Klaim Masif**: Jutaan klaim diproses setiap bulan dari ribuan Fasilitas Kesehatan (Faskes) di seluruh Indonesia.
+2. **Kapasitas Verifikasi Terbatas**: Verifier menghadapi batasan waktu; pemeriksaan sama-rata membuat klaim berisiko tinggi terlambat ditangani.
+3. **Pola Manipulasi Klaim yang Beragam**:
+   - **Severity Inflation / Upcoding**: Menaikkan severity level tanpa bukti klinis untuk mendapat tarif INA-CBG lebih tinggi.
+   - **Diagnosis Creep**: Menambahkan diagnosis sekunder fiktif (A41.9, E46, Z87.39) demi memenuhi syarat CC/MCC.
+   - **Phantom Billing**: Klaim tindakan fiktif tanpa prosedur pendukung.
+   - **Cloning & Repeat Billing**: Duplikasi klaim antar-pasien atau klaim berulang dalam rentang waktu berdekatan.
+   - **Unbundling**: Memecah satu paket pelayanan INA-CBG menjadi beberapa tagihan terpisah.
+   - **Prolonged LOS**: Length of Stay jauh di atas rentang klinis wajar untuk diagnosis tersebut.
+
+### 2.2 Batasan Produk (Non-Negotiable)
+
+AEGIS/J-ARI:
+- **Tidak** menentukan status fraud secara definitif.
+- **Tidak** menolak klaim secara otomatis.
+- **Tidak** menggantikan sistem E-Klaim BPJS.
+- **Tidak** membuat diagnosis medis.
+
+Output utama adalah: risk score deterministik, priority tier, ranked evidence, peer comparison, similar claims, recommended action, dan decision slot untuk verifier.
 
 ---
 
 ## 3. Target Users & User Personas
 
-| User Persona | Peran Utama | Kebutuhan Utama pada J-ARI |
+| User Persona | Peran Utama | Kebutuhan Utama pada AEGIS |
 |---|---|---|
-| **BPJS Verifier (Klaim)** | Melakukan verifikasi harian atas klaim Faskes yang masuk. | Priority Queue (High/Medium/Low), ringkasan narasi Bahasa Indonesia, SHAP feature attribution, dan preseden klaim serupa (cloning check). |
-| **Tim Investigasi Fraud** | Memeriksa pola kecurangan sistemik atau sindikat provider. | Analisis Graph Network (centrality), skor Isolation Forest, relasi unbundling/repeat billing, serta export audit trail. |
-| **Manajemen / Auditor BPJS** | Memantau kinerja keuangan & efisiensi verifikasi. | Dashboard statistik agregat (potensi penghematan biaya, distribusi tier risiko) dan halaman evaluasi metrik ML riil. |
+| **BPJS Verifier (Klaim)** | Verifikasi harian klaim Faskes yang masuk. | Priority Queue (High/Medium/Low), narasi Bahasa Indonesia, SHAP feature attribution, dan klaim serupa. |
+| **Tim Investigasi Fraud** | Memeriksa pola kecurangan sistemik. | Analisis Graph Network, skor Isolation Forest, relasi unbundling/repeat billing, export audit trail. |
+| **Manajemen / Auditor BPJS** | Memantau kinerja keuangan & efisiensi. | Dashboard agregat (potential financial exposure, distribusi tier), evaluasi metrik ML riil. |
 
 ---
 
 ## 4. Functional Requirements
 
-### FR-1: Claim Intake & Deterministic Validation Gate (Phase 0)
-- **FR-1.1 Input Ingestion**: Menerima data klaim terstruktur (`claim_id`, `patient_id`, `provider_id`, `doctor_id`, `diagnosis_primary`, `diagnosis_secondary`, `procedure_codes`, `medication`, `severity_level`, `cost_claimed`, `length_of_stay`, `admission_date`, `discharge_date`, `referral_info`).
-- **FR-1.2 Deterministic Gate**: Sebelum agent AI diaktifkan, sistem wajib menjalankan validasi deterministik:
-  - Kelengkapan field wajib (`claim_id`, `patient_id`, `provider_id`, `diagnosis_primary`).
-  - Validasi kronologi tanggal (`discharge_date >= admission_date`).
-  - Rentang valid `severity_level` (1 hingga 4) dan `cost_claimed > 0`.
-  - Pengecekan **Exact Duplicate** terhadap database (jika pasien, diagnosis, prosedur, dan biaya 100% identik dengan klaim sebelumnya).
+### FR-1: Claim Intake & FIFO Queue Worker
 
-### FR-2: Multi-Agent Parallel Screening (Phase 1)
-- **FR-2.1 Clinical Agent**:
-   - Pengecekan berbasis **INA-CBG consistency heuristic prototype**, bukan official INA-CBG grouper.
-  - Pengecekan aturan deterministik: `tariff_deviation_high` (>50%), `tariff_deviation_extreme` (>100%), `severity_proc_mismatch`, `severity_med_mismatch`, `los_outlier`, `upcoding_risk_diag`, dan `unsupported_high_risk_proc`.
-  - Dukungan LLM Lapis 2 (`mistral:7b`) untuk analisis plausible klinis jika data tidak tercakup penuh pada tabel grouper.
-- **FR-2.2 Financial Engine**:
-   - Model **XGBoost Regressor** untuk memprediksi *expected reimbursement benchmark*, bukan biaya medis yang benar.
-  - Menghitung persentase deviasi biaya (`deviation_pct`) dan `anomaly_score` (0.0 - 1.0).
-  - Ekstraksi kontribusi fitur menggunakan **SHAP TreeExplainer** (*positive/negative impact*).
-  - Fallback otomatis ke **Z-Score Peer Group** jika model XGBoost gagal/belum dilatih.
-- **FR-2.3 Fraud Agent**:
-  - Pencarian kemiripan klaim via **LanceDB Vector Store** menggunakan embedding `sentence-transformers` (`all-MiniLM-L6-v2`).
-  - Menghitung **Komposit Multi-Faktor Similarity Score**: 40% kode medis (Jaccard) + 30% kedekatan biaya + 15% provider sama + 10% jarak tanggal + 5% pasien sama.
-  - Deteksi **Repeat Billing**, **Cloning** (kemiripan tinggi + pasien BERBEDA + faskes SAMA), dan **Unbundling**.
-   - Isolation Forest dan provider context ditampilkan sebagai supporting context sampai ablation study membuktikan nilai tambah.
+- **FR-1.1 Input Ingestion**: Menerima klaim terstruktur dengan field: `claim_id`, `patient_id`, `provider_id`, `doctor_id`, `diagnosis_primary`, `diagnosis_secondary[]`, `procedure_codes[]`, `medication[]`, `severity_level` (1-4), `cost_claimed`, `length_of_stay`, `admission_date`, `discharge_date`, `referral_info`.
+- **FR-1.2 Auto-Queue Worker**: `ClaimQueueWorker` berjalan sebagai background task FastAPI. Setiap klaim yang masuk (`status=pending`) diproses secara FIFO berdasarkan `queue_sequence` (database sequence, immutable). Worker memiliki heartbeat setiap 30 detik dan recovery lease expired setiap 30 detik.
+- **FR-1.3 Lifecycle States**: `pending -> scanning -> processed | review_required | failed | verified`. Status `review_required` untuk tier High/Medium, `processed` untuk tier Low.
+- **FR-1.4 Retry & Fault Tolerance**: Maksimal 3 percobaan (`max_attempts=3`) per klaim. Klaim gagal dapat di-retry via `POST /api/claims/analyze?retry=true`.
+- **FR-1.5 Manual Scan**: Endpoint `POST /api/claims/analyze` mendukung scan manual dengan SSE real-time per `task_id` UUID.
 
-### FR-3: Multi-Signal Synthesis & Review (Phase 2)
-- **FR-3.1 Review Agent**:
-  - Menyintesis sinyal dari Clinical Agent, Financial Engine, dan Fraud Agent.
-  - Mengklasifikasikan `evidence_level` (`strong_multi_signal`, `single_signal`, `weak`).
-  - Menyusun daftar `corroborating_signals` yang saling memperkuat.
-   - Menghasilkan ringkasan evidence terstruktur. LLM tidak boleh membuat evidence baru atau mengubah score/tier.
+### FR-2: Phase 0 — Deterministic Validation Gate
 
-### FR-4: Deterministic Risk Scoring Engine (Phase 3)
-- **FR-4.1 Non-LLM Scoring**: Skor risiko (0 - 100) murni dihitung secara deterministik oleh `risk_engine.py` tanpa manipulasi angka dari LLM.
-- **FR-4.2 Scoring Breakdown**:
-  - `clinical_rule_flags`: Bobot maks 20 poin.
-  - `financial_anomaly`: Bobot maks 30 poin.
-   - `isolation_forest_anomaly`: 0 poin pada prototype; supporting context.
-  - `similarity_fraud`: Bobot maks 20 poin.
-   - `evidence_support`: Bobot maks 15 poin dari keluarga evidence deterministik.
-- **FR-4.3 Priority Tiering**:
-  - **High Priority** (Merah): Skor `>= 60.0`.
-  - **Medium Priority** (Kuning): Skor `25.0 - 59.9`.
-  - **Low Priority** (Hijau): Skor `< 25.0`.
+Sebelum agent AI apapun diaktifkan, `validate_deterministic()` menjalankan:
 
-### FR-5: Indonesian Explanation & QA Panel (Phase 4)
-- **FR-5.1 Natural Language Narrative**: Menghasilkan narasi investigasi berstruktur dalam Bahasa Indonesia menggunakan LLM (`qwen2.5:7b`).
-- **FR-5.2 Ranked Reasons**: Menyajikan 3 alasan utama prioritisasi risiko berdasarkan skor terbanyak.
-- **FR-5.3 QA Panel**: Menyediakan panel Q&A otomatis untuk verifier ("Mengapa klaim ini prioritas tinggi?", "Klaim mana yang paling mirip?", "Apa bukti terkuat?").
-- **FR-5.4 Safety Disclaimer**: Menyantumkan klausul eksplisit bahwa sistem tidak memvonis fraud, melainkan memberikan rekomendasi prioritas verifikasi.
+- **FR-2.1** Kelengkapan field wajib: `claim_id`, `patient_id`, `provider_id`, `diagnosis_primary`.
+- **FR-2.2** Kronologi tanggal: `discharge_date >= admission_date`. Pelanggaran => `hard_reject`.
+- **FR-2.3** Konsistensi LOS vs rentang tanggal (warning lunak, selisih > 1 hari).
+- **FR-2.4** Rentang valid `severity_level` (1-4) dan `cost_claimed > 0`.
+- **FR-2.5** Exact Duplicate Check: Klaim dengan pasien, diagnosis, prosedur, biaya, dan tanggal masuk yang identik => `exact_duplicate_of` diset, hanya Fraud Agent yang dijalankan.
 
-### FR-6: Real-Time Event Streaming (SSE)
-- **FR-6.1 Server-Sent Events**: Endpoint `/api/stream/{task_id}` menyalurkan status eksekusi agent secara real-time ke UI frontend.
-- **FR-6.2 Isolated Task Queues**: Menggunakan `asyncio.Queue` per `task_id` untuk mencegah percampuran event antar-pengguna.
+### FR-3: Phase 1 — Multi-Agent Parallel Screening
 
-### FR-7: Human Verification & Audit Trail Logging
-- **FR-7.1 Decision Submission**: Verifier dapat menginput keputusan manusia (`Verified Valid`, `Needs Further Review`, `Escalate`, `Request Clarification`).
-- **FR-7.2 Audit Trail**: Setiap eksekusi agent, perubahan status, dan keputusan manusia dicatat pada tabel `agent_runs`, `risk_analyses`, `human_decisions`, dan `audit_logs`.
+Tiga agent dijalankan paralel via `asyncio.gather` dengan `run_with_fallback()`:
 
-### FR-8: Dashboard Analytics & ML Evaluation
-- **FR-8.1 Dashboard Metrics**: Menampilkan agregat klaim, distribusi tier risiko, jumlah klaim pending, dan estimasi potential financial exposure.
-- **FR-8.2 Model Evaluation Page**: Menampilkan metrik evaluasi nyata (*held-out test set*) untuk model XGBoost dan Isolation Forest (Precision, Recall, F1-Score, PR-AUC, MAE, RMSE).
+**FR-3.1 Clinical Agent** (`clinical_agent.py`):
+- **Lapis 1** (selalu): INA-CBG grouper lookup + rule consistency check. Menghasilkan `rule_flags[]` yang menjadi satu-satunya sumber skor klinis.
+- **Lapis 2** (hanya kasus ambigu — diagnosis tidak dikenal atau hanya 1 flag questionable): LLM analisis plausibility klinis. LLM hanya menambah `evidence_text` dan `confidence_level`, tidak mengubah skor numerik.
+- Rule flags: `tariff_deviation_high`, `tariff_deviation_extreme`, `severity_proc_mismatch`, `severity_med_mismatch`, `los_outlier`, `upcoding_risk_diag`, `unsupported_high_risk_proc`.
+
+**FR-3.2 Financial Engine** (`financial_engine.py`):
+- XGBoost Regressor (15 fitur, tanpa target leakage) memprediksi expected reimbursement benchmark.
+- Menghitung `deviation_pct` dan `anomaly_score` (0.0-1.0, capped di `abs(deviation_pct)/50`).
+- SHAP attribution: top 5 fitur kontributor dengan label ramah verifier.
+- Fallback otomatis ke Z-Score Peer Group Baseline jika model tidak tersedia.
+
+**FR-3.3 Fraud Agent** (`fraud_agent.py`):
+- LanceDB Vector Search: cosine embedding sebagai prefilter kandidat.
+- Composite Multi-Factor Similarity Score: `0.40*code + 0.30*cost + 0.15*provider + 0.10*time + 0.05*patient`.
+- Cloning: `same_provider=True AND same_patient=False AND code_sim>0.9 AND cost_prox>0.95 AND days<=45`.
+- Repeat Billing: SQL — pasien sama, prosedur overlap, rentang 45 hari.
+- Unbundling: SQL — pasien+provider+diagnosis sama, biaya gabungan mirip baseline.
+- Isolation Forest: anomali perilaku multidimensi (20 fitur).
+- Provider Graph Metrics: anomali jaringan klaim faskes (precomputed).
+
+### FR-4: Phase 2 — Review Synthesis
+
+- **FR-4.1 Review Agent** (`review_agent.py`): LLM (`deepseek-r1:7b` => fallback `mistral:7b`) menyintesis evidence dari tiga agent paralel.
+- **FR-4.2** Guard deterministik: LLM tidak boleh mengklaim `strong_multi_signal` jika jumlah sumber sinyal deterministik < 2.
+- **FR-4.3** Evidence IDs dibatasi hanya pada ID yang dihitung secara deterministik — LLM tidak bisa menciptakan evidence baru.
+- **FR-4.4 Fallback**: Jika LLM gagal => `rule_fallback` dengan hitungan sumber sinyal deterministik.
+
+### FR-5: Phase 3 — Deterministic Risk Scoring
+
+- **FR-5.1** `calculate_risk_score()` murni matematis, tanpa input LLM. Skor maksimal 100 (praktis 85 tanpa behavioral context).
+- **FR-5.2 Scoring Breakdown**:
+
+| Komponen | Bobot Maks | Sumber |
+|---|---|---|
+| `clinical_rule_flags` | 20 poin | Rule engine flags |
+| `financial_anomaly` | 30 poin | `anomaly_score * 30` |
+| `similarity_fraud` | 20 poin | Repeat/cloning/unbundling aktif |
+| `evidence_support` | 15 poin | Jumlah sumber sinyal deterministik |
+| `behavioral_context` | 0 poin | Isolation Forest/Graph (supporting only) |
+
+- **FR-5.3 Priority Tiering**:
+  - **High** (>= 60.0): `review_required`, `recommended_action=verify_immediately`
+  - **Medium** (25.0-59.9): `review_required`, `recommended_action=review_when_available`
+  - **Low** (< 25.0): `processed`, `recommended_action=low_priority`
+
+### FR-6: Phase 4 — Indonesian Explanation & QA Panel
+
+- **FR-6.1** LLM (`qwen2.5:7b` => fallback `mistral:7b`) menyusun narasi Bahasa Indonesia.
+- **FR-6.2** Klaim prioritas Low => template deterministic langsung (tidak memanggil LLM).
+- **FR-6.3 Validasi Wajib**: Semua angka di narasi LLM diparse dan dicocokkan dengan fakta sumber (skor, deviasi, kemiripan). Mismatch => retry maks 2x => template fallback.
+- **FR-6.4 Narrative Sanitizer**: Jargon teknis (SHAP, XGBoost, Jaccard, isolation_forest, dll.) distrip deterministik sebelum ditampilkan ke verifier.
+- **FR-6.5 QA Panel**: `why_top_priority`, `most_similar_claim`, `strongest_evidence`, `is_this_fraud` (hardcoded disclaimer).
+- **FR-6.6** `recommended_action` diturunkan dari `priority_tier`, bukan dari LLM.
+
+### FR-7: Real-Time Event Streaming (SSE)
+
+- **FR-7.1** Endpoint `GET /api/stream/{task_id}` menyalurkan event pipeline real-time.
+- **FR-7.2** Event types: `status`, `phase1_complete`, `phase2_complete`, `phase3_complete`, `phase4_complete`, `done`, `error`, `rejected`.
+- **FR-7.3** Queue per `task_id` UUID (bukan per `claim_id`) untuk isolasi sesi.
+- **FR-7.4** Orphan timeout 5 detik (task dibatalkan jika SSE consumer tidak attach dalam waktu itu).
+- **FR-7.5** Data SSE difilter oleh `public_analysis_projection()` sebelum dikirim ke frontend (internal trace/error tidak bocor).
+
+### FR-8: Human Verification & Audit Trail
+
+- **FR-8.1** Verifier dapat memilih keputusan: `Verified Valid`, `Needs Further Review`, `Escalate`, `Request Clarification`.
+- **FR-8.2** Keputusan disimpan di tabel `human_decisions` dan `audit_logs`.
+- **FR-8.3** Semua eksekusi agent dicatat di `agent_runs` dengan `status`, `duration_ms`, dan `model_used`.
+- **FR-8.4** Setiap perubahan status pipeline dicatat di `audit_logs`.
+
+### FR-9: Dashboard Analytics & ML Evaluation
+
+- **FR-9.1** `GET /api/analytics/dashboard`: Agregat klaim, distribusi tier, `potential_financial_exposure` via SQL (SUM(max(0, actual_cost - predicted_cost_upper)) untuk High/Medium tier).
+- **FR-9.2** `GET /api/ml/eval`: Metrik evaluasi nyata dari `evaluation_results.json` (Precision@K, PR-AUC, latency).
+- **FR-9.3** `GET /api/ml/eval/p1`: Evaluasi P1 pipeline (precision, recall, F1).
+- **FR-9.4** `GET /api/health`: Status real-time semua komponen (DB, Ollama, XGBoost, Isolation Forest, LanceDB, Graph Metrics, Queue Worker).
 
 ---
 
 ## 5. Non-Functional Requirements (NFR)
 
 ### NFR-1: Performance & Latency
-- Eksekusi pipeline screening penuh (Phase 0 hingga Phase 4) diselesaikan dalam `< 3.5 detik` per klaim pada infrastruktur target.
-- Streaming SSE merespons event pertama (`status: started`) dalam `< 100 ms`.
+- Pipeline screening penuh (Phase 0-4) dengan Ollama lokal: target < 3.5 detik per klaim.
+- SSE event pertama: < 100 ms dari commit POST `/api/claims/analyze`.
 
-### NFR-2: Target Infrastructure & Offline-First Constraints
-- Target Hardware Minimum: Intel Core 5 215H, RAM 16GB, GPU NVIDIA RTX 5050 (8GB VRAM).
-- Model LLM lokal berjalan via **Ollama** dengan kuantisasi Q4_K_M (kebutuhan VRAM 4.5 GB - 5.0 GB termasuk KV cache).
-- Sistem harus mampu beroperasi penuh secara **Offline / On-Premise** tanpa ketergantungan koneksi internet eksternal (menggunakan `OllamaClient`).
+### NFR-2: Infrastructure & Offline-First
+- Target minimum: Intel Core 5, 16GB RAM, GPU NVIDIA RTX 6-8GB VRAM.
+- Model LLM via Ollama dengan kuantisasi Q4_K_M (default `qwen2.5:3b` sesuai `.env` aktual).
+- Sistem beroperasi penuh **offline/on-premise** tanpa koneksi internet eksternal.
+- Fallback ke Gemini API (opsional) jika `LLM_PROVIDER=gemini`.
 
-### NFR-3: Fault Tolerance & Non-Blocking Fallback Protocol
-- Setiap agent dibungkus oleh handler `run_with_fallback()`.
-- Jika salah satu agent mengalami error/timeout, pipeline **TIDAK Boleh Crash**.
-- Hasil parsial dikembalikan dengan tag `partial=True`, serta error detail dicatat pada `agent_errors[]`.
+### NFR-3: Fault Tolerance & Non-Blocking Fallback
+- Setiap agent dibungkus `run_with_fallback()`.
+- Kegagalan satu agent tidak menghentikan pipeline; hasil parsial dikembalikan dengan `partial=True`.
+- LLM retry otomatis 2x dengan feedback error sebelum fallback ke template/rule.
 
-### NFR-4: Privacy & PII Minimization
-- Data klaim menggunakan pengelompokan rentang umur (`age_band`) dan kode wilayah (`region_code`).
-- Patient ID dan Provider ID disamarkan/dipseudonimkan.
+### NFR-4: Data Integrity & Analysis Versioning
+- Setiap analisis di-stamp dengan `ANALYSIS_VERSION` (integer).
+- Klaim dengan analisis versi lama otomatis di-requeue oleh `recover_invalid_terminal_analysis()`.
+- `received_at` dan `queue_sequence` klaim bersifat **immutable** (dijaga oleh DB trigger PostgreSQL).
 
----
-
-## 6. Key Business Metrics & Value Proposition
-
-1. **Verification Efficiency**: Mengurangi waktu peninjauan awal klaim berisiko tinggi hingga 60%.
-2. **Precision of High-Risk Tier**: Target PR-AUC `> 0.85` pada deteksi upcoding & anomaly klaim.
-3. **Potential Financial Exposure**: Mengestimasi exposure awal melalui formula:
-   $$\text{Exposure} = \sum \max(0, \text{claimed\_amount} - \text{expected\_benchmark\_upper})$$
-   untuk klaim tier *High* dan *Medium*. Nilai ini bukan confirmed savings dan harus dikonfirmasi melalui keputusan manusia.
+### NFR-5: Privacy & PII Minimization
+- Data klaim menggunakan pseudonymized ID (`patient_id`, `provider_id`, `doctor_id`).
+- Kode ICD-10 dan ICD-9-CM sebagai identifier klinis.
+- Teks error internal tidak bocor ke frontend (difilter oleh `safe_failure()` dan `public_analysis_projection()`).
 
 ---
 
-## 7. Referensi Dokumen Terkait
-- [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md) â€” Cetak biru arsitektur teknis dan database schema.
-- [BusinessCore.md](file:///c:/Users/Radith/E-Jak/docs/BusinessCore.md) â€” Logika domain bisnis JKN, INA-CBG, dan strategi mitigasi upcoding.
-- [AgentWorkflow.md](file:///c:/Users/Radith/E-Jak/docs/AgentWorkflow.md) â€” Detail alur pipeline multi-agent dan protokol SSE.
-- [MODELS.md](file:///c:/Users/Radith/E-Jak/docs/MODELS.md) â€” Spesifikasi teknis model ML, Vector Store, Graph Metrics, dan LLM.
+## 6. Frontend Pages & Navigation
+
+Aplikasi frontend (React + Vite, branding **AEGIS**) terdiri dari:
+
+| Halaman | Route | Deskripsi |
+|---|---|---|
+| **Dashboard Utama** | `/` | Statistik agregat, distribusi tier, potential financial exposure |
+| **Daftar Klaim** | `/claims` | Tabel klaim dengan filter status dan tier, FIFO queue summary |
+| **Input Klaim** | `/intake` | Form pengajuan klaim manual (alat bantu demo) |
+| **Pemantauan Sistem** | `/monitoring` | Status real-time semua komponen backend |
+| **Evaluasi Ketepatan** | `/ml-eval` | Metrik evaluasi ML (Precision@K, PR-AUC, F1) |
+| **Investigasi** | `/investigate/:claimId` | Timeline SSE real-time eksekusi pipeline per klaim |
+| **Assessment** | `/assessment/:claimId` | Hasil analisis lengkap: skor, evidence, SHAP, klaim serupa, QA panel, decision form |
+
+---
+
+## 7. Key Business Metrics & Value Proposition
+
+1. **Verification Efficiency**: Mengurangi waktu peninjauan awal dengan prioritisasi berbasis skor.
+2. **Precision of High-Risk Tier**: Target PR-AUC > 0.85 pada deteksi deviasi dan upcoding.
+3. **Potential Financial Exposure**: SUM(max(0, claimed - predicted_upper)) untuk klaim High/Medium. Nilai ini adalah indikasi awal, wajib divalidasi oleh keputusan verifier manusia.
+4. **Audit Completeness**: 100% keputusan verifier tercatat dengan timestamp, reviewer ID, dan `analysis_generation`.
+
+---
+
+## 8. Referensi Dokumen Terkait
+
+- [Architecture.md](./Architecture.md) — Cetak biru arsitektur teknis dan database schema.
+- [BusinessCore.md](./BusinessCore.md) — Logika domain bisnis JKN, INA-CBG, dan strategi mitigasi.
+- [AgentWorkflow.md](./AgentWorkflow.md) — Detail alur pipeline multi-agent dan protokol SSE.
+- [MODELS.md](./MODELS.md) — Spesifikasi teknis model ML, Vector Store, Graph Metrics, dan LLM.

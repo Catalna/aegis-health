@@ -89,13 +89,18 @@ async def validate_deterministic(claim: ClaimInput, db) -> ValidationResult:
         result.reject_reason = "Biaya klaim harus positif."
         return result
 
-    # 5. Exact duplicate — semua field klinis identik dengan klaim lain di DB
+    # 5. Exact duplicate — semua field klinis identik dengan klaim lain di DB.
+    #    Tanggal masuk WAJIB sama: pasangan pasien/diagnosis/prosedur/biaya yang
+    #    identik tapi beda tanggal masuk adalah episode lain (repeat billing),
+    #    bukan pengajuan ulang klaim yang sama.
+    claim_admit = claim.admission_date.isoformat() if claim.admission_date else None
     db_result = await db.execute(
         sa_select(ClaimRecord).where(
             ClaimRecord.patient_id == claim.patient_id,
             ClaimRecord.diagnosis_primary == claim.diagnosis_primary,
             ClaimRecord.cost_claimed == claim.cost_claimed,
             ClaimRecord.claim_id != claim.claim_id,
+            ClaimRecord.admission_date == claim_admit,
         )
     )
     for other in db_result.scalars():
@@ -104,7 +109,7 @@ async def validate_deterministic(claim: ClaimInput, db) -> ValidationResult:
         if other_sec == set(claim.diagnosis_secondary) and other_proc == set(claim.procedure_codes):
             result.exact_duplicate_of = other.claim_id
             result.warnings.append(
-                f"Klaim identik dengan {other.claim_id} (pasien, diagnosis, prosedur, dan biaya sama) — "
+                f"Klaim identik dengan {other.claim_id} (pasien, diagnosis, prosedur, biaya, dan tanggal masuk sama) — "
                 "hanya Fraud Agent yang dijalankan sesuai protokol exact duplicate."
             )
             break

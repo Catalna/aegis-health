@@ -132,7 +132,7 @@ def test_ml_evaluation_starts_with_one_h1_and_uses_h2_for_metric_heading():
 def test_sidebar_brand_is_not_a_document_heading():
     app = (ROOT / "frontend/src/App.jsx").read_text(encoding="utf-8")
     css = (ROOT / "frontend/src/index.css").read_text(encoding="utf-8")
-    assert '<div className="sidebar-brand-title">J-ARI</div>' in app
+    assert '<div className="sidebar-brand-title">AEGIS</div>' in app
     assert ".sidebar-logo h1" not in css
     assert ".sidebar-brand-title" in css
 
@@ -252,6 +252,7 @@ def test_queue_timing_is_explicitly_labeled_as_capped_sample():
     assert "Rata-rata waktu pemeriksaan" in page
     assert "Rata-rata waktu verifikasi" in page
     assert "1.000" in page
+    assert "Sampel:" in page
     assert "limit: 1000" in summary
 
 

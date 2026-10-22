@@ -390,6 +390,7 @@ def main():
             priority_filter = page.get_by_label("Saring berdasarkan prioritas")
             priority_filter.focus()
             priority_filter.select_option("high")
+        page.wait_for_function("new URL(window.location.href).searchParams.get('tier') === 'high'")
         assert page.evaluate("document.activeElement?.getAttribute('aria-label')") == "Saring berdasarkan prioritas"
         assert parse_qs(urlparse(page.url).query) == {"source": ["dashboard"], "tier": ["high"]}, page.url
         expect(page.locator('tbody tr:not(:has(td[colspan]))')).to_have_count(2)

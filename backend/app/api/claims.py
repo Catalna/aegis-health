@@ -9,7 +9,7 @@ from sqlalchemy import func, delete, or_, asc, desc, case, nulls_last
 
 from backend.app.models.schemas import ClaimInput, HumanDecision
 from backend.app.models.database import (
-    AsyncSessionLocal, HumanDecisionRecord, ClaimRecord, RiskAnalysisRecord,
+    get_db, HumanDecisionRecord, ClaimRecord, RiskAnalysisRecord,
 )
 from backend.app.core.versions import ANALYSIS_VERSION, is_current_analysis
 from backend.app.core.errors import safe_failure
@@ -171,11 +171,6 @@ async def _index_claim_in_background(claim_data: dict) -> None:
         refresh_sync_safe()
     except Exception as e:
         print(f"[claims] Peringatan index LanceDB: {e}")
-
-
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        yield session
 
 
 # Route ganda (dengan & tanpa trailing slash) — hindari 307 redirect FastAPI yang

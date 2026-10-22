@@ -9,6 +9,7 @@ from playwright.sync_api import expect, sync_playwright
 CLAIM_ID = "SMOKE-ASSESSMENT"
 ANALYSIS_RETRY_ID = "SMOKE-ANALYSIS-RETRY"
 DECISION_RETRY_ID = "SMOKE-DECISION-RETRY"
+REPEAT_EVIDENCE_ID = "SMOKE-REPEAT-EVIDENCE"
 
 
 def minimal_analysis():
@@ -71,6 +72,19 @@ def main():
                     },
                 })
                 return
+            if parsed.path == f"/api/claims/{REPEAT_EVIDENCE_ID}/analysis":
+                route.fulfill(status=200, json={
+                    "status": "analyzed",
+                    "result": {
+                        **minimal_analysis(),
+                        "fraud": {
+                            "repeat_billing_flag": True,
+                            "repeat_billing_matched_claim_id": "REPEAT-REFERENCE-001",
+                            "similar_claims": [],
+                        },
+                    },
+                })
+                return
             if parsed.path == f"/api/claims/{CLAIM_ID}/decision" and route.request.method == "GET":
                 route.fulfill(status=200, json={
                     "status": "decided",
@@ -78,6 +92,9 @@ def main():
                     "reviewer": "BPJS-VERIFIER-01",
                     "verified_at": decision_state["verified_at"],
                 })
+                return
+            if parsed.path == f"/api/claims/{REPEAT_EVIDENCE_ID}/decision":
+                route.fulfill(status=200, json={"status": "no_decision"})
                 return
             if parsed.path == f"/api/claims/{CLAIM_ID}/decision" and route.request.method == "POST":
                 decision_save_state["attempts"] += 1
@@ -138,6 +155,13 @@ def main():
             page.get_by_role("button", name="Coba simpan lagi").click()
         expect(page.get_by_text("Keputusan Berhasil Disimpan", exact=True)).to_be_visible()
         expect(page.get_by_text("Perlu Peninjauan Lebih Lanjut", exact=True)).to_be_visible()
+
+        repeat_evidence_page = browser.new_page(locale="id-ID")
+        repeat_evidence_page.route("**/api/**", route_api)
+        repeat_evidence_page.goto(f"{args.base_url}/assessment/{REPEAT_EVIDENCE_ID}")
+        expect(repeat_evidence_page.get_by_text("Klaim berulang terdeteksi: REPEAT-REFERENCE-001", exact=True)).to_be_visible()
+        repeat_evidence_page.close()
+
         page.add_script_tag(url="https://cdn.jsdelivr.net/npm/axe-core@4/axe.min.js")
         axe_result = page.evaluate("async () => await axe.run()")
         violations = [(violation["id"], violation["impact"]) for violation in axe_result["violations"]]

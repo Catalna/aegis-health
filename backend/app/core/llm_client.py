@@ -163,6 +163,7 @@ class OllamaClient:
                 "num_predict": 1024,
                 "top_p": 0.9,
                 "seed": 42,
+                "num_gpu": int(os.getenv("OLLAMA_NUM_GPU", "99")),
             },
         }
         async with httpx.AsyncClient(timeout=self.timeout) as client:

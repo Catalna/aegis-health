@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
 import { RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
 import { claimsApi, formatRecommendedAction, formatFeature, ANALYSIS_VERSION, safeErrorMessage, publicAnalysisProjection } from '../api'
-import { COMPONENT_LABELS as PLAIN_COMPONENT_LABELS, humanizeText } from '../humanLanguage'
+import { COMPONENT_LABELS as PLAIN_COMPONENT_LABELS, RULE_LABELS, SIGNAL_LABELS, humanizeText } from '../humanLanguage'
 
 // Maps for technical terms -> human readable
 const COMPONENT_LABELS = PLAIN_COMPONENT_LABELS
@@ -456,7 +456,9 @@ export default function Assessment() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                 {deterministicEvidence.map(item => (
                   <div key={item.evidence_id} style={{ padding: '0.65rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--accent-green)' }}>
-                    <div className="text-xs" style={{ fontWeight: 700 }}>{plainText(item.signal_type)}</div>
+                    <div className="text-xs" style={{ fontWeight: 700 }}>
+                      {RULE_LABELS[item.signal_type] || SIGNAL_LABELS[item.signal_type] || plainText(item.signal_type)}
+                    </div>
                     <div className="text-sm" style={{ marginTop: 3 }}>{plainText(item.explanation)}</div>
                   </div>
                 ))}
@@ -502,13 +504,24 @@ export default function Assessment() {
 
           {/* Hanya relasi repeat billing atau cloning yang ditampilkan.
               Skor komposit mengurutkan kandidat yang sudah lolos aturan relasi. */}
-          <div className="card">
-            <div className="card-title">Riwayat Klaim Serupa</div>
-            <p className="text-xs text-muted mb-2">
-               Hanya hubungan pengulangan klaim atau kemiripan tidak wajar dalam 45 hari yang ditampilkan.
-               Klik baris untuk melihat alasan kemiripannya.
-            </p>
-            {similarClaims.length > 0 ? (
+           <div className="card">
+             <div className="card-title">Riwayat Klaim Serupa</div>
+             <p className="text-xs text-muted mb-2">
+                Pengulangan klaim (pasien &amp; tindakan sama dalam 45 hari) dan kemiripan tidak wajar antar-klaim ditampilkan di sini.
+                Klik baris untuk melihat alasan kemiripannya.
+             </p>
+             {fraud?.repeat_billing_matched_claim_id && (
+               <div
+                 className="text-sm mb-2"
+                 style={{ padding: '0.65rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--risk-high)' }}
+               >
+                 <strong>Klaim berulang terdeteksi: {fraud.repeat_billing_matched_claim_id}</strong>
+                 <div className="text-xs text-muted" style={{ marginTop: '0.25rem' }}>
+                   Pasien dan tindakan yang sama ditemukan dalam rentang 45 hari. Periksa dokumen sumber sebelum mengambil keputusan.
+                 </div>
+               </div>
+             )}
+             {similarClaims.length > 0 ? (
               <div className="table-container">
                 <table>
                   <thead>
@@ -589,7 +602,9 @@ export default function Assessment() {
               </div>
             ) : (
               <div className="text-sm text-muted text-center p-4">
-                {fraud?.similarity_matched_claim_id
+                {fraud?.repeat_billing_matched_claim_id
+                  ? 'Tidak ada kandidat vector tambahan; pasangan repeat billing ditampilkan di atas.'
+                  : fraud?.similarity_matched_claim_id
                   ? `Klaim paling mirip: ${fraud.similarity_matched_claim_id} (${((fraud.similarity_max_score || 0) * 100).toFixed(0)}%)`
                    : 'Tidak ada kandidat pengulangan klaim atau kemiripan tidak wajar. Kemiripan pola penyakit semata dianggap wajar.'}
               </div>
@@ -658,14 +673,14 @@ export default function Assessment() {
               <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--accent-green)' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
                    <span>Temuan Medis</span>
-                    <span>{clinical?.evidence_source === 'llm_local' ? 'Catatan tambahan' : clinical?.evidence_source === 'fallback_no_data' ? 'Data pembanding' : 'Aturan pemeriksaan'}</span>
+                    <span>{clinical?.evidence_source === 'llm_local' ? 'Catatan tambahan' : clinical?.evidence_source === 'fallback_no_data' ? 'Belum tersedia' : 'Aturan pemeriksaan'}</span>
                 </div>
                   <div style={{ fontSize: '0.82rem' }}>{plainText(clinical?.evidence_text, 'clinical') || 'Tidak ada temuan medis yang signifikan.'}</div>
               </div>
                <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--warning-text)' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
                      <span>Temuan Perkiraan Biaya</span>
-                     <span>{financial?.method === 'zscore_peer_fallback' ? 'Data pembanding' : 'Perkiraan biaya'}</span>
+                     <span>{financial?.method === 'zscore_peer_fallback' ? 'Rata-rata sejenis' : (financial?.anomaly_score === 0 && financial?.deviation_pct === 0) ? 'Belum tersedia' : 'Perkiraan biaya'}</span>
                 </div>
                   <div style={{ fontSize: '0.82rem' }}>{plainText(financial?.evidence_text, 'financial') || 'Biaya berada dalam kisaran yang wajar.'}</div>
               </div>

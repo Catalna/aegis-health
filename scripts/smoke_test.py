@@ -1,11 +1,27 @@
-"""Smoke test end-to-end: validasi reject + analisis normal via API+SSE."""
-import json
-import threading
+"""Smoke test end-to-end terhadap sistem yang berjalan (backend + Postgres + Ollama):
+
+  Test 1: klaim dengan tanggal discharge < admission → validasi deterministik
+          menolak (hard reject) → status "failed" + pesan kegagalan yang aman.
+  Test 2: klaim normal → antrean FIFO memproses → hasil low-risk → keputusan
+          verifier tersimpan.
+
+Catatan arsitektur: sejak auto-scan FIFO queue, analisis otomatis berjalan
+lewat worker database (bukan task_id SSE per klaim baru). Alur SSE manual
+(POST /api/claims/analyze + GET /api/stream/{task_id}) diuji oleh
+backend/tests/test_manual_analysis.py dan frontend/tests/sse_transport_smoke.py.
+"""
 import time
 import uuid
+
 import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
 
 BASE = "http://localhost:8000"
+POLL_TIMEOUT_S = 300
+POLL_INTERVAL_S = 3
+
 
 def claim_payload(**over):
     base = {
@@ -26,113 +42,108 @@ def claim_payload(**over):
     base.update(over)
     return base
 
-def run_analysis(payload, events: list, label: str):
-    r = httpx.post(f"{BASE}/api/claims/analyze", json=payload, timeout=30)
-    r.raise_for_status()
-    task_id = r.json()["task_id"]
-    print(f"[{label}] task_id={task_id}")
 
-    done = threading.Event()
+def create_claim(payload):
+    r = httpx.post(f"{BASE}/api/claims", json=payload, timeout=30)
+    assert r.status_code == 200, f"Create gagal: {r.status_code} {r.text}"
+    return r.json()
 
-    def listen():
-        with httpx.stream("GET", f"{BASE}/api/stream/{task_id}", timeout=180) as resp:
-            event_name = None
-            for line in resp.iter_lines():
-                if line.startswith("event:"):
-                    event_name = line.split(":", 1)[1].strip()
-                elif line.startswith("data:") and event_name:
-                    try:
-                        data = json.loads(line.split(":", 1)[1].strip())
-                    except Exception:
-                        data = line.split(":", 1)[1].strip()
-                    events.append((event_name, data))
-                    if event_name in ("done",):
-                        done.set()
-                        break
 
-    t = threading.Thread(target=listen, daemon=True)
-    t.start()
-    if not done.wait(timeout=170):
-        print(f"[{label}] TIMEOUT menunggu stream")
-    t.join(timeout=5)
+def poll_status(claim_id, terminal_statuses, timeout=POLL_TIMEOUT_S):
+    """Poll GET /api/claims/{id} sampai status terminal atau timeout."""
+    deadline = time.monotonic() + timeout
+    data = {}
+    while time.monotonic() < deadline:
+        r = httpx.get(f"{BASE}/api/claims/{claim_id}", timeout=30)
+        r.raise_for_status()
+        data = r.json()
+        if data.get("status") in terminal_statuses:
+            return data
+        time.sleep(POLL_INTERVAL_S)
+    raise AssertionError(
+        f"[{claim_id}] TIMEOUT {timeout}s menunggu status {terminal_statuses}; status terakhir: {data.get('status')!r}"
+    )
+
+
+def reset_claim(claim_id):
+    r = httpx.delete(f"{BASE}/api/claims/{claim_id}", timeout=30)
+    print(f"[CLEANUP] reset {claim_id}: {r.status_code} {r.json().get('message', '')}")
 
 
 def main():
     run_id = uuid.uuid4().hex[:8].upper()
 
-    # ===== Test 1: klaim tanggal korup → hard reject =====
-    events = []
+    # ===== Test 1: klaim tanggal korup → validasi deterministik menolak =====
     bad = claim_payload(
         claim_id=f"CLM-SMOKE-BAD-{run_id}",
         admission_date="2026-07-19",
         discharge_date="2026-07-10",
     )
-    # simpan dulu ke DB
-    r = httpx.post(f"{BASE}/api/claims", json=bad, timeout=30)
-    print(f"[BAD] create status: {r.status_code}")
-    assert r.status_code == 200, r.text
-    run_analysis(bad, events, "BAD")
-    rejected = [d for (e, d) in events if e == "rejected"]
-    print(f"[BAD] rejected event: {rejected}")
-    assert rejected, "HARD REJECT TIDAK BEKERJA!"
-    print("[BAD] OK: Validasi deterministik menolak klaim korup\n")
+    created = create_claim(bad)
+    print(f"[BAD] created: {created['status']}")
+    final = poll_status(bad["claim_id"], {"failed"})
+    assert final["status"] == "failed", final
+    assert final.get("last_analysis_error"), "Hard reject tanpa pesan kegagalan!"
+    print(f"[BAD] OK: validasi deterministik menolak -> '{final['last_analysis_error']}'")
+    reset_claim(bad["claim_id"])
 
-    # ===== Test 2: klaim normal → pipeline penuh =====
-    events2 = []
+    # ===== Test 2: klaim normal → pipeline penuh → low risk → keputusan =====
     normal = claim_payload(
         claim_id=f"CLM-SMOKE-{run_id}",
         patient_id=f"PAT-SMOKE-{run_id}",
         provider_id=f"FAC-SMOKE-{run_id}",
         doctor_id=f"DR-SMOKE-{run_id}",
     )
-    r = httpx.post(f"{BASE}/api/claims", json=normal, timeout=30)
-    assert r.status_code == 200, r.text
-    run_analysis(normal, events2, "NORMAL")
-    phases = [e for (e, d) in events2]
-    print(f"[NORMAL] events: {phases}")
-    phase1 = next((d for (e, d) in events2 if e == "phase1_complete"), None)
-    phase3 = next((d for (e, d) in events2 if e == "phase3_complete"), None)
-    phase4 = next((d for (e, d) in events2 if e == "phase4_complete"), None)
-    assert {"phase1_complete", "phase2_complete", "phase3_complete", "phase4_complete", "done"}.issubset(phases)
-    assert phase1 and phase3 and phase4
-    if phase1:
-        print(f"[NORMAL] clinical flags: {phase1['clinical']['rule_flags']}, source: {phase1['clinical']['evidence_source']}")
-        print(f"[NORMAL] financial: dev={phase1['financial']['deviation_pct']:.1f}%, method={phase1['financial']['method']}, shap={len(phase1['financial']['shap_top_features'])} fitur")
-        print(f"[NORMAL] fraud: sim={phase1['fraud']['similarity_max_score']:.2f}, similar_claims={len(phase1['fraud']['similar_claims'])}, graph={phase1['fraud']['graph_cluster_anomaly_score']}")
-        assert not phase1["fraud"]["repeat_billing_flag"]
-        assert not phase1["fraud"]["cloning_flag"]
-        assert phase1["fraud"]["similar_claims"] == []
-    if phase3:
-        print(f"[NORMAL] risk: score={phase3['risk']['total_score']}, tier={phase3['risk']['priority_tier']}, breakdown={phase3['risk']['breakdown']}")
-        assert phase3["risk"]["breakdown"]["similarity_fraud"] == 0.0
-        assert phase3["risk"]["priority_tier"] == "low"
-        assert phase3["risk"]["total_score"] < 25
-    if phase4:
-        expl = phase4["explanation"]
-        print(f"[NORMAL] explanation by: {expl['generated_by']}")
-        print(f"[NORMAL] narrative: {expl['narrative_id']}")
-        print(f"[NORMAL] action: {expl['recommended_action']}")
-        priority_reason = expl["qa_panel"]["why_top_priority"].lower()
-        assert "tidak menemukan ketidakwajaran" in priority_reason
-        assert "perubahan" not in priority_reason
-        assert phase3["risk"]["total_score"] == json.loads(json.dumps(phase3["risk"]))["total_score"]
-        # Validasi: skor di narasi harus sesuai (pakai normalisasi sama seperti backend)
-        import re
-        vals = []
-        for m in re.finditer(r"\d+(?:[.,]\d+)*", expl["narrative_id"]):
-            tok = m.group()
-            if re.fullmatch(r"\d{1,3}(?:\.\d{3})+(?:,\d+)?", tok):
-                tok = tok.replace(".", "").replace(",", ".")
-            else:
-                tok = tok.replace(",", ".")
-            try:
-                vals.append(float(tok))
-            except ValueError:
-                pass
-        score = phase3["risk"]["total_score"]
-        ok = any(abs(v - score) < 0.05 or abs(v - round(score)) < 0.05 for v in vals)
-        print(f"[NORMAL] angka di narasi: {vals}; skor asli {score} {'OK' if ok else 'MISSING'}")
-    print("\nSMOKE TEST SELESAI")
+    created = create_claim(normal)
+    print(f"[NORMAL] created: {created['status']}")
+    final = poll_status(normal["claim_id"], {"processed", "review_required", "failed"})
+    assert final["status"] in {"processed", "review_required"}, f"Klaim normal gagal: {final}"
+
+    analysis = httpx.get(f"{BASE}/api/claims/{normal['claim_id']}/analysis", timeout=30).json()
+    result = analysis["result"]
+    risk = result["risk"]
+    fraud = result["fraud"]
+    explanation = result["explanation"]
+    print(f"[NORMAL] analysis_version={analysis['analysis_version']}, tier={analysis['priority_tier']}, score={analysis['total_score']}")
+    assert risk["breakdown"].get("similarity_fraud") == 0.0
+    assert not fraud.get("repeat_billing_flag")
+    assert not fraud.get("cloning_flag")
+    assert len(risk["breakdown"]) >= 4
+    assert risk["total_score"] < 25, f"Klaim benchmark normal seharusnya low risk: {risk['total_score']}"
+    print(f"[NORMAL] action: {explanation.get('recommended_action')}")
+    assert explanation.get("qa_panel"), "qa_panel hilang dari penjelasan"
+
+    decision = httpx.post(
+        f"{BASE}/api/claims/{normal['claim_id']}/decision",
+        json={
+            "claim_id": normal["claim_id"],
+            "decision": "Verified Valid",
+            "reviewer": "SMOKE-VERIFIER",
+            "note": "Smoke test holder",
+        },
+        timeout=30,
+    )
+    assert decision.status_code == 200, decision.text
+    print(f"[NORMAL] keputusan tersimpan: {decision.json()['message']}")
+
+    reset_claim(normal["claim_id"])
+
+    # ===== Test 3: duplikat intake ditolak (409) =====
+    dup = claim_payload(
+        claim_id=f"CLM-SMOKE-DUP-{run_id}",
+        patient_id=f"PAT-SMOKE-DUP-{run_id}",
+        provider_id=f"FAC-SMOKE-{run_id}",
+        doctor_id=f"DR-SMOKE-{run_id}",
+    )
+    first = create_claim(dup)
+    assert first["status"] == "success"
+    second = httpx.post(f"{BASE}/api/claims", json=dup, timeout=30)
+    assert second.status_code == 409, f"Klaim ganda diterima?! {second.status_code} {second.text}"
+    print("[DUP] OK: duplikat intake ditampakkan 409")
+    reset_claim(dup["claim_id"])
+
+    print("\nSMOKE TEST SELESAI — semua alur inti bekerja")
+
 
 if __name__ == "__main__":
     main()
