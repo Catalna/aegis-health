@@ -488,3 +488,10 @@ def test_dashboard_lifecycle_chart_uses_exclusive_status_fields():
         "failed_claims",
     ):
         assert f"stats?.{field}" in page
+
+
+def test_risk_score_scale_is_explicit_in_assessment_and_investigation():
+    assessment = (ROOT / "frontend/src/pages/Assessment.jsx").read_text(encoding="utf-8")
+    investigation = (ROOT / "frontend/src/pages/Investigation.jsx").read_text(encoding="utf-8")
+    assert "risk.max_score ?? 85" in assessment
+    assert "risk.max_score ?? 85" in investigation

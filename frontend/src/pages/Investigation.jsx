@@ -536,7 +536,7 @@ export default function Investigation() {
 
           {risk && (
             <div className="card" style={{ borderColor: tierColor[risk.priority_tier] }}>
-               <div className="card-title">✓ Nilai Risiko</div>
+               <div className="card-title">✓ Nilai Risiko · {risk.max_score ?? 85} poin maksimum</div>
               <div className="flex items-center gap-3">
                 <div className={`score-circle ${risk.priority_tier}`} style={{ width: 80, height: 80, fontSize: '1.5rem' }}>
                   <span>{risk.total_score}</span>

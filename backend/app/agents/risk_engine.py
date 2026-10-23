@@ -157,7 +157,7 @@ def calculate_risk_score(
     score += evidence_support
     breakdown["evidence_support"] = round(evidence_support, 1)
 
-    total = min(100.0, score)
+    total = min(85.0, score)
 
     tier = "low"
     if total >= 60:
@@ -173,6 +173,7 @@ def calculate_risk_score(
 
     return RiskScore(
         total_score=round(total, 1),
+        max_score=85,
         breakdown=breakdown,
         priority_tier=tier,
         evidence=_evidence_items(clinical, financial, fraud),

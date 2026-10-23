@@ -336,7 +336,7 @@ export default function Assessment() {
       <div className="grid-2" style={{ gap: '1.5rem', marginBottom: '1.5rem' }}>
         {/* Executive Result */}
         <div className="card" style={{ borderTop: `4px solid ${tierColor[risk.priority_tier]}` }}>
-          <div className="card-title">Ringkasan Hasil</div>
+          <div className="card-title">Ringkasan Hasil · {risk.max_score ?? 85} poin maksimum</div>
           <div className="flex items-center gap-3">
             <div className={`score-circle ${risk.priority_tier}`}>
               {risk.total_score}

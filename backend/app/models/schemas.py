@@ -141,7 +141,8 @@ class EvidenceItem(BaseModel):
     explanation: str
 
 class RiskScore(BaseModel):
-    total_score: float # 0-100
+    total_score: float # raw deterministic points, 0-85
+    max_score: int = 85
     breakdown: Dict[str, float]
     priority_tier: Literal["high", "medium", "low"]
     evidence: List[EvidenceItem] = Field(default_factory=list)

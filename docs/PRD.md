@@ -1,10 +1,10 @@
-# PRD.md — Product Requirement Document (J-ARI / AEGIS)
+# PRD.md ï¿½ Product Requirement Document (J-ARI / AEGIS)
 
 > **J-ARI: JKN Agentic Risk Intelligence**
-> Nama Frontend: **AEGIS — Pusat Pemeriksaan Klaim**
+> Nama Frontend: **AEGIS ï¿½ Pusat Pemeriksaan Klaim**
 > Healthkathon 2026 BPJS Kesehatan
 > Versi Dokumen: 3.0
-> Status: Aktual — Disinkronkan dengan implementasi kode (Oktober 2026)
+> Status: Aktual ï¿½ Disinkronkan dengan implementasi kode (Oktober 2026)
 
 ---
 
@@ -19,7 +19,7 @@ Sistem ini **tidak menggantikan verifier manusia** dan **tidak menyatakan sebuah
 - Model ML unsupervised (Isolation Forest) sebagai konteks perilaku pendukung
 - Similarity search berbasis vector store (LanceDB) untuk deteksi cloning/repeat/unbundling
 - Graph network metrics provider untuk anomali jaringan klaim
-- LLM modular (Ollama lokal / Gemini API) **hanya** untuk sintesis narasi — tidak mengubah skor
+- LLM modular (Ollama lokal / Gemini API) **hanya** untuk sintesis narasi ï¿½ tidak mengubah skor
 
 Keputusan akhir selalu berada di tangan **verifier manusia**, dicatat dengan audit trail penuh.
 
@@ -71,7 +71,7 @@ Output utama adalah: risk score deterministik, priority tier, ranked evidence, p
 - **FR-1.4 Retry & Fault Tolerance**: Maksimal 3 percobaan (`max_attempts=3`) per klaim. Klaim gagal dapat di-retry via `POST /api/claims/analyze?retry=true`.
 - **FR-1.5 Manual Scan**: Endpoint `POST /api/claims/analyze` mendukung scan manual dengan SSE real-time per `task_id` UUID.
 
-### FR-2: Phase 0 — Deterministic Validation Gate
+### FR-2: Phase 0 ï¿½ Deterministic Validation Gate
 
 Sebelum agent AI apapun diaktifkan, `validate_deterministic()` menjalankan:
 
@@ -81,13 +81,13 @@ Sebelum agent AI apapun diaktifkan, `validate_deterministic()` menjalankan:
 - **FR-2.4** Rentang valid `severity_level` (1-4) dan `cost_claimed > 0`.
 - **FR-2.5** Exact Duplicate Check: Klaim dengan pasien, diagnosis, prosedur, biaya, dan tanggal masuk yang identik => `exact_duplicate_of` diset, hanya Fraud Agent yang dijalankan.
 
-### FR-3: Phase 1 — Multi-Agent Parallel Screening
+### FR-3: Phase 1 ï¿½ Multi-Agent Parallel Screening
 
 Tiga agent dijalankan paralel via `asyncio.gather` dengan `run_with_fallback()`:
 
 **FR-3.1 Clinical Agent** (`clinical_agent.py`):
 - **Lapis 1** (selalu): INA-CBG grouper lookup + rule consistency check. Menghasilkan `rule_flags[]` yang menjadi satu-satunya sumber skor klinis.
-- **Lapis 2** (hanya kasus ambigu — diagnosis tidak dikenal atau hanya 1 flag questionable): LLM analisis plausibility klinis. LLM hanya menambah `evidence_text` dan `confidence_level`, tidak mengubah skor numerik.
+- **Lapis 2** (hanya kasus ambigu ï¿½ diagnosis tidak dikenal atau hanya 1 flag questionable): LLM analisis plausibility klinis. LLM hanya menambah `evidence_text` dan `confidence_level`, tidak mengubah skor numerik.
 - Rule flags: `tariff_deviation_high`, `tariff_deviation_extreme`, `severity_proc_mismatch`, `severity_med_mismatch`, `los_outlier`, `upcoding_risk_diag`, `unsupported_high_risk_proc`.
 
 **FR-3.2 Financial Engine** (`financial_engine.py`):
@@ -100,21 +100,21 @@ Tiga agent dijalankan paralel via `asyncio.gather` dengan `run_with_fallback()`:
 - LanceDB Vector Search: cosine embedding sebagai prefilter kandidat.
 - Composite Multi-Factor Similarity Score: `0.40*code + 0.30*cost + 0.15*provider + 0.10*time + 0.05*patient`.
 - Cloning: `same_provider=True AND same_patient=False AND code_sim>0.9 AND cost_prox>0.95 AND days<=45`.
-- Repeat Billing: SQL — pasien sama, prosedur overlap, rentang 45 hari.
-- Unbundling: SQL — pasien+provider+diagnosis sama, biaya gabungan mirip baseline.
+- Repeat Billing: SQL ï¿½ pasien sama, prosedur overlap, rentang 45 hari.
+- Unbundling: SQL ï¿½ pasien+provider+diagnosis sama, biaya gabungan mirip baseline.
 - Isolation Forest: anomali perilaku multidimensi (20 fitur).
 - Provider Graph Metrics: anomali jaringan klaim faskes (precomputed).
 
-### FR-4: Phase 2 — Review Synthesis
+### FR-4: Phase 2 ï¿½ Review Synthesis
 
 - **FR-4.1 Review Agent** (`review_agent.py`): LLM (`deepseek-r1:7b` => fallback `mistral:7b`) menyintesis evidence dari tiga agent paralel.
 - **FR-4.2** Guard deterministik: LLM tidak boleh mengklaim `strong_multi_signal` jika jumlah sumber sinyal deterministik < 2.
-- **FR-4.3** Evidence IDs dibatasi hanya pada ID yang dihitung secara deterministik — LLM tidak bisa menciptakan evidence baru.
+- **FR-4.3** Evidence IDs dibatasi hanya pada ID yang dihitung secara deterministik ï¿½ LLM tidak bisa menciptakan evidence baru.
 - **FR-4.4 Fallback**: Jika LLM gagal => `rule_fallback` dengan hitungan sumber sinyal deterministik.
 
-### FR-5: Phase 3 — Deterministic Risk Scoring
+### FR-5: Phase 3 ï¿½ Deterministic Risk Scoring
 
-- **FR-5.1** `calculate_risk_score()` murni matematis, tanpa input LLM. Skor maksimal 100 (praktis 85 tanpa behavioral context).
+- **FR-5.1** `calculate_risk_score()` murni matematis, tanpa input LLM. Skor adalah poin deterministik mentah, bukan probabilitas, dengan maksimum aktual 85 (`max_score=85`); UI menampilkan skala ini secara eksplisit.
 - **FR-5.2 Scoring Breakdown**:
 
 | Komponen | Bobot Maks | Sumber |
@@ -130,7 +130,7 @@ Tiga agent dijalankan paralel via `asyncio.gather` dengan `run_with_fallback()`:
   - **Medium** (25.0-59.9): `review_required`, `recommended_action=review_when_available`
   - **Low** (< 25.0): `processed`, `recommended_action=low_priority`
 
-### FR-6: Phase 4 — Indonesian Explanation & QA Panel
+### FR-6: Phase 4 ï¿½ Indonesian Explanation & QA Panel
 
 - **FR-6.1** LLM (`qwen2.5:7b` => fallback `mistral:7b`) menyusun narasi Bahasa Indonesia.
 - **FR-6.2** Klaim prioritas Low => template deterministic langsung (tidak memanggil LLM).
@@ -219,7 +219,7 @@ Aplikasi frontend (React + Vite, branding **AEGIS**) terdiri dari:
 
 ## 8. Referensi Dokumen Terkait
 
-- [Architecture.md](./Architecture.md) — Cetak biru arsitektur teknis dan database schema.
-- [BusinessCore.md](./BusinessCore.md) — Logika domain bisnis JKN, INA-CBG, dan strategi mitigasi.
-- [AgentWorkflow.md](./AgentWorkflow.md) — Detail alur pipeline multi-agent dan protokol SSE.
-- [MODELS.md](./MODELS.md) — Spesifikasi teknis model ML, Vector Store, Graph Metrics, dan LLM.
+- [Architecture.md](./Architecture.md) ï¿½ Cetak biru arsitektur teknis dan database schema.
+- [BusinessCore.md](./BusinessCore.md) ï¿½ Logika domain bisnis JKN, INA-CBG, dan strategi mitigasi.
+- [AgentWorkflow.md](./AgentWorkflow.md) ï¿½ Detail alur pipeline multi-agent dan protokol SSE.
+- [MODELS.md](./MODELS.md) ï¿½ Spesifikasi teknis model ML, Vector Store, Graph Metrics, dan LLM.

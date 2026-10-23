@@ -165,19 +165,16 @@ Menerapkan regulasi teknis petunjuk operasional INA-CBG:
 3. **Heuristik Severity Level vs Comorbidity/Complication (CC/MCC)**:
    - Klaim dengan Severity Level 3 atau 4 yang tidak mencantumkan diagnosis sekunder yang masuk daftar komplikasi mayor resmi ditandai sebagai indikasi *upcoding*.
 
-### 5.2 Komposisi Skor Risiko Deterministik (`backend/app/core/risk_engine.py`)
+### 5.2 Komposisi Skor Risiko Deterministik (`backend/app/agents/risk_engine.py`)
 
-$$\text{Risk Score} = 0.35 \times \text{Clinical Risk} + 0.35 \times \text{Financial Risk} + 0.30 \times \text{Fraud Risk}$$
+Skor adalah poin risiko mentah, **bukan probabilitas**, pada rentang `0–85`. Maksimum berasal dari komponen kode: aturan klinis `20` + anomali finansial `30` + relasional `20` + dukungan evidence `15`; konteks Isolation Forest bernilai `0` pada runtime.
 
-- **Karakteristik Matematis**:
-  - Dihitung sepenuhnya tanpa intervensi probabilitas generatif LLM.
-  - Rentang nilai: `0.0` sampai `100.0`.
-  - **Aturan Capping 85 Poin**: Jika anomali hanya terdeteksi pada 1 dimensi terisolasi, skor akhir **dibatasi maksimal 85**. Nilai $> 85$ hanya diberikan jika terjadi konvergensi multi-sinyal terbukti (misal: selisih biaya drastis terkonfirmasi dengan pola klaim cloning).
+- Skor dihitung tanpa intervensi LLM. Field `max_score=85` dan UI menampilkan skala tersebut.
+- Tier runtime: High `>=60`, Medium `>=25`, Low `<25` poin.
+- Bukti exact duplicate memberi tier minimum High; cloning atau repeat billing yang terdeteksi memberi tier minimum Medium. Lantai tier tidak mengubah total poin.
 
 ### 5.3 Priority Tiering
-- **HIGH** ($\ge 70$): Klaim berisiko tinggi — wajib diperiksa mendalam oleh verifier sebelum pembayaran disetujui.
-- **MEDIUM** ($40 - 69$): Klaim berisiko sedang — disarankan klarifikasi berkas atau audit berkala.
-- **LOW** ($< 40$): Klaim berisiko rendah — dapat diproses sesuai alur reguler.
+Gunakan ambang runtime pada bagian 5.2 dan lantai tier untuk bukti relasional kuat. Tier adalah prioritas verifikasi, bukan konfirmasi fraud atau keputusan penolakan klaim.
 
 ---
 

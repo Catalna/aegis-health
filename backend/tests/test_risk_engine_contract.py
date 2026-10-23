@@ -116,3 +116,22 @@ def test_exact_duplicate_evidence_has_high_tier_floor():
 
     assert result.priority_tier == "high"
     assert any(item.signal_type == "exact_duplicate" for item in result.evidence)
+
+
+def test_risk_score_declares_and_respects_its_actual_85_point_scale():
+    result = calculate_risk_score(
+        clinical([
+            "severity_proc_mismatch",
+            "severity_med_mismatch",
+            "los_outlier",
+            "upcoding_risk_diag",
+            "unsupported_high_risk_proc",
+        ]),
+        financial(anomaly=1.0),
+        fraud(repeat=True),
+        review("strong_multi_signal"),
+    )
+
+    assert result.max_score == 85
+    assert result.total_score == 85.0
+    assert result.total_score <= result.max_score
