@@ -46,5 +46,7 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - `6e6a870` — synthetic v2 generator/validator.
 - `5bf7a9d` — signed benchmark deviation and upward exposure.
 - `b4d569d` — native XGBoost training/evaluation path.
+- `fbb413d` — synthetic v2 validation and training report.
+- `244a1ab` — classification metrics and PNG evaluation figures.
 
 Latest verification: 314 passed / 2 skipped; frontend build passed with the chunk-size warning above. Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
