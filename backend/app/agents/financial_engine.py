@@ -87,18 +87,16 @@ def _zscore_fallback(claim: ClaimInput, reason: str) -> FinancialAssessment:
     """Fallback deterministik: z-score terhadap peer baseline diagnosis yang sama."""
     base = claim.diagnosis_primary.split(".")[0]
     peer_mean = float(PEER_BASELINE.get(base, 5_000_000))
-    peer_std = peer_mean * 0.25  # asumsi CV 25% untuk klaim sejenis
-
     predicted = peer_mean
     deviation_pct = ((claim.cost_claimed - predicted) / predicted) * 100 if predicted > 0 else 0.0
-    z = (claim.cost_claimed - peer_mean) / peer_std if peer_std > 0 else 0.0
-    anomaly_score = float(min(max(z / 4.0, 0.0), 1.0))  # z>=4 → skor maksimum
+    anomaly_score = float(min(abs(deviation_pct) / 50.0, 1.0))
 
     return FinancialAssessment(
         claim_id=claim.claim_id,
         predicted_cost_range=(peer_mean * 0.85, peer_mean * 1.15),
         actual_cost=claim.cost_claimed,
         deviation_pct=float(deviation_pct),
+        upward_exposure=float(max(0.0, claim.cost_claimed - predicted)),
         shap_top_features=[],
         anomaly_score=anomaly_score,
         evidence_text=(
@@ -169,6 +167,7 @@ async def analyze_financial(claim: ClaimInput) -> FinancialAssessment:
         predicted_cost_range=(float(lower_bound), float(upper_bound)),
         actual_cost=float(actual_cost),
         deviation_pct=float(deviation_pct),
+        upward_exposure=float(max(0.0, actual_cost - predicted_cost)),
         shap_top_features=top_features,
         anomaly_score=anomaly_score,
         evidence_text=evidence_text,

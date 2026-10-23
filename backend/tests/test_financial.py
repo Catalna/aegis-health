@@ -31,6 +31,21 @@ def test_zscore_fallback_predicted_range_sane():
     assert abs(hi - 24_000_000 * 1.15) < 1  # peer AMI 24jt ±15%
 
 
+def test_fallback_scores_signed_downward_deviation_without_claiming_upward_exposure():
+    result = _zscore_fallback(make_claim(cost_claimed=12_000_000), "mock")
+
+    assert result.deviation_pct == -50.0
+    assert result.anomaly_score > 0.5
+    assert result.upward_exposure == 0.0
+
+
+def test_fallback_separates_upward_exposure_from_signed_deviation():
+    result = _zscore_fallback(make_claim(cost_claimed=72_000_000), "mock")
+
+    assert result.deviation_pct == 200.0
+    assert result.upward_exposure == 48_000_000.0
+
+
 def test_financial_evidence_uses_benchmark_and_claimed_amount_terms():
     result = _zscore_fallback(make_claim(cost_claimed=72_000_000), "mock")
     evidence = result.evidence_text.lower()

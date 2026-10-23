@@ -474,6 +474,12 @@ export default function Investigation() {
                 </span>
               </div>
               <div className="flex items-center justify-between mb-1">
+                <span>Potensi nilai di atas benchmark</span>
+                <span style={{ fontWeight: 700 }}>
+                  {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(financial.upward_exposure ?? 0)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between mb-1">
                   <span>Seberapa jauh biaya berbeda</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <div className="progress-bar" style={{ width: 80 }}>

@@ -78,6 +78,7 @@ class FinancialAssessment(BaseModel):
     predicted_cost_range: Tuple[float, float]
     actual_cost: float
     deviation_pct: float
+    upward_exposure: float = 0.0
     shap_top_features: List[SHAPFeature]
     anomaly_score: float
     evidence_text: str = ""

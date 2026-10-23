@@ -495,3 +495,9 @@ def test_risk_score_scale_is_explicit_in_assessment_and_investigation():
     investigation = (ROOT / "frontend/src/pages/Investigation.jsx").read_text(encoding="utf-8")
     assert "risk.max_score ?? 85" in assessment
     assert "risk.max_score ?? 85" in investigation
+
+
+def test_financial_view_separates_upward_exposure_from_signed_deviation():
+    page = (ROOT / "frontend/src/pages/Investigation.jsx").read_text(encoding="utf-8")
+    assert "financial.upward_exposure" in page
+    assert "Potensi nilai di atas benchmark" in page

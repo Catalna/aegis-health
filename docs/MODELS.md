@@ -167,7 +167,7 @@ Menerapkan regulasi teknis petunjuk operasional INA-CBG:
 
 ### 5.2 Komposisi Skor Risiko Deterministik (`backend/app/agents/risk_engine.py`)
 
-Skor adalah poin risiko mentah, **bukan probabilitas**, pada rentang `0–85`. Maksimum berasal dari komponen kode: aturan klinis `20` + anomali finansial `30` + relasional `20` + dukungan evidence `15`; konteks Isolation Forest bernilai `0` pada runtime.
+Skor adalah poin risiko mentah, **bukan probabilitas**, pada rentang `0–85`. Maksimum berasal dari komponen kode: aturan klinis `20` + anomali finansial `30` + relasional `20` + dukungan evidence `15`; konteks Isolation Forest bernilai `0` pada runtime. Deviasi finansial disimpan bertanda, sementara `upward_exposure` hanya mengukur selisih klaim di atas benchmark dan bukan bukti kelebihan bayar.
 
 - Skor dihitung tanpa intervensi LLM. Field `max_score=85` dan UI menampilkan skala tersebut.
 - Tier runtime: High `>=60`, Medium `>=25`, Low `<25` poin.

@@ -92,7 +92,7 @@ Tiga agent dijalankan paralel via `asyncio.gather` dengan `run_with_fallback()`:
 
 **FR-3.2 Financial Engine** (`financial_engine.py`):
 - XGBoost Regressor (15 fitur, tanpa target leakage) memprediksi expected reimbursement benchmark.
-- Menghitung `deviation_pct` dan `anomaly_score` (0.0-1.0, capped di `abs(deviation_pct)/50`).
+- Menyimpan signed `deviation_pct`, menghitung `upward_exposure=max(0, claimed-benchmark)`, dan `anomaly_score` (0.0-1.0, capped di `abs(deviation_pct)/50`) secara konsisten pada jalur model dan fallback.
 - SHAP attribution: top 5 fitur kontributor dengan label ramah verifier.
 - Fallback otomatis ke Z-Score Peer Group Baseline jika model tidak tersedia.
 
