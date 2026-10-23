@@ -82,6 +82,74 @@ def test_v2_contains_a_broad_diagnosis_catalog():
     assert all(len(code) == 3 for code in DIAGNOSIS_CATALOG)
 
 
+def test_v2_claim_schema_covers_clinical_and_special_group_attributes():
+    split = generate_synthetic_v2(profile="dev", seed=42)["train"]
+    claims, labels = split["claims"], split["labels"]
+    required = {"medication_codes", "icu_indicator", "ventilator_used", "surgical_indicator", "special_group_types", "service_type"}
+
+    assert required <= claims[0].keys()
+    assert all(not claim["ventilator_used"] or claim["icu_indicator"] for claim in claims)
+    assert all(
+        claim["length_of_stay"] == 0
+        for claim, label in zip(claims, labels)
+        if claim["outpatient"] and not label["is_anomaly"]
+    )
+
+
+def test_v2_includes_enriched_anomaly_test_and_ood_facility_stress_set():
+    bundle = generate_synthetic_v2(profile="dev", seed=42)
+    enriched = bundle["test_enriched"]
+    positive_counts = {}
+    for label in enriched["labels"]:
+        positive_counts[label["anomaly_type"]] = positive_counts.get(label["anomaly_type"], 0) + int(label["is_anomaly"])
+    train_facilities = {claim["provider_id"] for claim in bundle["train"]["claims"]}
+    train_doctors = {claim["doctor_id"] for claim in bundle["train"]["claims"]}
+    train_families = {label["scenario_family"] for label in bundle["train"]["labels"]}
+
+    assert all(positive_counts.get(kind, 0) >= 150 for kind in (
+        "upcoding", "unbundling", "cloning", "repeat_billing", "phantom_billing", "inflated_bill", "prolonged_los"
+    ))
+    assert len(enriched["claims"]) == 2_100
+    assert not train_facilities.intersection(claim["provider_id"] for claim in bundle["ood"]["claims"])
+    assert not train_doctors.intersection(claim["doctor_id"] for claim in bundle["ood"]["claims"])
+    assert not train_families.intersection(
+        label["scenario_family"] for label in bundle["ood"]["labels"] if label["is_anomaly"]
+    )
+    assert train_facilities == {claim["provider_id"] for claim in bundle["test"]["claims"]}
+    assert len(train_facilities) == PROFILES["dev"]["facilities"]
+    assert len(train_doctors) == PROFILES["dev"]["doctors"]
+
+
+def test_v2_hard_negative_labels_have_matching_claim_characteristics():
+    split = generate_synthetic_v2(profile="dev", seed=42)["train"]
+    claims = {claim["claim_id"]: claim for claim in split["claims"]}
+    labels = split["labels"]
+    catastrophic = next(label for label in labels if label["scenario_family"] == "hard_negative_catastrophic_cost")
+    prolonged = next(label for label in labels if label["scenario_family"] == "hard_negative_long_los")
+    chronic = next(label for label in labels if label["scenario_family"] == "hard_negative_chronic_repeat_visit")
+    readmission = next(label for label in labels if label["scenario_family"] == "hard_negative_readmission")
+
+    assert claims[catastrophic["claim_id"]]["cost_claimed"] >= claims[catastrophic["claim_id"]]["regional_base_rate"] * 1.3
+    assert claims[prolonged["claim_id"]]["length_of_stay"] >= 15
+    assert claims[chronic["claim_id"]]["diagnosis_primary"] == "N18"
+    assert sum(label["group_id"] == readmission["group_id"] for label in labels) >= 2
+
+
+def test_v2_repeat_billing_mechanism_family_matches_its_day_window():
+    split = generate_synthetic_v2(profile="dev", seed=42)["validation"]
+    claims = {claim["claim_id"]: claim for claim in split["claims"]}
+    labels = split["labels"]
+    repeated = next(
+        label for label in labels
+        if label["scenario_family"] == "repeat_billing:days_31_45"
+    )
+    related = [label for label in labels if label["group_id"] == repeated["group_id"]]
+    dates = sorted(claims[label["claim_id"]]["admission_date"] for label in related)
+    from datetime import date
+    gap = abs((date.fromisoformat(dates[1]) - date.fromisoformat(dates[0])).days)
+    assert 31 <= gap <= 45
+
+
 def test_v2_validator_accepts_a_generated_dev_bundle():
     report = validate_synthetic_v2(generate_synthetic_v2(profile="dev", seed=123))
     assert report["status"] == "valid"

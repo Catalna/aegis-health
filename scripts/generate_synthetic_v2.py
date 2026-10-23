@@ -24,7 +24,10 @@ def main() -> int:
     except Exception as exc:
         print(f"Synthetic v2 generation failed: {exc}", file=sys.stderr)
         return 1
-    print(f"Synthetic v2 {args.profile}: {sum(len(bundle[s]['claims']) for s in ('train', 'validation', 'test')):,} claims")
+    natural_count = sum(len(bundle[split]["claims"]) for split in ("train", "validation", "test"))
+    stress_count = sum(bundle["stress_counts"].values())
+    print(f"Synthetic v2 {args.profile}: {natural_count:,} natural-split claims")
+    print(f"Additional stress sets: {stress_count:,}; total generated: {natural_count + stress_count:,}")
     print(f"Validation: {result['status']}; config SHA-256: {result['config_sha256']}")
     print(f"Output: {result['output_dir']}")
     return 0

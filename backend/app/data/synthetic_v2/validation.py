@@ -34,9 +34,10 @@ def _ks_statistic(left: list[float], right: list[float]) -> tuple[float, float]:
 
 
 def validate_synthetic_v2(bundle: dict[str, Any]) -> dict[str, Any]:
-    splits = ("train", "validation", "test")
-    if any(split not in bundle for split in splits):
+    natural_splits = ("train", "validation", "test")
+    if any(split not in bundle for split in natural_splits):
         raise ValueError("dataset is missing a required split")
+    splits = (*natural_splits, *(split for split in ("test_enriched", "ood") if split in bundle))
 
     seen_groups: dict[str, str] = {}
     family_sets: dict[str, set[str]] = {}
@@ -83,14 +84,18 @@ def validate_synthetic_v2(bundle: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("validation/test must contain an out-of-family scenario absent from train")
 
     distribution_checks = {}
-    for split in ("validation", "test"):
+    for split in ("validation", "test", "test_enriched", "ood"):
+        if split not in family_sets:
+            continue
         for field in _NORMAL_FIELDS:
+            if split in {"test_enriched", "ood"}:
+                continue
             left = [float(row[field]) for row in normal_rows["train"]]
             right = [float(row[field]) for row in normal_rows[split]]
             statistic, critical = _ks_statistic(left, right)
             distribution_checks[f"train_vs_{split}:{field}"] = {
                 "ks_statistic": statistic,
-                "critical_value_alpha_0_05": critical,
+                "critical_value_alpha_0_001": critical,
                 "passed": statistic <= critical,
             }
             if statistic > critical:

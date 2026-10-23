@@ -52,28 +52,17 @@ J-ARI/AEGIS menerapkan arsitektur **Multi-Model Intelligence** terpadu. Pendekat
 - **Tujuan**: Menghasilkan estimasi *expected reimbursement benchmark* untuk suatu episode klaim berdasarkan profil klinis dan tipe fasilitas kesehatan.
 - **Peran Sistem**: Model ini berfungsi sebagai benchmark pembanding statistik terhadap pola klaim historis, bukan sebagai grouper tarif resmi INA-CBG dari Kemenkes.
 - **Lokasi File Model**: `backend/models_trained/xgboost_regressor.json`.
+- **Runtime vs kandidat**: runtime memakai regresor biaya dan deterministik rules. `xgboost_classifier_candidate_synthetic_v2.json` adalah eksperimen pembanding sintetis dan bukan komponen runtime.
 
-### 2.2 Feature Engineering Pipeline (`backend/app/core/feature_engineering.py`)
+### 2.2 Feature Engineering Pipeline (`backend/app/ml/feature_engineering.py`)
 Untuk mencegah terjadinya kebocoran target (*target leakage*), ekstraksi fitur dipisahkan secara tegas:
-1. **`FEATURE_NAMES` (20 Fitur)**: Seluruh fitur termasuk rasio biaya, digunakan untuk analisis eksplorasi & model unsupervised.
-2. **`COST_FEATURE_NAMES` (15 Fitur)**: Fitur yang diekstraksi **tanpa menyertakan biaya klaim** (`cost_claimed`) untuk model regresi biaya estimasi.
+1. **`FEATURE_NAMES` (20 Fitur)**: Fitur runtime dan unsupervised, termasuk fitur biaya turunan.
+2. **`COST_FEATURE_NAMES` (15 Fitur)**: Fitur regresi runtime yang tidak menyertakan `cost_claimed` atau turunannya.
 
-#### Daftar 15 Fitur Input Regresi Biaya (`COST_FEATURE_NAMES`):
-1. `los`: Lama rawat inap dalam hari (`(discharge_date - admission_date).days`).
-2. `patient_age`: Usia pasien pada saat episode pelayanan.
-3. `severity_level`: Tingkat keparahan kasus (ordinal: 1, 2, 3, 4).
-4. `procedure_count`: Jumlah tindakan/prosedur medis yang ditagihkan.
-5. `secondary_diagnosis_count`: Jumlah diagnosis sekunder yang menyertai diagnosis primer.
-6. `faskes_type_enc`: One-hot/label encoding tipe faskes (RS Kelas A, B, C, D, Klinik, Puskesmas).
-7. `service_type_enc`: Encoding jenis rawat (Rawat Inap vs Rawat Jalan Tingkat Lanjut).
-8. `gender_enc`: Jenis kelamin pasien (Laki-laki / Perempuan).
-9. `icd10_chapter`: Klasifikasi bab penyakit ICD-10 (misal: Bab IX Sirkulasi, Bab II Neoplasma).
-10. `ina_cbg_base_rate`: Tarif dasar rata-rata historis untuk kelompok kode INA-CBG tersebut.
-11. `faskes_region_enc`: Regionalisasi tarif sesuai regulasi wilayah BPJS.
-12. `icu_indicator`: Boolean indikator perawatan di ruang intensif (ICU/ICCU/PICU/NICU).
-13. `ventilator_used`: Boolean penggunaan alat bantu pernapasan mekanis.
-14. `surgical_indicator`: Boolean prosedur bedah mayor/minor.
-15. `comorbidity_index`: Indeks komorbiditas berbasis pembobotan diagnosis sekunder.
+#### Fitur Input Regresi Biaya Runtime (`COST_FEATURE_NAMES`):
+`primary_diag_encoded`, `num_secondary_diags`, `num_procedures`, `num_medications`, `severity_level`, `length_of_stay`, `has_high_cost_proc`, `has_phantom_risk_proc`, `has_upcoding_risk_diag`, `severity_proc_mismatch`, `severity_med_mismatch`, `los_outlier`, `num_total_codes`, `proc_count_ratio`, `medication_count`.
+
+Trainer v2 memakai kontrak demonstrator terpisah, menguji ablation `severity_level`/`ina_cbg_base_rate`, dan tidak otomatis menggantikan model runtime.
 
 ### 2.3 Pelatihan & Metrik Evaluasi Model (`train_xgboost.py`)
 - **Dataset Latih**: Data klaim historis sintetis terstandardisasi yang mencerminkan distribusi klaim JKN.
@@ -133,24 +122,14 @@ Financial Engine (`backend/app/core/financial_engine.py`) mengintegrasikan `shap
 ### 4.2 Formulasi Komposit Multi-Faktor Similarity Score (`similarity_scoring.py`)
 Untuk membedakan antara kesamaan penyakit yang wajar dengan pola kecurangan terorganisir (seperti *cloning klaim* atau *unbundling*), sistem menghitung **Skor Kemiripan Komposit**:
 
-$$S_{composite} = 0.35 \times S_{semantic} + 0.25 \times S_{clinical} + 0.20 \times S_{temporal} + 0.20 \times S_{provider}$$
+$$S_{composite} = 0.40 \times S_{code} + 0.30 \times S_{cost} + 0.15 \times I_{same\_provider} + 0.10 \times S_{temporal} + 0.05 \times I_{same\_patient}$$
 
 Di mana:
-1. **$S_{semantic}$ (35%)**: Cosine similarity antara vektor embedding deskripsi klinis klaim baru terhadap klaim-klaim historis dalam LanceDB.
-2. **$S_{clinical}$ (25%)**: Kesamaan eksak kode ICD-10 primer, kode ICD-9-CM prosedur, dan kelas tarif INA-CBG.
-3. **$S_{temporal}$ (20%)**: Kedekatan waktu pelayanan antar dua klaim:
-   - Tanggal pelayanan identik atau selisih $\le 3$ hari: $S_{temporal} = 1.0$.
-   - Selisih $4 - 14$ hari: $S_{temporal} = 0.6$.
-   - Selisih $> 30$ hari: $S_{temporal} = 0.0$.
-4. **$S_{provider}$ (20%)**: Asal fasilitas kesehatan:
-   - Provider sama & dokter DPJP sama: $S_{provider} = 1.0$.
-   - Provider sama & dokter beda: $S_{provider} = 0.7$.
-   - Provider beda: $S_{provider} = 0.1$.
+Formula runtime tercatat di `backend/app/ml/similarity_scoring.py`: kode Jaccard, kedekatan biaya, provider sama, temporal proximity, dan pasien sama. Temporal proximity bernilai `1` sampai 7 hari lalu meluruh linear ke 0 pada 90 hari; candidate window dibatasi 45 hari.
 
-### 4.3 Kriteria Deteksi Fraud Relasional
-- **Claim Cloning Suspect**: $S_{composite} \ge 0.90$ dengan pasien yang berbeda tetapi rincian tindakan dan waktu pelayanan sangat identik.
-- **Repeat Billing Suspect**: $S_{composite} \ge 0.85$ dengan pasien yang sama pada fasilitas yang sama dalam jendela waktu $< 30$ hari untuk episode yang seharusnya tuntas dalam 1 kali perawatan.
-- **Unbundling Suspect**: Beberapa klaim terpisah diajukan dalam rentang 1–3 hari untuk prosedur yang menurut pedoman INA-CBG seharusnya disatukan dalam satu paket tagihan.
+### 4.3 Kandidat Pemeriksaan Relasional
+- Kandidat dengan pasien sama memerlukan kode similarity `>=0.8`; kandidat pasien berbeda memerlukan provider sama, kode similarity `>0.9`, dan kedekatan biaya `>0.95`. Semua dibatasi jendela `<=45` hari.
+- Cloning/repeat/unbundling adalah evidence yang diperiksa dengan syarat relasional dan domain; skor kemiripan komposit sendiri bukan label fraud atau vonis.
 
 ---
 

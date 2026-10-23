@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 
+GENERATOR_VERSION = "2.4.0"
 
 PROFILES = {
     "dev": {
@@ -44,6 +45,8 @@ DIAGNOSIS_CATALOG = tuple(
 )
 
 _PROCEDURES = ("00.66", "36.10", "39.95", "47.01", "81.51", "85.41", "93.94", "99.04")
+_MEDICATIONS = ("METFORMIN", "AMOXICILLIN", "ASPIRIN", "INSULIN", "CEFTRIAXONE", "SALBUTAMOL", "ENOXAPARIN", "PARACETAMOL")
+_SPECIAL_GROUPS = ("drug", "procedure", "investigation", "prosthesis")
 _REGIONS = ("sumatra", "java", "kalimantan", "sulawesi", "bali_nusa", "maluku_papua")
 _FACILITY_TYPES = ("RS", "KLINIK", "PUSKESMAS")
 _FACILITY_CLASSES = ("A", "B", "C", "D")
@@ -66,7 +69,8 @@ _BASE_RATES = {"A": 2_000_000, "B": 3_000_000, "C": 8_000_000, "D": 4_000_000,
 
 
 def _split_month_bounds(split: str) -> tuple[int, int]:
-    return {"train": (0, 18), "validation": (18, 21), "test": (21, 24)}[split]
+    return {"train": (0, 18), "validation": (18, 21), "test": (21, 24),
+            "test_enriched": (21, 24), "ood": (21, 24)}[split]
 
 
 def _balanced_sample(population: int, size: int, rng: np.random.Generator, weights=None) -> np.ndarray:
@@ -82,19 +86,23 @@ def _balanced_sample(population: int, size: int, rng: np.random.Generator, weigh
     return values
 
 
-def _generate_split(profile: str, split: str, count: int, seed: int) -> dict[str, list[dict[str, Any]]]:
+def _generate_split(
+    profile: str, split: str, count: int, seed: int, positive_fraction: float = 0.03
+) -> dict[str, list[dict[str, Any]]]:
     cfg = PROFILES[profile]
-    split_seed = seed + {"train": 0, "validation": 1_000_003, "test": 2_000_033}[split]
+    split_seed = seed + {"train": 0, "validation": 1_000_003, "test": 2_000_033,
+                         "test_enriched": 3_000_091, "ood": 4_000_037}[split]
     rng = np.random.default_rng(split_seed)
     facilities = cfg["facilities"]
     doctors = cfg["doctors"]
     patients = cfg["patients"]
-    prefix = {"train": "TRN", "validation": "VAL", "test": "TST"}[split]
+    prefix = {"train": "TRN", "validation": "VAL", "test": "TST",
+              "test_enriched": "ENR", "ood": "OOD"}[split]
     calibration_rng = np.random.default_rng(seed + 8731)
 
     facility_idx = _balanced_sample(facilities, count, rng)
-    patient_idx = rng.integers(0, patients, size=count)
-    doctor_home = rng.integers(0, facilities, size=doctors)
+    patient_idx = _balanced_sample(patients, count, rng)
+    doctor_home = calibration_rng.integers(0, facilities, size=doctors)
     doctor_pool = [np.flatnonzero(doctor_home == idx) for idx in range(facilities)]
     doctor_idx = np.fromiter(
         [int(rng.choice(doctor_pool[fac])) if len(doctor_pool[fac]) else int(rng.integers(doctors))
@@ -103,7 +111,6 @@ def _generate_split(profile: str, split: str, count: int, seed: int) -> dict[str
     diag_idx = _balanced_sample(len(DIAGNOSIS_CATALOG), count, rng)
     severity_idx = _balanced_sample(4, count, rng, weights=[0.57, 0.29, 0.11, 0.03])
     severity = severity_idx + 1
-    los = np.maximum(1, np.rint(rng.lognormal(mean=1.15, sigma=0.55, size=count))).astype(int)
     months_start, months_end = _split_month_bounds(split)
     month = rng.integers(months_start, months_end, size=count)
     date_offset = month * 30 + rng.integers(0, 28, size=count)
@@ -114,51 +121,74 @@ def _generate_split(profile: str, split: str, count: int, seed: int) -> dict[str
     region_rate = {region: calibration_rng.uniform(0.9, 1.14) for region in _REGIONS}
     facility_rate = calibration_rng.uniform(0.88, 1.18, size=facilities)
     diagnosis = np.asarray(DIAGNOSIS_CATALOG, dtype=object)[diag_idx]
+    chapter = np.asarray([code[0] for code in diagnosis])
+    los_means = {"A": 4.4, "B": 5.0, "C": 8.2, "D": 6.0, "E": 3.4, "F": 3.8, "G": 5.2,
+                 "I": 6.5, "J": 5.2, "K": 4.6, "M": 6.8, "N": 5.8, "S": 8.5}
+    age_means = {"A": 38, "B": 45, "C": 59, "D": 61, "E": 56, "F": 47, "G": 48,
+                 "I": 59, "J": 55, "K": 46, "M": 48, "N": 57, "S": 43}
+    los_center = np.asarray([los_means[key] for key in chapter])
+    los = np.maximum(1, np.rint(rng.lognormal(mean=np.log(los_center), sigma=0.45))).astype(int)
+    outpatient = rng.random(count) < 0.22
+    los = np.where(outpatient, 0, los)
+    age_center = np.asarray([age_means[key] for key in chapter])
+    age = np.clip(rng.normal(age_center, 19, size=count), 0, 100).astype(int)
+    female_probability = np.where(diagnosis == "C50", 0.99, 0.52)
+    sex = np.where(rng.random(count) < female_probability, "F", "M")
     base_rate = np.asarray([_BASE_RATES[code[0]] for code in diagnosis], dtype=float)
     severity_factor = np.choose(severity - 1, [0.82, 1.0, 1.27, 1.55])
     regional_factor = np.asarray([region_rate[regions[idx]] for idx in facility_idx])
     claimed = base_rate * severity_factor * regional_factor * facility_rate[facility_idx]
     claimed *= rng.lognormal(mean=0, sigma=0.12, size=count)
-    outpatient = rng.random(count) < 0.22
     ina_severity = np.where(outpatient, "0", np.choose(np.minimum(severity, 3) - 1, ["I", "II", "III"]))
     secondary_count = rng.choice([0, 1, 2, 3], size=count, p=[0.44, 0.36, 0.16, 0.04])
     procedure_count = rng.choice([0, 1, 2, 3], size=count, p=[0.38, 0.39, 0.18, 0.05])
-    age = np.clip(rng.normal(51, 23, size=count), 0, 100).astype(int)
-    sex = rng.choice(("F", "M"), size=count)
+    medication_count = rng.choice([0, 1, 2, 3], size=count, p=[0.3, 0.38, 0.24, 0.08])
+    icu = (~outpatient) & (rng.random(count) < 0.045)
+    ventilator = icu & (rng.random(count) < 0.22)
     claim_ids = [f"CLM-{prefix}-{idx:07d}" for idx in range(count)]
     admission_dates = [base_date + timedelta(days=int(day)) for day in date_offset]
     discharge_dates = [admit + timedelta(days=int(stay)) for admit, stay in zip(admission_dates, los)]
 
     claims: list[dict[str, Any]] = []
+    entity_prefix = "OOD-" if split == "ood" else ""
     for idx in range(count):
         facility = int(facility_idx[idx])
         primary = str(diagnosis[idx])
         sec = rng.choice(DIAGNOSIS_CATALOG, size=int(secondary_count[idx]), replace=False).tolist()
         procs = rng.choice(_PROCEDURES, size=int(procedure_count[idx]), replace=False).tolist()
         special_cost = float(rng.uniform(150_000, 2_500_000)) if rng.random() < 0.12 else 0.0
+        special_types = rng.choice(_SPECIAL_GROUPS, size=int(rng.integers(1, 3)), replace=False).tolist() if special_cost else []
+        medications = rng.choice(_MEDICATIONS, size=int(medication_count[idx]), replace=False).tolist()
         raw_cost = float(claimed[idx] + special_cost)
         cbg_class = int(rng.integers(0, 100))
+        surgery = any(code in {"36.10", "47.01", "81.51", "85.41"} for code in procs)
         claims.append({
             "claim_id": claim_ids[idx],
-            "patient_id": f"PAT-{prefix}-{int(patient_idx[idx]):07d}",
-            "provider_id": f"FAC-{prefix}-{facility:04d}",
-            "doctor_id": f"DR-{prefix}-{int(doctor_idx[idx]):05d}",
+            "patient_id": f"PAT-{entity_prefix}{int(patient_idx[idx]):07d}",
+            "provider_id": f"FAC-{entity_prefix}{facility:04d}",
+            "doctor_id": f"DR-{entity_prefix}{int(doctor_idx[idx]):05d}",
             "facility_type": str(facility_types[facility]),
             "facility_class": str(facility_classes[facility]),
             "region": str(regions[facility]),
             "patient_age": int(age[idx]),
             "patient_sex": str(sex[idx]),
+            "service_type": "outpatient" if outpatient[idx] else "inpatient",
             "diagnosis_primary": primary,
             "diagnosis_secondary": sec,
             "procedure_codes": procs,
+            "medication_codes": medications,
             "length_of_stay": int(los[idx]),
             "severity_level": int(severity[idx]),
             "ina_cbg_code": f"SIM-{primary[0]}-{cbg_class:02d}",
             "ina_cbg_severity": str(ina_severity[idx]),
             "outpatient": bool(outpatient[idx]),
+            "icu_indicator": bool(icu[idx]),
+            "ventilator_used": bool(ventilator[idx]),
+            "surgical_indicator": bool(surgery),
             "regional_base_rate": round(float(base_rate[idx] * region_rate[str(regions[facility])]), 2),
             "cost_claimed": round(raw_cost, 2),
             "special_group_cost": round(special_cost, 2),
+            "special_group_types": special_types,
             "admission_date": admission_dates[idx].isoformat(),
             "discharge_date": discharge_dates[idx].isoformat(),
         })
@@ -174,7 +204,7 @@ def _generate_split(profile: str, split: str, count: int, seed: int) -> dict[str
     } for idx in range(count)]
 
     # 3% natural prevalence, with relational families represented as grouped cases.
-    positive_count = max(1, round(count * 0.03)) if count else 0
+    positive_count = max(1, round(count * positive_fraction)) if count and positive_fraction else 0
     positive_idxs = rng.choice(count, size=min(positive_count, count), replace=False) if count else []
     positive_idx_set = set(int(idx) for idx in positive_idxs)
     normal_candidates = [idx for idx in range(count) if idx not in positive_idx_set]
@@ -251,7 +281,13 @@ def _generate_split(profile: str, split: str, count: int, seed: int) -> dict[str
                     "patient_id", "provider_id", "doctor_id", "diagnosis_primary", "diagnosis_secondary",
                     "procedure_codes", "length_of_stay", "severity_level", "cost_claimed",
                 )})
-                gap = (ordinal % 60) + 1
+                gap_ranges = {
+                    "days_1_30": (1, 30),
+                    "days_31_45": (31, 45),
+                    "days_46_60": (46, 60),
+                }
+                gap_min, gap_max = gap_ranges[mechanism]
+                gap = int(rng.integers(gap_min, gap_max + 1))
                 new_admit = date.fromisoformat(source["admission_date"]) + timedelta(days=gap)
                 claim["admission_date"] = new_admit.isoformat()
                 claim["discharge_date"] = (new_admit + timedelta(days=source["length_of_stay"])).isoformat()
@@ -271,12 +307,72 @@ def _generate_split(profile: str, split: str, count: int, seed: int) -> dict[str
     # Legitimate hard negatives remain normal by ground truth and are represented only in labels.
     hard_negative_count = max(1, round(count * 0.05)) if count else 0
     hard_negative_candidates = [idx for idx in normal_candidates if idx not in related_source_idxs]
-    for idx in rng.choice(hard_negative_candidates, size=min(hard_negative_count, len(hard_negative_candidates)), replace=False):
+    selected_hard_negatives = rng.choice(
+        hard_negative_candidates, size=min(hard_negative_count, len(hard_negative_candidates)), replace=False
+    )
+    selected_hard_set = set(int(idx) for idx in selected_hard_negatives)
+    available_hard_sources = [
+        idx for idx in hard_negative_candidates if idx not in selected_hard_set
+    ]
+    for idx in selected_hard_negatives:
+        idx = int(idx)
+        claim = claims[idx]
+        hard_source = None
         label = labels[int(idx)]
         hard_case = ("readmission", "chronic_repeat_visit", "catastrophic_cost", "long_los", "standardized_protocol")[int(rng.integers(5))]
         label["scenario_family"] = f"hard_negative_{hard_case}"
         label["group_id"] = f"{prefix}-HARDNEG-{int(idx):07d}"
         label["label_confidence"] = 0.95
+        if hard_case in {"readmission", "chronic_repeat_visit"} and available_hard_sources:
+            source_idx = available_hard_sources.pop(0)
+            source = claims[source_idx]
+            hard_source = source
+            claim.update({key: copy.deepcopy(value) for key, value in source.items() if key != "claim_id"})
+            group_id = f"{prefix}-HARDNEG-{hard_case.upper()}-{min(idx, source_idx):07d}"
+            label["group_id"] = group_id
+            labels[source_idx]["scenario_family"] = f"hard_negative_{hard_case}"
+            labels[source_idx]["group_id"] = group_id
+            labels[source_idx]["label_confidence"] = 0.95
+            gap = int(rng.integers(30, 61)) if hard_case == "readmission" else 30
+            new_admit = date.fromisoformat(source["admission_date"]) + timedelta(days=gap)
+            claim["admission_date"] = new_admit.isoformat()
+            claim["discharge_date"] = (new_admit + timedelta(days=claim["length_of_stay"])).isoformat()
+        if hard_case == "chronic_repeat_visit":
+            for related in (claim, hard_source) if hard_source is not None else (claim,):
+                related["diagnosis_primary"] = "N18"
+                related["diagnosis_secondary"] = ["E11", "I10"]
+                related["procedure_codes"] = ["39.95"]
+                related["medication_codes"] = ["INSULIN"]
+                related["length_of_stay"] = 0
+                related["outpatient"] = True
+                related["service_type"] = "outpatient"
+                related["severity_level"] = 1
+                related["ina_cbg_severity"] = "0"
+                related["cost_claimed"] = related["regional_base_rate"]
+                related["discharge_date"] = related["admission_date"]
+        elif hard_case == "catastrophic_cost":
+            claim["diagnosis_primary"] = "C50"
+            claim["diagnosis_secondary"] = ["I10"]
+            claim["procedure_codes"] = ["85.41"]
+            claim["medication_codes"] = ["AMOXICILLIN"]
+            claim["severity_level"] = 3
+            claim["cost_claimed"] = round(claim["regional_base_rate"] * 1.5, 2)
+            claim["surgical_indicator"] = True
+        elif hard_case == "long_los":
+            claim["length_of_stay"] = int(rng.integers(15, 31))
+            claim["outpatient"] = False
+            claim["service_type"] = "inpatient"
+            claim["discharge_date"] = (
+                date.fromisoformat(claim["admission_date"]) + timedelta(days=claim["length_of_stay"])
+            ).isoformat()
+            claim["cost_claimed"] = round(claim["regional_base_rate"] * 1.35, 2)
+        elif hard_case == "standardized_protocol":
+            claim["diagnosis_primary"] = "J18"
+            claim["diagnosis_secondary"] = []
+            claim["procedure_codes"] = ["93.94"]
+            claim["medication_codes"] = ["AMOXICILLIN", "SALBUTAMOL"]
+            claim["severity_level"] = 1
+            claim["cost_claimed"] = round(claim["regional_base_rate"] * 1.05, 2)
 
     return {"claims": claims, "labels": labels}
 
@@ -291,9 +387,17 @@ def generate_synthetic_v2(profile: str = "standard", seed: int = 42) -> dict[str
         split: _generate_split(profile, split, count, seed)
         for split, count in PROFILES[profile]["claims"].items()
     }
+    enriched_positive_count = 150 * len(_ANOMALY_TYPES)
+    enriched_count = enriched_positive_count * 2
+    ood_count = max(1_000, min(10_000, PROFILES[profile]["claims"]["test"] // 10))
+    splits["test_enriched"] = _generate_split(
+        profile, "test_enriched", enriched_count, seed, positive_fraction=0.5
+    )
+    splits["ood"] = _generate_split(profile, "ood", ood_count, seed)
     return {
-        "dataset_version": "synthetic-v2-demonstrator",
+        "dataset_version": f"synthetic-v{GENERATOR_VERSION}-demonstrator",
         "seed": seed,
         "profile": profile,
+        "stress_counts": {"test_enriched": enriched_count, "ood": ood_count},
         **splits,
     }
