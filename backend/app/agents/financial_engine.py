@@ -51,6 +51,21 @@ _load_error: str | None = None
 logger = logging.getLogger(__name__)
 
 
+class XGBoostRegressorAdapter:
+    """Small sklearn-free adapter for the XGBoost Booster JSON model format."""
+
+    def __init__(self, model_path: str):
+        self._booster = xgb.Booster()
+        self._booster.load_model(model_path)
+
+    def predict(self, features):
+        matrix = xgb.DMatrix(np.asarray(features, dtype=float))
+        return self._booster.predict(matrix)
+
+    def get_booster(self):
+        return self._booster
+
+
 def get_financial_model():
     global _xgb_model, _shap_explainer, _load_error
     if _xgb_model is None:
@@ -59,8 +74,7 @@ def get_financial_model():
             _load_error = "Model XGBoost tidak ditemukan. Jalankan scripts/train_all.py."
             raise RuntimeError(_load_error)
         try:
-            model = xgb.XGBRegressor()
-            model.load_model(model_path)
+            model = XGBoostRegressorAdapter(model_path)
             # XGBoost 3.x + SHAP 0.49: pakai predict callable
             model_features = model.get_booster().num_features()
             if model_features != len(COST_FEATURE_NAMES):

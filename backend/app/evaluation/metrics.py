@@ -3,7 +3,6 @@
 from statistics import median
 
 import numpy as np
-from sklearn.metrics import average_precision_score
 
 from backend.app.evaluation.pipeline import EvaluationResult
 
@@ -18,6 +17,20 @@ def _measured(value) -> dict:
 
 def _rank(rows: list[EvaluationResult]) -> list[EvaluationResult]:
     return sorted(rows, key=lambda row: (-row.score, row.claim_id))
+
+
+def _average_precision(labels: np.ndarray) -> float:
+    """Compute non-interpolated AP from deterministic rank order, without sklearn."""
+    positive_count = int(labels.sum())
+    if not positive_count:
+        return 0.0
+    hits = 0
+    precision_sum = 0.0
+    for rank, label in enumerate(labels, start=1):
+        if label:
+            hits += 1
+            precision_sum += hits / rank
+    return precision_sum / positive_count
 
 
 def _slice_metrics(rows: list[EvaluationResult], k_values) -> dict:
@@ -73,7 +86,7 @@ def evaluate_ranking(rows: list[EvaluationResult], k_values=(50, 100)) -> dict:
             recall[key] = _measured(hits / positives)
     aggregate = {"status": "measured" if positives else "not_computable"}
     if positives:
-        aggregate["value"] = float(average_precision_score(labels, [row.score for row in ranked]))
+        aggregate["value"] = _average_precision(labels)
     else:
         aggregate["reason"] = "no positive labels"
     return {

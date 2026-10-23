@@ -6,6 +6,22 @@ from backend.app.ml.feature_engineering import extract_cost_features
 from conftest import make_claim
 
 
+def test_native_xgboost_adapter_loads_and_predicts_without_sklearn(tmp_path):
+    import numpy as np
+    import xgboost as xgb
+    from backend.app.agents.financial_engine import XGBoostRegressorAdapter
+
+    data = xgb.DMatrix(np.asarray([[0.0], [1.0], [2.0]], dtype=float), label=[1.0, 2.0, 3.0])
+    booster = xgb.train({"objective": "reg:squarederror", "max_depth": 1, "nthread": 1}, data, num_boost_round=2)
+    path = tmp_path / "model.json"
+    booster.save_model(path)
+
+    model = XGBoostRegressorAdapter(path)
+    prediction = model.predict(np.asarray([[1.0]], dtype=float))
+    assert len(prediction) == 1
+    assert model.get_booster().num_features() == 1
+
+
 def test_zscore_fallback_never_max_score_for_normal_cost():
     """Klaim biaya wajar + model gagal → skor rendah, BUKAN 1.0 (audit finding 2.3)."""
     claim = make_claim(cost_claimed=24_000_000)  # sesuai peer AMI

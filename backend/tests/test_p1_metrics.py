@@ -33,6 +33,17 @@ def test_ranking_metrics_measure_top_k_and_slices():
     assert phantom["false_negative_at_k"]["2"] == 1
 
 
+def test_average_precision_uses_deterministic_rank_order():
+    rows = [
+        result("A", 1, 4, "upcoding"),
+        result("B", 0, 3),
+        result("C", 1, 2, "phantom_billing"),
+        result("D", 0, 1),
+    ]
+    metrics = evaluate_ranking(rows, k_values=(1, 2, 4))
+    assert metrics["average_precision"] == {"status": "measured", "value": 0.8333333333333333}
+
+
 def test_metrics_return_not_computable_for_insufficient_k_or_labels():
     rows = [result("A", 1, 90, "upcoding"), result("B", 0, 10)]
     metrics = evaluate_ranking(rows, k_values=(50,))
