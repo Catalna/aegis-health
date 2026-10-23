@@ -107,6 +107,7 @@ class SimilarClaim(BaseModel):
 class FraudAssessment(BaseModel):
     claim_id: str
     similarity_max_score: float
+    exact_duplicate: bool = False
     similarity_matched_claim_id: Optional[str] = None
     repeat_billing_flag: bool
     repeat_billing_matched_claim_id: Optional[str] = None

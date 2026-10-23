@@ -45,6 +45,7 @@ def _deterministic_signal_sources(clinical, financial, fraud) -> int:
     )
     financial_signal = financial.anomaly_score > 0.4 or financial.deviation_pct > 30
     fraud_signal = any((
+        fraud.exact_duplicate,
         fraud.repeat_billing_flag,
         fraud.cloning_flag,
         fraud.unbundling_flag,
@@ -78,17 +79,25 @@ def _evidence_items(clinical, financial, fraud) -> list[EvidenceItem]:
         ))
 
     for signal_type, active in (
+        ("exact_duplicate", fraud.exact_duplicate),
         ("repeat_billing", fraud.repeat_billing_flag),
         ("cloning", fraud.cloning_flag),
         ("unbundling", fraud.unbundling_flag),
     ):
         if active:
+            tier_note = (
+                " Bukti exact duplicate menetapkan tier minimum High."
+                if signal_type == "exact_duplicate"
+                else " Bukti relasional kuat menetapkan tier minimum Medium."
+                if signal_type in {"repeat_billing", "cloning"}
+                else ""
+            )
             items.append(EvidenceItem(
                 evidence_id=f"relational_pattern:{signal_type}",
                 source_family="relational_pattern",
                 signal_type=signal_type,
                 value=True,
-                explanation=f"Temuan pola klaim: {humanize_signal(signal_type)}.",
+                explanation=f"Temuan pola klaim: {humanize_signal(signal_type)}.{tier_note}",
             ))
 
     if fraud.is_isolation_forest_outlier or fraud.graph_cluster_anomaly_score > 0.5:
@@ -133,9 +142,7 @@ def calculate_risk_score(
     # 4. Similarity / repeat billing / cloning (max 20)
     # Prinsip: kemiripan pola penyakit yang wajar (antar-faskes berbeda) BUKAN sinyal fraud —
     # hanya repeat billing, cloning, atau pemecahan klaim yang berbobot penuh.
-    if fraud.unbundling_flag:
-        sim_score = 20.0
-    elif fraud.repeat_billing_flag:
+    if fraud.exact_duplicate or fraud.unbundling_flag or fraud.repeat_billing_flag:
         sim_score = 20.0
     elif fraud.cloning_flag:
         sim_score = min(20.0, fraud.similarity_max_score * 20.0)
@@ -157,6 +164,12 @@ def calculate_risk_score(
         tier = "high"
     elif total >= 25:
         tier = "medium"
+
+    if fraud.exact_duplicate:
+        tier = "high"
+    elif fraud.repeat_billing_flag or fraud.cloning_flag:
+        if tier == "low":
+            tier = "medium"
 
     return RiskScore(
         total_score=round(total, 1),

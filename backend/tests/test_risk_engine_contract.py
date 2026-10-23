@@ -30,13 +30,14 @@ def financial(anomaly=0.0, deviation=0.0):
     )
 
 
-def fraud(similarity=0.0, repeat=False, cloning=False, unbundling=False, isolation=0.0, graph=0.0):
+def fraud(similarity=0.0, repeat=False, cloning=False, unbundling=False, isolation=0.0, graph=0.0, exact_duplicate=False):
     return FraudAssessment(
         claim_id="X",
         similarity_max_score=similarity,
         repeat_billing_flag=repeat,
         cloning_flag=cloning,
         unbundling_flag=unbundling,
+        exact_duplicate=exact_duplicate,
         graph_cluster_anomaly_score=graph,
         isolation_forest_score=isolation,
         is_isolation_forest_outlier=isolation > 0.7,
@@ -96,3 +97,22 @@ def test_concrete_relational_signal_creates_traceable_evidence():
     assert result.breakdown["similarity_fraud"] == 20.0
     assert result.breakdown["evidence_support"] == 5.0
     assert any(item.signal_type == "repeat_billing" for item in result.evidence)
+
+
+def test_strong_cloning_evidence_has_medium_tier_floor():
+    result = calculate_risk_score(
+        clinical(), financial(), fraud(similarity=0.23, cloning=True), review("weak")
+    )
+
+    assert result.total_score < 25.0
+    assert result.priority_tier == "medium"
+    assert any(item.signal_type == "cloning" for item in result.evidence)
+
+
+def test_exact_duplicate_evidence_has_high_tier_floor():
+    result = calculate_risk_score(
+        clinical(), financial(), fraud(repeat=True, exact_duplicate=True), review("weak")
+    )
+
+    assert result.priority_tier == "high"
+    assert any(item.signal_type == "exact_duplicate" for item in result.evidence)

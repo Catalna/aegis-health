@@ -286,6 +286,7 @@ async def process_claim(
                     await emit("status", {"message": "Peringatan: satu pemeriksaan tidak tersedia; data cadangan digunakan.", "step": "phase1"})
 
             partial = any(e.fallback_applied for e in agent_errors)
+            fraud.exact_duplicate = is_duplicate
 
             await emit("phase1_complete", {
                 "clinical": clinical.model_dump(),
