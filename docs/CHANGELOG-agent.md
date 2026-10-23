@@ -4,7 +4,7 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 
 ## Fase 0 — Baseline (partial)
 
-- Full backend suite: **306 passed, 2 skipped** (`venv` Python 3.10.11, `python -m pytest -q`).
+- Full backend suite: **314 passed, 2 skipped** (`venv` Python 3.10.11, `python -m pytest -q`).
 - Frontend production build: passed; Vite warns the minified JS chunk is larger than 500 kB.
 - `python -m compileall -q backend scripts`: passed.
 - Existing P1 v1 evaluator ran to a JSON artifact in the approved temp directory; it was not used as a v2 comparison baseline.
@@ -34,6 +34,9 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - Standard run: seed 42, 150k/50k/50k. Results are in `docs/EVALUATION_REPORT.md`; all results are synthetic-only.
 - Trained model files and JSON/Markdown artifacts are in the ignored local path `backend/models_trained/synthetic_v2/`. They are not promoted over the legacy runtime model.
 - The evaluation includes random, benchmark-deviation, and logistic-rule baselines; aggregate group-bootstrap CIs and enriched/OOD slices. Natural per-type results expose poor slices including cloning and upcoding.
+- Classifier operating point (threshold 0.2396 fitted on validation, frozen before test): accuracy 97.97%, precision 80.25%, recall 42.80%, F1 0.5583, specificity 99.67%, balanced accuracy 71.24%, MCC 0.5775, ROC-AUC 0.8488, Brier 0.0180, and ECE 0.0039 on 50,000 test claims.
+- Regressor test metrics: MAPE 12.83%, MedAE Rp641,852, MAE Rp863,859, RMSE Rp1,177,734, R² 0.8640, upper-bound coverage 90.18%. Coverage falls to 79–85% in the highest predicted-cost deciles.
+- Ten PNG figures are written to `docs/figures/` and embedded in `docs/EVALUATION_REPORT.md`; the trainer no longer emits an HTML page.
 - Remaining: at least five independently regenerated seeds, grouped CIs for every natural-test slice, broader runtime-ranking evaluation, and investigation of low-performing anomaly families.
 
 ## Commits made
@@ -44,4 +47,4 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - `5bf7a9d` — signed benchmark deviation and upward exposure.
 - `b4d569d` — native XGBoost training/evaluation path.
 
-Latest verification: 306 passed / 2 skipped; frontend build passed with the chunk-size warning above. Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
+Latest verification: 314 passed / 2 skipped; frontend build passed with the chunk-size warning above. Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.

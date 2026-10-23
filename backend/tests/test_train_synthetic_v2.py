@@ -51,14 +51,34 @@ def test_training_report_discloses_synthetic_data_and_test_sample_counts():
         "train_n": 150_000,
         "validation_n": 50_000,
         "test_n": 50_000,
-        "regressor": {"trained_on": "normal train claims only", "selected_config": "severity_and_base_rate", "test_metrics": {"normal_n": 48_500, "mape": 0.13, "medae": 6.0, "upper_interval_target_coverage": 0.9, "upper_interval_coverage": 0.9}},
-        "classifier_candidate_not_runtime": {"test_metrics": {"n": 50_000, "average_precision": 0.4, "positive_n": 1_500}, "baselines": {}},
+        "regressor": {"trained_on": "normal train claims only", "selected_config": "severity_and_base_rate", "test_metrics": {"normal_n": 48_500, "mape": 0.13, "medae": 6.0, "mae": 8.0, "rmse": 12.0, "r2": 0.95, "upper_interval_target_coverage": 0.9, "upper_interval_coverage": 0.9}},
+        "classifier_candidate_not_runtime": {
+            "test_metrics": {
+                "n": 50_000,
+                "average_precision": 0.4,
+                "positive_n": 1_500,
+                "roc_auc": 0.9,
+                "brier_score": 0.1,
+                "log_loss": 0.2,
+                "expected_calibration_error": 0.05,
+                "operating_point": {
+                    "threshold": 0.5, "n": 50_000, "predicted_positive_n": 2_000, "alert_rate": 0.04,
+                    "accuracy": 0.97, "precision": 0.5, "recall": 0.67, "specificity": 0.98, "f1": 0.57,
+                    "balanced_accuracy": 0.82, "mcc": 0.55, "false_positive_rate": 0.02,
+                    "false_negative_rate": 0.33, "true_positive": 1_000, "false_positive": 1_000,
+                    "true_negative": 47_500, "false_negative": 500,
+                },
+            },
+            "baselines": {},
+        },
         "limitations": ["synthetic only"],
     })
 
     assert "not BPJS performance validation" in report
     assert "50,000" in report
     assert "classifier candidate" in report.lower()
+    assert "Accuracy: 97.0000%" in report
+    assert "F1: 0.5700" in report
 
 
 def test_group_bootstrap_ap_is_reproducible_and_reports_sample_size():

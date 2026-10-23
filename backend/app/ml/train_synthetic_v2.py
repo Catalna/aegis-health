@@ -17,6 +17,30 @@ from typing import Any
 import numpy as np
 
 from backend.app.data.synthetic_v2.generator import DIAGNOSIS_CATALOG
+from backend.app.ml.evaluation_plots import (
+    ACCENT,
+    AMBER,
+    GRAY,
+    VIOLET,
+    ap_by_type_chart,
+    confusion_matrix_chart,
+    cost_scatter_chart,
+    coverage_chart,
+    metric_bar_chart,
+    pr_curve_chart,
+    precision_recall_curve,
+    probability_scores,
+    residual_histogram_chart,
+    roc_auc,
+    roc_curve,
+    roc_curve_chart,
+    score_distribution_chart,
+    select_threshold,
+    threshold_metrics,
+    threshold_sweep,
+    threshold_sweep_chart,
+)
+from backend.app.ml.svg_raster import render_svg_files
 
 
 _FACILITY = {value: index for index, value in enumerate(("RS", "KLINIK", "PUSKESMAS"))}
@@ -163,7 +187,9 @@ def _group_bootstrap_ap(labels, scores, groups, seed: int = 42, replicates: int 
     }
 
 
-def _classification_slices(labels, scores, fields, seed: int, include_group_ci: bool = False) -> dict[str, Any]:
+def _classification_slices(
+    labels, scores, fields, seed: int, include_group_ci: bool = False, threshold: float | None = None
+) -> dict[str, Any]:
     output = {}
     for field in fields:
         field_results = {}
@@ -174,6 +200,8 @@ def _classification_slices(labels, scores, fields, seed: int, include_group_ci: 
             ], dtype=np.int32)
             result = _ranking_metrics(targets, scores)
             result["raw_positive_n"] = int(targets.sum())
+            if threshold is not None:
+                result["operating_point"] = threshold_metrics(targets, scores, threshold)
             if include_group_ci:
                 result["average_precision_group_bootstrap_ci95"] = _group_bootstrap_ap(
                     targets, scores, [label["group_id"] for label in labels], seed=seed
@@ -186,12 +214,25 @@ def _classification_slices(labels, scores, fields, seed: int, include_group_ci: 
 def _ranking_metrics(labels: np.ndarray, scores: np.ndarray) -> dict[str, Any]:
     order = np.lexsort((np.arange(len(scores)), -scores))
     positives = int(labels.sum())
-    output: dict[str, Any] = {"n": int(len(labels)), "positive_n": positives, "average_precision": _ap(labels, scores)}
+    output: dict[str, Any] = {
+        "n": int(len(labels)),
+        "positive_n": positives,
+        "average_precision": _ap(labels, scores),
+        "roc_auc": roc_auc(labels, scores),
+    }
     for percent in (1, 5, 10, 20):
         k = max(1, math.ceil(len(labels) * percent / 100)) if len(labels) else 0
         hits = int(labels[order[:k]].sum()) if k else 0
         output[f"precision_at_{percent}pct"] = hits / k if k else None
         output[f"recall_at_{percent}pct"] = hits / positives if positives else None
+        if k and positives:
+            precision = hits / k
+            recall = hits / positives
+            output[f"f1_at_{percent}pct"] = (
+                2 * precision * recall / (precision + recall) if precision + recall else 0.0
+            )
+        else:
+            output[f"f1_at_{percent}pct"] = None
     return output
 
 
@@ -217,21 +258,44 @@ def render_training_report(artifact: dict[str, Any]) -> str:
         f"- Validation-only selected ablation: `{regressor['selected_config']}`",
         f"- Test normal n: {reg_metrics['normal_n']:,}",
         f"- Test MAPE: {reg_metrics['mape']:.3%}; MedAE: {reg_metrics['medae']:,.2f}",
+        f"- Test MAE: {reg_metrics.get('mae', float('nan')):,.2f}; RMSE: {reg_metrics.get('rmse', float('nan')):,.2f}; "
+        f"R²: {reg_metrics.get('r2', float('nan')):.4f}",
         f"- Upper interval target coverage: {reg_metrics['upper_interval_target_coverage']:.0%}; measured: {reg_metrics['upper_interval_coverage']:.3%}",
         "",
         "## Supervised classifier candidate (not runtime)",
         "",
         f"- Test n: {clf_metrics['n']:,}; positive n: {clf_metrics['positive_n']:,}",
         f"- Average Precision: {clf_metrics['average_precision']:.4f}",
+        f"- ROC-AUC: {clf_metrics['roc_auc']:.4f}" if clf_metrics.get("roc_auc") is not None else "- ROC-AUC: n/a",
         "- Baseline Average Precision:",
     ]
     for name, metrics in classifier["baselines"].items():
         lines.append(f"  - {name}: {metrics['average_precision']:.4f} (n={metrics['n']:,}, positives={metrics['positive_n']:,})")
+    operating = clf_metrics.get("operating_point")
+    if operating:
+        lines.extend([
+            "",
+            f"### Operating point (threshold {operating['threshold']:.4f}, selected on validation)",
+            "",
+            f"- Accuracy: {operating['accuracy']:.4%}; Precision: {operating['precision']:.4%}; "
+            f"Recall: {operating['recall']:.4%}; F1: {operating['f1']:.4f}",
+            f"- Specificity: {operating['specificity']:.4%}; Balanced accuracy: {operating['balanced_accuracy']:.4%}; "
+            f"MCC: {operating['mcc']:.4f}",
+            f"- Brier score: {clf_metrics.get('brier_score', float('nan')):.4f}; "
+            f"Log loss: {clf_metrics.get('log_loss', float('nan')):.4f}; "
+            f"ECE: {clf_metrics.get('expected_calibration_error', float('nan')):.4f}",
+            f"- Alerts: {operating['predicted_positive_n']:,} of {operating['n']:,} "
+            f"({operating['alert_rate']:.3%}); TP={operating['true_positive']:,}, FP={operating['false_positive']:,}, "
+            f"TN={operating['true_negative']:,}, FN={operating['false_negative']:,}",
+            "- The threshold was fitted on validation only and then frozen for test; test labels never selected it.",
+        ])
     lines.extend(["", "### Natural test by anomaly type", ""])
     for anomaly_type, item in clf_metrics.get("by_anomaly_type", {}).items():
+        type_op = item.get("operating_point", {})
+        f1_text = f", F1={type_op['f1']:.3f}" if type_op else ""
+        ap_text = f"{item['average_precision']:.4f}" if item["average_precision"] is not None else "n/a"
         lines.append(
-            f"- `{anomaly_type}`: positives={item['raw_positive_n']:,}, "
-            f"AP={item['average_precision'] if item['average_precision'] is not None else 'n/a'}"
+            f"- `{anomaly_type}`: positives={item['raw_positive_n']:,}, AP={ap_text}{f1_text}"
         )
     classifier_ci = clf_metrics.get("average_precision_group_bootstrap_ci95", {})
     if classifier_ci.get("status") == "measured":
@@ -241,9 +305,10 @@ def render_training_report(artifact: dict[str, Any]) -> str:
         )
     for split, result in artifact.get("stress_test_metrics", {}).items():
         metric = result["metrics"]
+        split_label = {"ood": "OOD", "test_enriched": "Enriched"}.get(split, split.replace("_", " ").title())
         lines.extend([
             "",
-            f"## {split} stress evaluation",
+            f"## {split_label} stress evaluation",
             "",
             f"- Overall AP: {metric['average_precision']:.4f} (n={metric['n']:,}, positives={metric['positive_n']:,}).",
         ])
@@ -255,8 +320,18 @@ def render_training_report(artifact: dict[str, Any]) -> str:
             for anomaly_type, item in result.get("by_anomaly_type", {}).items():
                 type_ci = item.get("average_precision_group_bootstrap_ci95", {})
                 ci_text = f"; group CI {type_ci['ci95'][0]:.3f}–{type_ci['ci95'][1]:.3f}" if type_ci.get("status") == "measured" else ""
-                lines.append(f"- `{anomaly_type}`: positives={item['raw_positive_n']:,}, AP={item['average_precision']:.4f}{ci_text}")
+                type_op = item.get("operating_point", {})
+                f1_text = f", F1={type_op['f1']:.3f}" if type_op else ""
+                lines.append(f"- `{anomaly_type}`: positives={item['raw_positive_n']:,}, AP={item['average_precision']:.4f}{f1_text}{ci_text}")
+    figures = artifact.get("figures", {})
+    if figures:
+        lines.extend(["", "## Figures", ""])
+        for item in sorted(figures.values(), key=lambda figure: figure["path"]):
+            lines.extend([f"### {item['title']}", "", f"![{item['title']}]({item['path']})", ""])
     lines.extend(["", "## Limitations", ""])
+    lines.append(
+        "- Accuracy is inflated by the synthetic 3% anomaly prevalence; F1, average precision and recall are the primary balanced metrics."
+    )
     lines.extend(f"- {limitation}" for limitation in artifact["limitations"])
     lines.append("")
     return "\n".join(lines)
@@ -346,13 +421,32 @@ def train_synthetic_v2(
     test_predictions = chosen.predict(xgb.DMatrix(x_test[test_normal]))
     test_actual = test_cost[test_normal]
     test_upper = test_predictions + residual_margin
+    absolute_error = np.abs(test_actual - test_predictions)
+    signed_error = test_predictions - test_actual
+    ss_residual = float(np.sum(signed_error ** 2))
+    ss_total = float(np.sum((test_actual - test_actual.mean()) ** 2))
+    relative_error = signed_error / np.maximum(test_actual, 1.0)
+    decile_rows = []
+    decile_order = np.argsort(test_predictions)
+    for index, rows in enumerate(np.array_split(decile_order, 10), start=1):
+        decile_rows.append({
+            "decile": index,
+            "n": int(len(rows)),
+            "mean_prediction": float(test_predictions[rows].mean()),
+            "coverage": float(np.mean(test_actual[rows] <= test_upper[rows])),
+        })
     regressor_test = {
         "normal_n": int(test_normal.sum()),
-        "mape": float(np.mean(np.abs(test_actual - test_predictions) / np.maximum(test_actual, 1.0))),
-        "medae": float(np.median(np.abs(test_actual - test_predictions))),
+        "mape": float(np.mean(absolute_error / np.maximum(test_actual, 1.0))),
+        "medae": float(np.median(absolute_error)),
+        "mdape": float(np.median(absolute_error / np.maximum(test_actual, 1.0))),
+        "mae": float(np.mean(absolute_error)),
+        "rmse": float(math.sqrt(np.mean(signed_error ** 2))),
+        "r2": 1.0 - ss_residual / ss_total if ss_total else 0.0,
         "upper_interval_target_coverage": 0.90,
         "upper_interval_coverage": float(np.mean(test_actual <= test_upper)),
         "upper_residual_margin": residual_margin,
+        "deciles": decile_rows,
     }
 
     train_classifier_x, classifier_features = build_classifier_features(train_claims)
@@ -365,6 +459,12 @@ def train_synthetic_v2(
         num_boost_round=180,
     )
     classifier_scores = classifier.predict(xgb.DMatrix(test_classifier_x, feature_names=classifier_features))
+    validation_classifier_x, _ = build_classifier_features(val_claims)
+    validation_classifier_scores = classifier.predict(
+        xgb.DMatrix(validation_classifier_x, feature_names=classifier_features)
+    )
+    threshold_selection = select_threshold(val_y, validation_classifier_scores)
+    operating_threshold = float(threshold_selection["threshold"])
     logistic_scores = _logistic_rule_baseline(train_claims, train_labels, test_claims)
     random_scores = np.random.default_rng(seed).random(len(test_y))
     benchmark_scores = np.asarray([
@@ -372,12 +472,30 @@ def train_synthetic_v2(
         for claim in test_claims
     ])
     test_classifier_metrics = _ranking_metrics(test_y, classifier_scores)
+    test_probability_metrics = probability_scores(test_y, classifier_scores)
+    test_classifier_metrics.update(test_probability_metrics)
     natural_slices = _classification_slices(
-        test_labels, classifier_scores, ("anomaly_type", "difficulty", "scenario_family"), seed=seed
+        test_labels,
+        classifier_scores,
+        ("anomaly_type", "difficulty", "scenario_family"),
+        seed=seed,
+        threshold=operating_threshold,
     )
     test_classifier_metrics.update({
         f"by_{dimension}": values for dimension, values in natural_slices.items()
     })
+    test_classifier_metrics["operating_point"] = {
+        **threshold_metrics(test_y, classifier_scores, operating_threshold),
+        "roc_auc": test_classifier_metrics["roc_auc"],
+        "brier_score": test_probability_metrics["brier_score"],
+        "log_loss": test_probability_metrics["log_loss"],
+        "expected_calibration_error": test_probability_metrics["expected_calibration_error"],
+        "threshold_selection": threshold_selection,
+    }
+    test_classifier_metrics["validation_operating_point"] = {
+        **threshold_metrics(val_y, validation_classifier_scores, operating_threshold),
+        **threshold_selection,
+    }
     test_classifier_metrics["average_precision_group_bootstrap_ci95"] = _group_bootstrap_ap(
         test_y, classifier_scores, [label["group_id"] for label in test_labels], seed=seed
     )
@@ -388,17 +506,95 @@ def train_synthetic_v2(
         stress_y = np.asarray([int(label["is_anomaly"]) for label in stress_labels], dtype=np.int32)
         stress_scores = classifier.predict(xgb.DMatrix(stress_x, feature_names=classifier_features))
         anomaly_slices = _classification_slices(
-            stress_labels, stress_scores, ("anomaly_type",), seed=seed, include_group_ci=True
+            stress_labels,
+            stress_scores,
+            ("anomaly_type",),
+            seed=seed,
+            include_group_ci=True,
+            threshold=operating_threshold,
         )["anomaly_type"]
         stress_test_metrics[split] = {
             "metrics": _ranking_metrics(stress_y, stress_scores),
+            "operating_point": threshold_metrics(stress_y, stress_scores, operating_threshold),
             "group_bootstrap_ci95": _group_bootstrap_ap(
                 stress_y, stress_scores, [label["group_id"] for label in stress_labels], seed=seed
             ),
             "by_anomaly_type": anomaly_slices,
-            "by_difficulty": _classification_slices(stress_labels, stress_scores, ("difficulty",), seed=seed)["difficulty"],
-            "by_scenario_family": _classification_slices(stress_labels, stress_scores, ("scenario_family",), seed=seed)["scenario_family"],
+            "by_difficulty": _classification_slices(
+                stress_labels, stress_scores, ("difficulty",), seed=seed, threshold=operating_threshold
+            )["difficulty"],
+            "by_scenario_family": _classification_slices(
+                stress_labels, stress_scores, ("scenario_family",), seed=seed, threshold=operating_threshold
+            )["scenario_family"],
         }
+
+    sweep = threshold_sweep(val_y, validation_classifier_scores)
+    test_pr = precision_recall_curve(test_y, classifier_scores)
+    pr_curves = [{
+        "label": f"Model · AP {test_pr['ap']:.3f}",
+        "recall": test_pr["recall"],
+        "precision": test_pr["precision"],
+        "ap": test_pr["ap"],
+        "color": ACCENT,
+        "primary": True,
+    }]
+    for label, scores, color, dash in (
+        ("Acak", random_scores, GRAY, "5 5"),
+        ("Benchmark", benchmark_scores, AMBER, None),
+        ("Rule flags", logistic_scores, VIOLET, None),
+    ):
+        curve = precision_recall_curve(test_y, scores)
+        pr_curves.append({
+            "label": f"{label} · AP {curve['ap']:.3f}" if curve["ap"] is not None else label,
+            "recall": curve["recall"],
+            "precision": curve["precision"],
+            "ap": curve["ap"],
+            "color": color,
+            "dash": dash,
+        })
+    roc = roc_curve(test_y, classifier_scores)
+    operating = test_classifier_metrics["operating_point"]
+    metric_items = [
+        ("Accuracy", operating["accuracy"]),
+        ("Precision", operating["precision"]),
+        ("Recall", operating["recall"]),
+        ("Specificity", operating["specificity"]),
+        ("F1", operating["f1"]),
+        ("Balanced accuracy", operating["balanced_accuracy"]),
+        ("ROC-AUC", test_classifier_metrics["roc_auc"] or 0.0),
+    ]
+    figures = {
+        "metric_bars": metric_bar_chart(metric_items),
+        "confusion": confusion_matrix_chart(operating),
+        "pr_curve": pr_curve_chart(pr_curves),
+        "roc_curve": roc_curve_chart(roc["fpr"], roc["tpr"], roc["auc"]),
+        "threshold_sweep": threshold_sweep_chart(sweep, operating_threshold),
+        "score_distribution": score_distribution_chart(test_y, classifier_scores, operating_threshold),
+        "ap_by_type": ap_by_type_chart(
+            stress_test_metrics["test_enriched"]["by_anomaly_type"],
+            "Average Precision per tipe anomali",
+            "Enriched test: 150 positif per tipe plus volume normal seimbang; ambang ditransfer dari validation.",
+        ),
+        "cost_scatter": cost_scatter_chart(test_actual, test_predictions, seed=seed),
+        "residuals": residual_histogram_chart(relative_error),
+        "coverage": coverage_chart(regressor_test["deciles"]),
+    }
+    figure_files = {
+        "metric_bars": ("06_ringkasan_metrik.png", "Ringkasan metrik klasifikasi"),
+        "confusion": ("05_confusion_matrix.png", "Confusion matrix pada ambang terpilih"),
+        "pr_curve": ("02_precision_recall.png", "Kurva Precision–Recall"),
+        "roc_curve": ("03_roc_curve.png", "Kurva ROC"),
+        "threshold_sweep": ("04_sapuan_ambang.png", "Sapuan ambang keputusan"),
+        "score_distribution": ("01_distribusi_skor.png", "Distribusi skor model"),
+        "ap_by_type": ("07_ap_per_tipe.png", "Average Precision per tipe anomali"),
+        "cost_scatter": ("08_prediksi_biaya.png", "Prediksi vs biaya aktual"),
+        "residuals": ("09_error_regressor.png", "Distribusi error relatif regressor"),
+        "coverage": ("10_coverage_desil.png", "Coverage batas atas per desil"),
+    }
+    figure_metadata = {
+        key: {"title": title, "path": f"figures/{filename}"}
+        for key, (filename, title) in figure_files.items()
+    }
 
     output_dir.mkdir(parents=True, exist_ok=True)
     reg_path = output_dir / "xgboost_regressor_synthetic_v2.json"
@@ -441,9 +637,11 @@ def train_synthetic_v2(
             "model_file": classifier_path.name,
         },
         "stress_test_metrics": stress_test_metrics,
+        "figures": figure_metadata,
         "limitations": [
             "All claims and labels are synthetic; this does not validate BPJS performance.",
-            "Test set was not used for feature or hyperparameter selection.",
+            "Test set was not used for feature or hyperparameter selection; the classifier threshold was fitted on validation only.",
+            "Precision depends strongly on the synthetic 3% prevalence and is not an operational alert budget.",
             "Grouped bootstrap intervals are single-seed; multi-seed training/evaluation is still pending.",
             "Natural-test per-type confidence intervals are reported via the separate enriched and OOD slices, not as natural-prevalence estimates.",
         ],
@@ -454,7 +652,13 @@ def train_synthetic_v2(
     markdown_path.write_text(render_training_report(artifact), encoding="utf-8")
     if report_path:
         report_path.parent.mkdir(parents=True, exist_ok=True)
+        figures_dir = report_path.parent / "figures"
+        render_svg_files(
+            figures,
+            {key: figures_dir / filename for key, (filename, _title) in figure_files.items()},
+        )
         report_path.write_text(render_training_report(artifact), encoding="utf-8")
+        print(f"Figures: {figures_dir}")
     print(f"Training report: {artifact_path}")
     print(f"Selected regressor: {selected['name']} (validation MedAE={selected['validation_medae']:.2f})")
     print(f"Classifier candidate test AP: {artifact['classifier_candidate_not_runtime']['test_metrics']['average_precision']}")
