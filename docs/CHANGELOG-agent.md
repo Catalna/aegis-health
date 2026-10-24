@@ -96,6 +96,16 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - One valid deliverable: the 8 throwback PNGs in `docs/figures/` regenerated from the promoted seed-42 model (AP 0.7259 / recall 0.6793 @ precision 0.8049, threshold 0.3173) — testing confusion identical to the operating point (TP=1,019 FP=247 FN=481); these images are presentation-ready (video/proposal material).
 - `python-pptx` uninstall check: venv cukup bersih; tidak ada perubahan `backend/requirements.txt`.
 
+## Runtime-ranking eval, Fase 3.4 (2026-10-24)
+
+- New committed tooling: `scripts/runtime_ranking_eval.py` (deterministic runtime path in-process via `evaluation.pipeline.score_claims`, no LLM; configurable enriched sample; re-render mode from saved JSON). First run: 700-claim labeled slice (50 per anomaly type + 350 normal, prevalence 50% documented as enriched — budget metrics are prevalence-conditional), test split seed-42 as the canonical run.
+- Headline finding — **runtime lags the candidate by 30 pp AP on the identical slice: runtime 0.5964 vs candidate 0.9158** (candidate stays a candidate; runtime tiers unchanged). Runtime budgets: precision@10% 0.657 with recall@10% only 0.131; recall reaches 0.351 at a 30% slice budget.
+- **Tier compression exposed:** 609/700 medium (87%), e.g. normals median score 35.0 = same value as most anomaly types; only phantom_billing (median 48) and upcoding (46) separate. This is hard evidence for the leftover Fase 2 item (tier-threshold/component recalibration).
+- Relational flags almost never fire on v2: repeat/cloning ratios 0.00 for every type including `repeat_billing` and `cloning` slices (production 45-day window vs v2 repeat gap 46–60 days; v2 cloning pairs do not meet the offline investigation-candidate thresholds); only the unbundling slice shows repeat 0.26 / unbundling 0.08. The runtime's separating power on this slice came from the financial component (all 700 rows classified via `xgboost_model`) plus clinical severity flags — recorded as the honest diagnosis of where to invest next.
+- Latency of the deterministic path (post one-time 18.3 s financial-model+SHAP build): **p50 75 ms, p95 845 ms** per claim — clean separation from the e2e 7.3 s p50 that includes LLM narration.
+- Scope notes recorded in the doc: relational context = sample only; exact-duplicate `high` floor is DB-gated (unreachable offline); v1 tariff table covers 10 diagnosis families so most v2 diagnoses fall back to the z-score financial path (known limitation).
+- Artifacts: `docs/RUNTIME_EVALUATION.md` committed; JSON payload at `backend/models_trained/runtime_ranking_eval.json` (gitignored).
+
 ## Commits made
 
 - `a4585d1` — deterministic relational tier floors.
