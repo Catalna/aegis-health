@@ -92,5 +92,6 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - `fbb413d` — synthetic v2 validation and training report.
 - `244a1ab` — classification metrics and PNG evaluation figures.
 - `a3968e3` — relational classifier features with validation-only tuning.
+- `2974bf5` — Gemini schema coercion + thread-offloaded SHAP + throwback evaluation figures.
 
 Latest verification: 333 passed / 2 skipped; full smoke E2E on the live stack passed (see the E2E section above). Frontend build passed earlier with the chunk-size warning above. Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
