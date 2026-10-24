@@ -25,3 +25,10 @@
 - **Decision:** Train the supervised XGBoost classifier as a candidate and do not add it to the runtime risk score.
 - **Reason:** The training/evaluation environment had initially failed to load PyArrow through scikit-learn; native XGBoost and NumPy ranking metrics avoid that unrelated optional import. PyArrow later loaded successfully and Parquet generation/validation were then verified.
 - **Decision:** Save v2 models under `backend/models_trained/synthetic_v2/` without replacing legacy runtime artifacts. The v2 feature contract differs from the legacy runtime regressor contract.
+
+## LLM provider priority (2026-10-24)
+
+- **Decision:** Google AI Studio (Gemini API, `LLM_PROVIDER=gemini`) becomes the primary narration/synthesis model, with Ollama local (local `CLINICAL/REVIEW/EXPLANATION_MODEL` and their fallbacks) demoted to automatic backup, and the deterministic heuristic template as the last resort. Implemented as a cascade in `llm_client.structured_completion` (`_run_llm_with_fallback`); the serving provider is recorded in a per-task ContextVar and surfaced through `model_used`/`generated_by`.
+- **Alternatives:** (a) keep Ollama primary — rejected per product direction, weaker narration for the demo; (b) Gemini only without backup — rejected: breaks the offline demo and the privacy posture.
+- **Constraints kept:** LLM still never sets or changes scores/tiers/evidence; both providers are existing components (allowed to reorder, not add); without a `GEMINI_API_KEY` or internet the app degrades to Ollama and then templates, so a clean-machine demo keeps working.
+- **Privacy rule activated by this change:** real JKN participant data must never leave the premise; before any real-data processing, force `LLM_PROVIDER=ollama` in `.env`. Synthetic demonstrator data only for the Google path.

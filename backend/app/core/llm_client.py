@@ -2,14 +2,18 @@
 LLM Client abstraction (PRD Section 7).
 
 - LLMClient       : Protocol interface — semua agent memanggil LLM lewat interface ini.
-- OllamaClient    : jalur utama demo (lokal, tanpa internet).
-- GeminiClient    : baseline benchmark & fallback produksi (Gemini API free tier).
+- GeminiClient    : jalur utama (Google AI Studio / Gemini API).
+- OllamaClient    : backup lokal (tanpa internet / tanpa API key).
+
+Cascade (Section 6.1): provider utama gagal → Ollama lokal → pemanggil agent
+menjatuhkan ke template deterministik. Skor/tier TIDAK PERNAH dari LLM.
 
 Retry logic (AGENTS.md prinsip #2): output yang gagal parse/divalidasi di-retry
 maksimal 2x dengan pesan error sebagai feedback, baru LLMError dilempar.
 """
 import os
 import json
+import contextvars
 import httpx
 from typing import Protocol, Optional, runtime_checkable
 from pydantic import BaseModel
@@ -21,7 +25,10 @@ load_dotenv()
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
-DEFAULT_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" | "gemini"
+# Utama: gemini (Google AI Studio) | backup: ollama (lokal)
+# PENTING kebijakan: saat memproses data peserta JKN riil, set LLM_PROVIDER=ollama
+# agar konten klaim tidak pernah dikirim ke cloud.
+DEFAULT_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
 
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "mistral:7b")
 
@@ -33,6 +40,42 @@ EXPLANATION_MODEL          = os.getenv("EXPLANATION_MODEL", "qwen2.5:7b")
 EXPLANATION_MODEL_FALLBACK = os.getenv("EXPLANATION_MODEL_FALLBACK", "mistral:7b")
 
 MAX_RETRIES = 2  # 1 percobaan awal + 2 retry dengan feedback error
+
+
+class LLMError(Exception):
+    def __init__(self, message: str, error_code: str | None = None):
+        super().__init__(message)
+        self.error_code = error_code
+
+
+# ---------------------------------------------------------------------------
+# Provider routing — cascade utama → backup (provenance via ContextVar)
+# ---------------------------------------------------------------------------
+
+_last_provider: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "llm_last_provider", default=None
+)
+
+
+def get_last_provider() -> Optional[str]:
+    """Provider yang benar-benar menjawab panggilan terakhir di task ini (isolated per task asyncio)."""
+    return _last_provider.get()
+
+
+def get_provider_chain(primary: str | None = None) -> list[str]:
+    """Urutan cascade: provider utama → provider backup. Default utama = Gemini."""
+    if primary is None:
+        primary = DEFAULT_PROVIDER
+    primary = primary if primary in ("ollama", "gemini") else "gemini"
+    backup = "ollama" if primary == "gemini" else "gemini"
+    return [primary, backup]
+
+
+def resolve_model_name(requested: str) -> str:
+    """Nama model untuk provenance bila Gemini yang menjawab; fallback nama Ollama yang diminta."""
+    if _last_provider.get() == "gemini":
+        return GEMINI_MODEL
+    return requested
 
 
 class LLMError(Exception):
@@ -291,7 +334,7 @@ _gemini_client = GeminiClient()
 
 
 def get_llm_client(provider: str = DEFAULT_PROVIDER) -> LLMClient:
-    """Factory sesuai PRD Section 7 — demo=ollama, benchmark/production-path=gemini."""
+    """Factory sesuai PRD Section 7 — utama=gemini (Google AI Studio), backup=ollama (lokal)."""
     if provider == "gemini":
         return _gemini_client
     return _ollama_client
@@ -301,14 +344,52 @@ async def get_available_model(preferred: str, fallback: str = DEFAULT_MODEL) -> 
     return await _ollama_client.get_available_model(preferred, fallback)
 
 
+async def _run_llm_with_fallback(
+    prompt: str,
+    system_prompt: str,
+    output_schema: type[BaseModel],
+    model: str,
+    temperature: float,
+    forced_provider: Optional[str] = None,
+) -> BaseModel:
+    """Jalankan client LLM — sekali (provider eksplisit) atau cascade utama→backup."""
+    if forced_provider is not None:
+        client = get_llm_client(forced_provider)
+        result = await client.structured_call(prompt, system_prompt, output_schema, model, temperature)
+        _last_provider.set(forced_provider)
+        return result
+
+    notes: list[str] = []
+    for name in get_provider_chain():
+        client = get_llm_client(name)
+        try:
+            result = await client.structured_call(prompt, system_prompt, output_schema, model, temperature)
+        except LLMError as exc:
+            notes.append(f"{name}: {exc}")
+            print(f"[LLM] Provider '{name}' gagal → lanjut ke backup berikutnya ({str(exc)[:120]})")
+            continue
+        _last_provider.set(name)
+        return result
+    raise LLMError("Semua LLM provider gagal: " + " || ".join(notes))
+
+
 async def structured_completion(
     prompt: str,
     system_prompt: str,
     output_schema: type[BaseModel],
     model: str = DEFAULT_MODEL,
     temperature: float = 0.0,
-    provider: str = DEFAULT_PROVIDER,
+    provider: Optional[str] = None,
 ) -> BaseModel:
-    """Backward-compatible entry point — route ke client sesuai provider."""
-    client = get_llm_client(provider)
-    return await client.structured_call(prompt, system_prompt, output_schema, model, temperature)
+    """Entry point lintas-provider dengan cascade.
+
+    - provider None (default): utama → backup (gemini → ollama, diatur LLM_PROVIDER).
+    - provider eksplisit: jalur tunggal tanpa cascade (perilaku lama).
+    Kedua-duanya gagal → LLMError dengan catatan tiap provider; pemanggil (agent)
+    menjatuhkan ke template deterministik. Prinsip tetap: skor/tier tidak pernah
+    berasal dari LLM. Provider yang benar-benar menjawab dicatat di ContextVar
+    per task asyncio (get_last_provider/resolve_model_name untuk model_used).
+    """
+    return await _run_llm_with_fallback(
+        prompt, system_prompt, output_schema, model, temperature, forced_provider=provider
+    )

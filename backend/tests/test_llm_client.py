@@ -84,3 +84,123 @@ async def test_ollama_structured_call_retries_on_bad_output(monkeypatch):
     assert result.value == 42
     assert len(calls) == 2
     assert "GAGAL" in calls[1] or "PERCOBAAN" in calls[1]
+
+
+# ---------------------------------------------------------------------------
+# Cascade lintas-provider: utama (gemini) → backup (ollama) → template di agent
+# ---------------------------------------------------------------------------
+
+class _StubLLM:
+    """Stub client untuk menguji cascade tanpa jaringan."""
+
+    def __init__(self, name: str, result=None, error: str | None = None):
+        self.name = name
+        self._result = result
+        self._error = error
+        self.calls = 0
+
+    async def structured_call(self, prompt, system_prompt, output_schema, model="m", temperature=0.0):
+        self.calls += 1
+        if self._error is not None:
+            from backend.app.core.llm_client import LLMError
+            raise LLMError(self._error)
+        return self._result
+
+    async def is_available(self) -> bool:
+        return self._error is None
+
+
+from pydantic import BaseModel as _BM
+
+
+class _S(_BM):
+    x: str
+
+
+@pytest.mark.asyncio
+async def test_get_provider_chain_default_gemini_first(monkeypatch):
+    monkeypatch.setattr("backend.app.core.llm_client.DEFAULT_PROVIDER", "gemini")
+    from backend.app.core.llm_client import get_provider_chain
+    assert get_provider_chain() == ["gemini", "ollama"]
+    assert get_provider_chain("ollama") == ["ollama", "gemini"]
+    # nilai aneh → fallback konservatif ke gemini utama
+    assert get_provider_chain("habus") == ["gemini", "ollama"]
+
+
+@pytest.mark.asyncio
+async def test_cascade_uses_primary_when_healthy(monkeypatch):
+    import backend.app.core.llm_client as llm_client
+
+    gem = _StubLLM("gemini", _S(x="ok"))
+    oll = _StubLLM("ollama", _S(x="jangan_dipakai"))
+
+    def fake_factory(provider: str = "gemini"):
+        return gem if provider == "gemini" else oll
+
+    monkeypatch.setattr(llm_client, "get_llm_client", fake_factory)
+    monkeypatch.setattr(llm_client, "DEFAULT_PROVIDER", "gemini")
+
+    result = await llm_client._run_llm_with_fallback("p", "s", _S, "m", 0.0)
+    assert result.x == "ok"
+    assert gem.calls == 1 and oll.calls == 0
+    assert llm_client.get_last_provider() == "gemini"
+    assert llm_client.resolve_model_name("qwen2.5:3b") == llm_client.GEMINI_MODEL
+
+
+@pytest.mark.asyncio
+async def test_cascade_falls_back_to_ollama(monkeypatch):
+    import backend.app.core.llm_client as llm_client
+
+    gem = _StubLLM("gemini", error="GEMINI_API_KEY tidak dikonfigurasi")
+    oll = _StubLLM("ollama", _S(x="dari_ollama"))
+
+    def fake_factory(provider: str = "gemini"):
+        return gem if provider == "gemini" else oll
+
+    monkeypatch.setattr(llm_client, "get_llm_client", fake_factory)
+    monkeypatch.setattr(llm_client, "DEFAULT_PROVIDER", "gemini")
+
+    result = await llm_client._run_llm_with_fallback("p", "s", _S, "m", 0.0)
+    assert result.x == "dari_ollama"
+    assert gem.calls == 1 and oll.calls == 1
+    assert llm_client.get_last_provider() == "ollama"
+    # provenance: nama model Ollama yang diminta dipertahankan
+    assert llm_client.resolve_model_name("qwen2.5:3b") == "qwen2.5:3b"
+
+
+@pytest.mark.asyncio
+async def test_cascade_all_fail_raises_llm_error(monkeypatch):
+    import backend.app.core.llm_client as llm_client
+
+    gem = _StubLLM("gemini", error="quota habis")
+    oll = _StubLLM("ollama", error="Ollama down")
+
+    def fake_factory(provider: str = "gemini"):
+        return gem if provider == "gemini" else oll
+
+    monkeypatch.setattr(llm_client, "get_llm_client", fake_factory)
+    monkeypatch.setattr(llm_client, "DEFAULT_PROVIDER", "gemini")
+
+    with pytest.raises(llm_client.LLMError) as excinfo:
+        await llm_client._run_llm_with_fallback("p", "s", _S, "m", 0.0)
+    message = str(excinfo.value)
+    assert "gemini" in message and "ollama" in message
+    assert gem.calls == 1 and oll.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_explicit_provider_skips_cascade(monkeypatch):
+    import backend.app.core.llm_client as llm_client
+
+    gem = _StubLLM("gemini", error="JANGAN dipanggil")
+    oll = _StubLLM("ollama", _S(x="dari_ollama"))
+
+    def fake_factory(provider: str = "gemini"):
+        return gem if provider == "gemini" else oll
+
+    monkeypatch.setattr(llm_client, "get_llm_client", fake_factory)
+    monkeypatch.setattr(llm_client, "DEFAULT_PROVIDER", "gemini")
+
+    result = await llm_client._run_llm_with_fallback("p", "s", _S, "m", 0.0, forced_provider="ollama")
+    assert result.x == "dari_ollama"
+    assert gem.calls == 0 and oll.calls == 1

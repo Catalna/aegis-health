@@ -1,10 +1,10 @@
-# Architecture.md — J-ARI System Architecture
+# Architecture.md ï¿½ J-ARI System Architecture
 
 > **J-ARI: JKN Agentic Risk Intelligence**
-> Nama Frontend: **AEGIS — Pusat Pemeriksaan Klaim**
+> Nama Frontend: **AEGIS ï¿½ Pusat Pemeriksaan Klaim**
 > Healthkathon 2026 BPJS Kesehatan
 > Versi Dokumen: 3.0
-> Status: Aktual — Disinkronkan dengan implementasi kode (Oktober 2026)
+> Status: Aktual ï¿½ Disinkronkan dengan implementasi kode (Oktober 2026)
 
 ---
 
@@ -40,12 +40,10 @@
 
 | Client | Model Default | Model Fallback | Peran |
 |---|---|---|---|
-| OllamaClient (lokal) | `qwen2.5:3b` (dari .env) | `llama3.2:3b` | Explanation Agent — narasi Bahasa Indonesia & QA Panel |
-| OllamaClient (lokal) | `qwen2.5:3b` (dari .env) | `llama3.2:3b` | Review Agent (primary) — structured evidence summary |
-| OllamaClient (lokal) | `qwen2.5:3b` (dari .env) | - | Clinical Agent Lapis 2 |
-| GeminiClient (API) | `gemini-2.0-flash` | - | Benchmark baseline & production-path narrative (opsional) |
+| GeminiClient (utama â€” Google AI Studio) | `gemini-2.0-flash` (dari .env) | Ollama lokal di bawah | Semua peran narasi/sintesis: Clinical Lapis 2, Review, Explanation, QA Panel |
+| OllamaClient (backup lokal) | `qwen2.5:3b` (dkl. per agent, dari .env) | `llama3.2:3b` | Dijalankan cascade bila Gemini gagal / tanpa key / tanpa internet / data peserta riil |
 
-> Catatan: Default kode mendefinisikan mistral:7b/deepseek-r1:7b/qwen2.5:7b, namun file `.env` aktual menggunakan `qwen2.5:3b` dan `llama3.2:3b` untuk hardware yang lebih ringan. Provider dapat dikonfigurasi via `LLM_PROVIDER=ollama|gemini`.
+> Catatan: cascade di `structured_completion` mencoba provider utama lalu backup; provider yang benar-benar menjawab dicatat untuk `model_used`. Provider dapat dipaksa via `LLM_PROVIDER=gemini|ollama` (default kode: Gemini; environment riil-switch ke Ollama). Model lokal default kode `mistral:7b`/`deepseek-r1:7b`/`qwen2.5:7b`, file `.env` aktual memakai `qwen2.5:3b` dan `llama3.2:3b`.
 
 *Hardware Target Specification*: Intel Core 5 215H, 16GB RAM, RTX 5050 8GB VRAM. Model max 7B (Q4_K_M ~4.5-5GB VRAM + KV cache).
 
@@ -66,7 +64,7 @@
 | HTTP Client | Axios | 1.19.0 | API calls ke backend |
 | Charts | Recharts | 3.10.1 | SHAP bar chart, analytics |
 | Icons | Lucide React | 1.31.0 | UI icons |
-| Styling | Vanilla CSS (`index.css`) | — | Design system custom |
+| Styling | Vanilla CSS (`index.css`) | ï¿½ | Design system custom |
 
 ---
 
@@ -75,57 +73,57 @@
 ```
 E-Jak/
 +-- backend/
-¦   +-- app/
-¦   ¦   +-- agents/                  # Multi-Agent Pipeline
-¦   ¦   ¦   +-- orchestrator.py      # Pipeline controller utama (Phase 0-4) + FIFO queue bridge
-¦   ¦   ¦   +-- clinical_agent.py    # INA-CBG Rule Engine + LLM Lapis 2
-¦   ¦   ¦   +-- financial_engine.py  # XGBoost Regressor + SHAP Explainer + z-score fallback
-¦   ¦   ¦   +-- fraud_agent.py       # LanceDB Similarity + Repeat Billing + Unbundling + IF + Graph
-¦   ¦   ¦   +-- review_agent.py      # Multi-signal synthesis via LLM + rule-count fallback
-¦   ¦   ¦   +-- risk_engine.py       # Deterministic risk scoring (non-LLM, 0-100)
-¦   ¦   ¦   +-- explanation_agent.py # Indonesian narrative + validation + jargon sanitizer
-¦   ¦   +-- api/
-¦   ¦   ¦   +-- main.py              # FastAPI app, lifespan, semua endpoint
-¦   ¦   ¦   +-- claims.py            # Claims CRUD router
-¦   ¦   +-- core/
-¦   ¦   ¦   +-- llm_client.py        # OllamaClient + GeminiClient + retry logic
-¦   ¦   ¦   +-- human_language.py    # Label mapping teknis -> Bahasa Indonesia
-¦   ¦   ¦   +-- public_analysis.py   # SSE data projection filter (tidak bocorkan internal)
-¦   ¦   ¦   +-- errors.py            # Error codes & safe failure messages
-¦   ¦   ¦   +-- versions.py          # ANALYSIS_VERSION constant
-¦   ¦   +-- data/
-¦   ¦   ¦   +-- ina_cbg_rules.py     # INA-CBG diagnosis labels, CBG mapping, tariff lookup
-¦   ¦   +-- ml/
-¦   ¦   ¦   +-- feature_engineering.py # Feature extraction (20 fitur full, 15 fitur cost)
-¦   ¦   ¦   +-- similarity.py           # LanceDB embed + store + find_similar_claims (v3)
-¦   ¦   ¦   +-- similarity_scoring.py   # Composite similarity formula + investigation filter
-¦   ¦   ¦   +-- graph_metrics.py        # Provider network metrics (precomputed)
-¦   ¦   ¦   +-- train_xgboost.py        # Training script XGBoost regressor
-¦   ¦   ¦   +-- train_isolation_forest.py # Training script Isolation Forest
-¦   ¦   +-- models/
-¦   ¦   ¦   +-- schemas.py           # Pydantic schemas semua input/output agent
-¦   ¦   ¦   +-- database.py          # SQLAlchemy models + migrate_schema() + DB trigger
-¦   ¦   +-- services/
-¦   ¦   ¦   +-- claim_queue.py       # ClaimQueueWorker (FIFO, heartbeat, recovery)
-¦   ¦   +-- evaluation/              # Pipeline evaluation framework (P1)
-¦   +-- models_trained/
-¦       +-- xgboost_regressor.json   # Artifact XGBoost trained model
-¦       +-- isolation_forest.pkl     # Artifact Isolation Forest trained model
-¦       +-- evaluation_results.json  # Metrik evaluasi (Precision@K, PR-AUC)
-¦       +-- p1_evaluation_results.json # Metrik evaluasi P1
+ï¿½   +-- app/
+ï¿½   ï¿½   +-- agents/                  # Multi-Agent Pipeline
+ï¿½   ï¿½   ï¿½   +-- orchestrator.py      # Pipeline controller utama (Phase 0-4) + FIFO queue bridge
+ï¿½   ï¿½   ï¿½   +-- clinical_agent.py    # INA-CBG Rule Engine + LLM Lapis 2
+ï¿½   ï¿½   ï¿½   +-- financial_engine.py  # XGBoost Regressor + SHAP Explainer + z-score fallback
+ï¿½   ï¿½   ï¿½   +-- fraud_agent.py       # LanceDB Similarity + Repeat Billing + Unbundling + IF + Graph
+ï¿½   ï¿½   ï¿½   +-- review_agent.py      # Multi-signal synthesis via LLM + rule-count fallback
+ï¿½   ï¿½   ï¿½   +-- risk_engine.py       # Deterministic risk scoring (non-LLM, 0-100)
+ï¿½   ï¿½   ï¿½   +-- explanation_agent.py # Indonesian narrative + validation + jargon sanitizer
+ï¿½   ï¿½   +-- api/
+ï¿½   ï¿½   ï¿½   +-- main.py              # FastAPI app, lifespan, semua endpoint
+ï¿½   ï¿½   ï¿½   +-- claims.py            # Claims CRUD router
+ï¿½   ï¿½   +-- core/
+ï¿½   ï¿½   ï¿½   +-- llm_client.py        # OllamaClient + GeminiClient + retry logic
+ï¿½   ï¿½   ï¿½   +-- human_language.py    # Label mapping teknis -> Bahasa Indonesia
+ï¿½   ï¿½   ï¿½   +-- public_analysis.py   # SSE data projection filter (tidak bocorkan internal)
+ï¿½   ï¿½   ï¿½   +-- errors.py            # Error codes & safe failure messages
+ï¿½   ï¿½   ï¿½   +-- versions.py          # ANALYSIS_VERSION constant
+ï¿½   ï¿½   +-- data/
+ï¿½   ï¿½   ï¿½   +-- ina_cbg_rules.py     # INA-CBG diagnosis labels, CBG mapping, tariff lookup
+ï¿½   ï¿½   +-- ml/
+ï¿½   ï¿½   ï¿½   +-- feature_engineering.py # Feature extraction (20 fitur full, 15 fitur cost)
+ï¿½   ï¿½   ï¿½   +-- similarity.py           # LanceDB embed + store + find_similar_claims (v3)
+ï¿½   ï¿½   ï¿½   +-- similarity_scoring.py   # Composite similarity formula + investigation filter
+ï¿½   ï¿½   ï¿½   +-- graph_metrics.py        # Provider network metrics (precomputed)
+ï¿½   ï¿½   ï¿½   +-- train_xgboost.py        # Training script XGBoost regressor
+ï¿½   ï¿½   ï¿½   +-- train_isolation_forest.py # Training script Isolation Forest
+ï¿½   ï¿½   +-- models/
+ï¿½   ï¿½   ï¿½   +-- schemas.py           # Pydantic schemas semua input/output agent
+ï¿½   ï¿½   ï¿½   +-- database.py          # SQLAlchemy models + migrate_schema() + DB trigger
+ï¿½   ï¿½   +-- services/
+ï¿½   ï¿½   ï¿½   +-- claim_queue.py       # ClaimQueueWorker (FIFO, heartbeat, recovery)
+ï¿½   ï¿½   +-- evaluation/              # Pipeline evaluation framework (P1)
+ï¿½   +-- models_trained/
+ï¿½       +-- xgboost_regressor.json   # Artifact XGBoost trained model
+ï¿½       +-- isolation_forest.pkl     # Artifact Isolation Forest trained model
+ï¿½       +-- evaluation_results.json  # Metrik evaluasi (Precision@K, PR-AUC)
+ï¿½       +-- p1_evaluation_results.json # Metrik evaluasi P1
 +-- frontend/
-¦   +-- src/
-¦       +-- App.jsx                  # Routing + sidebar AEGIS
-¦       +-- api.js                   # API client (axios)
-¦       +-- humanLanguage.js         # Label mapping frontend
-¦       +-- pages/
-¦           +-- Dashboard.jsx        # Statistik agregat
-¦           +-- ClaimsList.jsx       # Daftar klaim + filter
-¦           +-- ClaimIntake.jsx      # Form input klaim manual
-¦           +-- Investigation.jsx    # SSE timeline investigasi
-¦           +-- Assessment.jsx       # Hasil analisis lengkap + human decision
-¦           +-- Monitoring.jsx       # Status komponen sistem
-¦           +-- MLEvaluation.jsx     # Metrik evaluasi ML
+ï¿½   +-- src/
+ï¿½       +-- App.jsx                  # Routing + sidebar AEGIS
+ï¿½       +-- api.js                   # API client (axios)
+ï¿½       +-- humanLanguage.js         # Label mapping frontend
+ï¿½       +-- pages/
+ï¿½           +-- Dashboard.jsx        # Statistik agregat
+ï¿½           +-- ClaimsList.jsx       # Daftar klaim + filter
+ï¿½           +-- ClaimIntake.jsx      # Form input klaim manual
+ï¿½           +-- Investigation.jsx    # SSE timeline investigasi
+ï¿½           +-- Assessment.jsx       # Hasil analisis lengkap + human decision
+ï¿½           +-- Monitoring.jsx       # Status komponen sistem
+ï¿½           +-- MLEvaluation.jsx     # Metrik evaluasi ML
 +-- docs/                            # Dokumentasi produk
 +-- scripts/                         # Utility scripts (training, data generation)
 +-- compose.yaml                     # Docker Compose (PostgreSQL)
@@ -392,16 +390,17 @@ run() loop:
 ```
 LLMClient (Protocol)
     |
-    +-- OllamaClient (default, lokal)
-    |     - POST /api/generate ke Ollama server
-    |     - structured_call() dengan retry 2x + feedback error
-    |     - model_available() untuk fallback model check
+    +-- GeminiClient (utama, Google AI Studio)
+    |     - POST ke Google Generative Language API
+    |     - responseSchema untuk structured output
+    |     - retry 2x dengan feedback error
     |
-    +-- GeminiClient (opsional, via API key)
-          - POST ke Google Generative Language API
-          - responseSchema untuk structured output
-          - retry 2x dengan feedback error
+    +-- OllamaClient (backup lokal, dijalankan cascade bila utama gagal)
+          - POST /api/generate ke Ollama server ... structured_call() retry 2x
+          - model_available() untuk check ketersediaan model lokal
 ```
+
+**Urutan Cascade** (`structured_completion` in `llm_client.py`): Gemini (utama) â†’ Ollama lokal (backup) â†’ templat deterministik di masing-masing agent. Provider yang benar-benar menjawab dicatat pada `model_used` (provenance).
 
 **Retry Logic**: Setiap kegagalan parse JSON atau validasi Pydantic menghasilkan retry dengan feedback pesan error ke LLM (maks 2 retry = 3 percobaan total).
 
@@ -425,13 +424,13 @@ Tabel vektor: `claims_vectors_v3` di `backend/app/lancedb_data/`.
 
 **Embedding**: `all-MiniLM-L6-v2` mengubah teks medis klaim (diagnosis + prosedur + obat) menjadi 384-dimensional normalized vector.
 
-**Startup Backfill**: Saat server startup, `embed_and_store()` dipanggil untuk semua klaim di DB (idempotent — klaim yang sudah ter-index dilewati).
+**Startup Backfill**: Saat server startup, `embed_and_store()` dipanggil untuk semua klaim di DB (idempotent ï¿½ klaim yang sudah ter-index dilewati).
 
 ---
 
 ## 9. Referensi Dokumen Terkait
 
-- [PRD.md](./PRD.md) — Spesifikasi kebutuhan produk dan functional requirements.
-- [BusinessCore.md](./BusinessCore.md) — Logika domain bisnis JKN, INA-CBG, dan strategi mitigasi.
-- [AgentWorkflow.md](./AgentWorkflow.md) — Detail alur pipeline multi-agent dan protokol SSE.
-- [MODELS.md](./MODELS.md) — Spesifikasi teknis model ML, Vector Store, Graph Metrics, dan LLM.
+- [PRD.md](./PRD.md) ï¿½ Spesifikasi kebutuhan produk dan functional requirements.
+- [BusinessCore.md](./BusinessCore.md) ï¿½ Logika domain bisnis JKN, INA-CBG, dan strategi mitigasi.
+- [AgentWorkflow.md](./AgentWorkflow.md) ï¿½ Detail alur pipeline multi-agent dan protokol SSE.
+- [MODELS.md](./MODELS.md) ï¿½ Spesifikasi teknis model ML, Vector Store, Graph Metrics, dan LLM.

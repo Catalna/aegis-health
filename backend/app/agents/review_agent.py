@@ -12,6 +12,7 @@ from backend.app.core.human_language import format_rule_finding, humanize_signal
 logger = logging.getLogger(__name__)
 from backend.app.core.llm_client import (
     structured_completion, LLMError, REVIEW_MODEL, REVIEW_MODEL_FALLBACK, get_available_model,
+    resolve_model_name,
 )
 
 
@@ -226,7 +227,7 @@ hanya merujuk fakta di atas — dilarang menambah fakta baru.
                 else "Tidak ada evidence deterministik yang mendukung sintesis tambahan."
             ),
             reasoning_source=reasoning_source,
-            model_used=model,
+            model_used=resolve_model_name(model),
             evidence_ids=selected_ids,
         )
 

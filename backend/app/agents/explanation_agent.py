@@ -17,6 +17,7 @@ from backend.app.models.schemas import (
 from backend.app.core.llm_client import (
     structured_completion, LLMError,
     EXPLANATION_MODEL, EXPLANATION_MODEL_FALLBACK, get_available_model,
+    resolve_model_name,
 )
 from backend.app.core.human_language import (
     RULE_LABELS,
@@ -355,7 +356,7 @@ SINTESIS REVIEW: {review.reasoning_narrative}
             strongest_evidence=_sanitize_jargon(" ".join(item.explanation for item in selected_evidence[:2])),
                 is_this_fraud=FRAUD_ANSWER,  # hardcoded, tidak pernah dari LLM
             ),
-            generated_by=model,
+            generated_by=resolve_model_name(model),
         )
 
     except Exception as e:

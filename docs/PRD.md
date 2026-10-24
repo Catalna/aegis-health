@@ -173,7 +173,7 @@ Tiga agent dijalankan paralel via `asyncio.gather` dengan `run_with_fallback()`:
 - Target minimum: Intel Core 5, 16GB RAM, GPU NVIDIA RTX 6-8GB VRAM.
 - Model LLM via Ollama dengan kuantisasi Q4_K_M (default `qwen2.5:3b` sesuai `.env` aktual).
 - Sistem beroperasi penuh **offline/on-premise** tanpa koneksi internet eksternal.
-- Fallback ke Gemini API (opsional) jika `LLM_PROVIDER=gemini`.
+- Utama: Gemini API / Google AI Studio (`LLM_PROVIDER=gemini`) dengan **cascade otomatis ke Ollama lokal** bila gagal/tanpa key/tanpa internet, lalu template deterministik. Untuk data peserta riil, paksa `LLM_PROVIDER=ollama` (konten klaim tidak dikirim ke cloud).
 
 ### NFR-3: Fault Tolerance & Non-Blocking Fallback
 - Setiap agent dibungkus `run_with_fallback()`.

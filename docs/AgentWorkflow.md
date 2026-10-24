@@ -149,7 +149,7 @@ Setelah Phase 1 selesai, seluruh temuan dikompilasi dan diserahkan ke **Review A
     - `MODERATE`: Satu sinyal mencurigakan tanpa anomali pendukung lain.
     - `WEAK`: Deviasi statistik minor dalam batas variansi normal.
   - Menyusun narasi sintesis investigasi (*reasoning narrative*) yang runtut dan obyektif.
-- **LLM Backbone**: Menggunakan deep reasoning model (`deepseek-r1:7b` via Ollama lokal atau `gemini-2.5-flash` via Gemini API).
+- **LLM Backbone**: Utama `gemini-2.0-flash` via Google AI Studio; cascade otomatis ke model lokal Ollama (`qwen2.5:3b`, fallback `llama3.2:3b`) bila cloud gagal/tanpa key.
 
 ---
 

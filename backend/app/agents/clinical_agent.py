@@ -10,7 +10,7 @@ Lapis 2 (HANYA kasus ambigu): LLM lokal menilai plausibility untuk kombinasi
 import logging
 
 from backend.app.models.schemas import ClaimInput, ClinicalAssessment, CBGLookupResult
-from backend.app.core.llm_client import structured_completion, LLMError, CLINICAL_MODEL
+from backend.app.core.llm_client import structured_completion, LLMError, CLINICAL_MODEL, resolve_model_name
 from backend.app.core.errors import failure_for_exception
 from backend.app.core.human_language import format_rule_finding
 from backend.app.data.ina_cbg_rules import (
@@ -218,7 +218,7 @@ evidence_text: 1-2 kalimat Bahasa Indonesia yang menyebut fakta spesifik dari da
             confidence_level=confidence,
             evidence_source="llm_local",
             rule_flags=flags,  # skor tetap dari rule, LLM hanya melengkapi narasi
-            model_used=CLINICAL_MODEL,
+            model_used=resolve_model_name(CLINICAL_MODEL),
         )
     except LLMError as e:
         # Fallback sesuai AGENTS.md: no_data + n/a, bukan menebak

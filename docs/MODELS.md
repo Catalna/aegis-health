@@ -39,7 +39,7 @@ J-ARI/AEGIS menerapkan arsitektur **Multi-Model Intelligence** terpadu. Pendekat
                                        |
                                        v
                            [ Large Language Models ]
-                           Ollama Local / Gemini API
+                           Google AI Studio Gemini (utama) / Ollama lokal (backup)
                            (Sintesis Bukti & Narasi BI)
 ```
 
@@ -196,19 +196,23 @@ Sistem mengisolasi seluruh interaksi LLM melalui antarmuka `LLMClient`:
 
 ```python
 class LLMClient:
-    async def generate_response(self, prompt: str, system_prompt: str = None) -> str:
-        # 1. Coba Ollama Local (jika USE_OLLAMA=true)
-        # 2. Fallback ke Gemini API (jika GEMINI_API_KEY tersedia)
-        # 3. Fallback ke Heuristic Rule-Based Template jika kedua LLM gagal
+    async def structured_call(self, prompt: str, system_prompt: str = None) -> str:
+        # 1. Utama: Gemini API / Google AI Studio (default LLM_PROVIDER=gemini)
+        # 2. Backup: Ollama lokal (cascade otomatis bila Gemini gagal, tanpa key, atau tanpa internet)
+        # 3. Fallback ke Heuristic Rule-Based Template di agent bila kedua LLM gagal
 ```
+
+Urutan diimplementasikan sebagai cascade di `structured_completion` (`llm_client.py`): provider yang benar-benar menjawab dicatat per task asyncio untuk `model_used` (provenance), dan error tiap provider dilaporkan sebelum jatuh ke backup.
 
 ### 6.2 Konfigurasi Model LLM per Environment
 
-| Lingkungan | Model Chat / Copilot | Model Deep Reasoning (Phase 2) | Fallback Otomatis |
+| Lingkungan | Utama | Backup (cascade otomatis) | Jaring Terakhir |
 |---|---|---|---|
-| **Lokal (Ollama)** | `mistral:7b` (default port 11434) | `deepseek-r1:7b` | Heuristic Template |
-| **Cloud / Hybrid** | `gemini-2.5-flash` | `gemini-2.5-flash` / `gemini-2.0-flash` | Heuristic Template |
-| **Offline / Minimal** | Heuristic Template | Heuristic Template | None (Selalu Berhasil) |
+| **Standar demo (default)** | Gemini API `gemini-2.0-flash` (Google AI Studio) | Ollama lokal (`qwen2.5:3b`, fallback `llama3.2:3b`) | Heuristic Template |
+| **Tanpa internet / tanpa API key** | Ollama lokal (cascade langsung) | — | Heuristic Template |
+| **Data peserta riil (kebijakan)** | Ollama lokal dipaksa (`LLM_PROVIDER=ollama`) | — | Heuristic Template |
+
+> Catatan: backup lokal Ollama tetap menyediakan model per-agent (`qwen2.5:3b`/`llama3.2:3b` sesuai `.env` aktual, default kode `mistral:7b`/`deepseek-r1:7b`/`qwen2.5:7b`).`
 
 ### 6.3 Batasan Ketat Penggunaan LLM:
 1. **LLM DILARANG menentukan skor risiko numeric**: Skor risiko 100% dihitung oleh formula matematika `risk_engine.py`.

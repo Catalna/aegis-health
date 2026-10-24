@@ -49,6 +49,14 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - Kept `evaluation_results.json` and `p1_evaluation_results.json`: they are read by API evaluation endpoints in `app/api/main.py`.
 - Fixed a stale artifact name in `docs/MODELS.md` §3.1 (Isolation Forest file is `isolation_forest.pkl`, trainer confirmed; doc said `.joblib`).
 
+## LLM priority swap: Google AI Studio primary, Ollama backup (2026-10-24)
+
+- `llm_client.py`: default provider `LLM_PROVIDER` flipped to `gemini` (Google AI Studio); added automatic cross-provider cascade in `structured_completion` via `_run_llm_with_fallback` (Gemini → Ollama → agent-level deterministic template). Both fail → `LLMError` reporting each provider's note. Provider choice is recorded in an asyncio-safe ContextVar; `resolve_model_name()` keeps `model_used`/`generated_by` provenance honest.
+- Agents (clinical/review/explanation) now report the model that actually served the call (e.g., `gemini-2.0-flash` when Gemini answered; requested Ollama model when fallback ran).
+- `.env` / `.env.example`: `LLM_PROVIDER=gemini`, empty `GEMINI_API_KEY=` placeholder (user pastes their Google AI Studio key); without a key or internet the cascade silently uses Ollama, so offline demo mode still works. Policy comment added: switch to `LLM_PROVIDER=ollama` before processing any real JKN participant data.
+- Docs updated: `MODELS.md` §6.1/6.2, `PRD.md` NFR-2, `Architecture.md` client table + diagram, `AgentWorkflow.md` LLM backbone, `DECISIONS.md` (context/options/constraints).
+- Tests: 5 new cascade tests in `test_llm_client.py` (chain order, primary succeeds, fallback to Ollama, all-fail raises, explicit provider skips cascade); targeted agent suites passed (75).
+
 ## Commits made
 
 - `a4585d1` — deterministic relational tier floors.
