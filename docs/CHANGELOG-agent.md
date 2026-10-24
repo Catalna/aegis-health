@@ -114,6 +114,17 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - Code lands in the same commit: `risk_engine.py` bands 55.0/48.7 + `pipeline.py::_priority_tier` mirror; relational Medium floor extended to **unbundling** (aligns with the engine's own evidence-note narrative; keeps unbundling above the new medium threshold). Report `docs/TIER_CALIBRATION.md`, JSON artifact `backend/models_trained/tier_band_calibration.json` (gitignored), `docs/MODELS.md` §5.2 + `docs/Architecture.md` updated; `RUNTIME_EVALUATION.md` carries a provenance note on the measured-with-default-bands distribution.
 - Honest caveat recorded: alert recall on the enriched slice drops to ~9% — the tier is a capacity-triage label, not the detection instrument; detection stays with runtime ranking (AP 0.5964) and the candidate ML; engine recall recovery is the repair backlog (repeat window 46–60 days, v2 cloning thresholds, v1 tariff map).
 
+## Demo seeding & runbook (Fase 6, 2026-10-24)
+
+- Tooling: `scripts/demo_seed.py` — 220 curated synthetic claims seeded via the production flow only (POST → FIFO worker → orchestrator → LanceDB; no direct DB writes), `scripts/demo_reset.py` (5-table truncate + LanceDB wipe), `docs/DEMO_RUNBOOK.md` (prereqs, one-cycle reset→seed→verify, ~8-minute storyboard, degradation show, pre-record checklist, troubleshooting).
+- Seed design honesty: costs calibrated offline against the in-process runtime financial model (`claimed = predicted × multiplier`) so the financial agent's deviation is deterministic per scenario; relational flags (repeat/cloning/unbundling/exact-duplicate) are engineered via content design (patients, providers, code sets, ≤45-day windows) — no runtime label-based overrides, every tier is the engine's honest raw output incl. floors. `--dry-run` simulates the full engine with the repo's own functions before any POST.
+- Dry-run verified before seeding: 220/220 targets hit, "peringatan flag di luar desain: bersih". Scenario families: 90 normals, 18 unbundling fragments (6 groups × 3, non-high-cost shared procedures), 14 repeat pairs (incl. UPC repeat overlap), 10 near-window pairs, 12 cloning pairs, 4 exact duplicates, 32 upcoding (16 bumped + 16 repeat overlays expecting low), 12 phantom, 16 inflated (8 clean + 8 LOS-outlier), 12 prolonged-LOS (6 low + 6 flagged).
+- Live verified (siklus resi 2026-10-24): submit 220/220 (ok 220, skip 0, err 0), drain penuh
+  `failed=0`; tier live **high 4 / medium 86 / low 130** = desain dry-run persis; snapshot
+  per-skenario **220/220 sesuai** (10/10 grup); status processed 130 / review_required 90;
+  exposure agregat Rp 462,3 jt. Tag DU diselaraskan `expect_high` → `expect>=high`
+  (parser harapan sebelumnya tak membacanya); `--dry-run` & snapshot sepenuhnya hijau.
+
 ## Commits made
 
 - `a4585d1` — deterministic relational tier floors.
@@ -125,9 +136,10 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - `244a1ab` — classification metrics and PNG evaluation figures.
 - `a3968e3` — relational classifier features with validation-only tuning.
 - `2974bf5` — Gemini schema coercion + thread-offloaded SHAP + throwback evaluation figures.
-- `c77f577` — classifier features 25→28 (grouper-consistency trio); test AP 0.7259, recall 0.6793.
-- `b2d68e8` — multiseed aggregate rewrite (n=5, new features; AP 0.7153 ± 0.0104).
-- `a5ff303` — deck artifacts removed (single-visual policy: docs/figures PNGs only).
-- `74d097a` — Fase 3.4 runtime ranking evaluation (`scripts/runtime_ranking_eval.py` + `docs/RUNTIME_EVALUATION.md`).
+- `d069dad` (re-rebased) — classifier features 25→28 (grouper-consistency trio); test AP 0.7259, recall 0.6793.
+- `72391b8` — multiseed aggregate rewrite (n=5, new features; AP 0.7153 ± 0.0104).
+- `2682368` — deck artifacts removed (single-visual policy: docs/figures PNGs only).
+- `1cd0762` — Fase 3.4 runtime ranking evaluation (`scripts/runtime_ranking_eval.py` + `docs/RUNTIME_EVALUATION.md`).
+- `20b38d2` — (teman dev) dashboard redesign + `GET /api/analytics/trend` (dipull; basis rebase).
 
-Latest verification: **334 passed / 2 skipped** (after tier-band recalibration). Full smoke E2E on the live stack passed earlier (see the E2E section above). Frontend build passed earlier with the chunk-size warning above. Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
+Latest verification: **334 passed / 2 skipped** (after tier-band recalibration); live demo cycle 2026-10-24 — reset → seed 220/220 → drain `failed=0` → per-scenario snapshot **220/220** (tier high 4 / medium 86 / low 130). Full smoke E2E on the live stack passed earlier (see the E2E section above). Frontend build passed earlier with the chunk-size warning above. Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.

@@ -1,5 +1,11 @@
 # Engineering Decisions — Synthetic v2 / Risk Evaluation
 
+## Curated demo database is presentational, not evaluation truth (2026-10-24)
+
+- **Decision:** The demo database (220 claims, `scripts/demo_seed.py`) is a **presentational seed only**. Its scenario tags and expected tiers exist so the recorded demo stays legible; they are checked offline against the runtime engine via a `--dry-run` mirror before any POST. The seeded corpus is never used as an evaluation, validation, or calibration set for any model, threshold, or tier band.
+- **Reason:** Seeded claims are built with deliberate content design (shared providers/code sets/time windows) and costs calibrated against the in-process financial model (`claimed = predicted × multiplier`) so runtime financial scores are deterministic per scenario. Tuning anything on this corpus would fit the seed's construction conventions, not generalize; it would also create label leakage into the runtime path.
+- **Constraints kept:** seeding goes through the production flow only (POST → FIFO worker → orchestrator → LanceDB, never direct DB writes); no runtime label-based overrides — every score/tier/evidence is the engine's honest raw output (points, floors, relational evidence); claims-of-performance numbers stay exclusively with the evaluation slices (`docs/TIER_CALIBRATION.md`, `docs/EVALUATION_REPORT.md`, `docs/RUNTIME_EVALUATION.md`), always with the synthetic-demonstrator disclaimer.
+
 ## Runtime tier band recalibration (2026-10-24)
 
 - **Decision:** Replace the inherited, never-calibrated tier bands (medium ≥ 25, high ≥ 60) with calibrated bands **medium ≥ 48.7, high ≥ 55.0**, selected on a 700-claim validation slice through the deterministic runtime path and verified once on a 700-claim test slice. Applied in `risk_engine.calculate_risk_score` and mirrored in `evaluation.pipeline._priority_tier`. The relational Medium floor now also covers **unbundling**, aligning code with the engine's own evidence narrative.
