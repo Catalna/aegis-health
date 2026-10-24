@@ -6,7 +6,7 @@
 - Train / validation / test: 150,000 / 50,000 / 50,000
 - Seed: `42`
 - Config SHA-256: `f088e5ff474c88ebdd1a8cbc1f012ac59dae2c38e5d09072ad0abebb1a9d04df`
-- Test set was not used for feature selection or hyperparameter tuning. Aggregate AP group-bootstrap 95% CI: 0.6030–0.6520 (groups=48,437, resamples=100).
+- Test set was not used for feature selection or hyperparameter tuning. Aggregate AP group-bootstrap 95% CI: 0.7037–0.7464 (groups=48,437, resamples=100).
 
 ## Cost benchmark regressor
 
@@ -20,86 +20,102 @@
 ## Supervised classifier candidate (not runtime)
 
 - Test n: 50,000; positive n: 1,500
-- Average Precision: 0.6258
-- ROC-AUC: 0.9178
+- Average Precision: 0.7259
+- ROC-AUC: 0.9446
 - Baseline Average Precision:
   - random: 0.0299 (n=50,000, positives=1,500)
   - absolute_benchmark_deviation: 0.1704 (n=50,000, positives=1,500)
   - logistic_regression_rule_flags: 0.1747 (n=50,000, positives=1,500)
 
+### Feature set v3 (grouper-consistency upgrade)
+
+28 fitur (sebelumnya 25) — tiga fitur baru dibentuk dari kolom dataset yang
+sudah ada (tanpa regenerasi dataset), terinspirasi keluaran grouper INA-CBG
+yang dapat berkontradiksi dengan klaim faskes:
+
+- `ina_grouper_severity`: severitas versi grouper ('0'/'I'/'II'/'III') sebagai angka
+- `grouper_severity_gap`: selisih severitas diklaim vs grouper (rawat inap saja)
+- `cost_to_sev_factor_ratio`: biaya diklaim / (tarif regional × faktor severitas klaim)
+
 ### Classifier configuration (selected on validation only)
 
-- depth 5, scale_pos_weight 1: validation AP 0.5888 @ iteration 399
-- depth 5, scale_pos_weight 3: validation AP 0.6153 @ iteration 374
-- depth 6, scale_pos_weight 1: validation AP 0.5051 @ iteration 2
-- depth 6, scale_pos_weight 3: validation AP 0.6153 @ iteration 343
-- Selected: depth 5, scale_pos_weight 3, iteration 374; the test set played no part in this choice.
+- depth 5, scale_pos_weight 1: validation AP 0.7152 @ iteration 346
+- depth 5, scale_pos_weight 3: validation AP 0.7082 @ iteration 400
+- depth 6, scale_pos_weight 1: validation AP 0.7220 @ iteration 306
+- depth 6, scale_pos_weight 3: validation AP 0.7128 @ iteration 346
+- Selected: depth 6, scale_pos_weight 1, iteration 306; the test set played no part in this choice.
 
 ### Fitur paling berpengaruh (gain)
 
-- `exact_copy_group_size`: 459
-- `surgical_indicator`: 279
-- `outpatient`: 139
-- `cost_vs_base_rate`: 122
-- `unsupported_procedure_8151_flag`: 116
+- `exact_copy_group_size`: 189
+- `surgical_indicator`: 71
+- `cost_to_sev_factor_ratio`: 67
+- `grouper_severity_gap`: 54
+- `unsupported_procedure_8151_flag`: 37
 
-### Operating point (threshold 0.5601, selected on validation)
+### Operating point (threshold 0.3173, selected on validation)
 
-- Accuracy: 98.2240%; Precision: 79.4798%; Recall: 55.0000%; F1: 0.6501
-- Specificity: 99.5608%; Balanced accuracy: 77.2804%; MCC: 0.6528
-- Brier score: 0.0166; Log loss: 0.0779; ECE: 0.0163
-- Alerts: 1,038 of 50,000 (2.076%); TP=825, FP=213, TN=48,287, FN=675
+- Accuracy: 98.5440%; Precision: 80.4897%; Recall: 67.9333%; F1: 0.7368
+- Specificity: 99.4907%; Balanced accuracy: 83.7120%; MCC: 0.7321
+- Brier score: 0.0129; Log loss: 0.0601; ECE: 0.0058
+- Alerts: 1,266 of 50,000 (2.532%); TP=1,019, FP=247, TN=48,253, FN=481
 - The threshold was fitted on validation only and then frozen for test; test labels never selected it.
 
 ### Natural test by anomaly type
 
-- `cloning`: positives=214, AP=0.0610, F1=0.171
-- `inflated_bill`: positives=214, AP=0.0805, F1=0.216
-- `phantom_billing`: positives=214, AP=0.1041, F1=0.251
-- `prolonged_los`: positives=214, AP=0.0508, F1=0.150
-- `repeat_billing`: positives=214, AP=0.1753, F1=0.195
-- `unbundling`: positives=215, AP=0.5731, F1=0.332
-- `upcoding`: positives=215, AP=0.0156, F1=0.003
+- `cloning`: positives=214, AP=0.0479, F1=0.145
+- `inflated_bill`: positives=214, AP=0.0782, F1=0.193
+- `phantom_billing`: positives=214, AP=0.0955, F1=0.218
+- `prolonged_los`: positives=214, AP=0.0452, F1=0.130
+- `repeat_billing`: positives=214, AP=0.2751, F1=0.215
+- `unbundling`: positives=215, AP=0.4851, F1=0.288
+- `upcoding`: positives=215, AP=0.0899, F1=0.189
+
+Recall per tipe pada ambang 0.3173 (sweep kebijakan, pengukuran sekali di test):
+unbundling 0.991, phantom_billing 0.752, repeat_billing 0.743, inflated_bill
+0.668, upcoding 0.651, cloning 0.500, prolonged_los 0.449. Lompatan recall
+aggregate (0.5500 → 0.6793) terutama dari slice upcoding yang sebelumnya
+praktis buta (~0.009) dan kini tertangkap lewat kedua fitur grouper.
 
 ## Enriched stress evaluation
 
-- Overall AP: 0.8462 (n=2,100, positives=1,050).
-- Group-bootstrap AP 95% CI: 0.8322–0.8654 (groups=1,652).
+- Overall AP: 0.8905 (n=2,100, positives=1,050).
+- Group-bootstrap AP 95% CI: 0.8754–0.9047 (groups=1,652).
 
 ### By anomaly type
 
-- `cloning`: positives=150, AP=0.0999, F1=0.191; group CI 0.085–0.116
-- `inflated_bill`: positives=150, AP=0.1036, F1=0.203; group CI 0.087–0.125
-- `phantom_billing`: positives=150, AP=0.1306, F1=0.274; group CI 0.103–0.152
-- `prolonged_los`: positives=150, AP=0.0873, F1=0.165; group CI 0.072–0.101
-- `repeat_billing`: positives=150, AP=0.2333, F1=0.208; group CI 0.168–0.305
-- `unbundling`: positives=150, AP=0.5335, F1=0.376; group CI 0.443–0.626
-- `upcoding`: positives=150, AP=0.0624, F1=0.005; group CI 0.051–0.075
+- `cloning`: positives=150, AP=0.0806, F1=0.160; group CI 0.069–0.091
+- `inflated_bill`: positives=150, AP=0.0959, F1=0.186; group CI 0.080–0.117
+- `phantom_billing`: positives=150, AP=0.1160, F1=0.235; group CI 0.092–0.133
+- `prolonged_los`: positives=150, AP=0.0764, F1=0.137; group CI 0.063–0.087
+- `repeat_billing`: positives=150, AP=0.3133, F1=0.239; group CI 0.240–0.384
+- `unbundling`: positives=150, AP=0.4768, F1=0.316; group CI 0.388–0.579
+- `upcoding`: positives=150, AP=0.1345, F1=0.241; group CI 0.109–0.169
 
 ## OOD stress evaluation
 
-- Overall AP: 0.6078 (n=5,000, positives=150).
-- Group-bootstrap AP 95% CI: 0.5333–0.6763 (groups=4,836).
+- Overall AP: 0.7269 (n=5,000, positives=150).
+- Group-bootstrap AP 95% CI: 0.6474–0.7923 (groups=4,836).
 
 ### By anomaly type
 
-- `cloning`: positives=22, AP=0.0783, F1=0.182; group CI 0.041–0.155
-- `inflated_bill`: positives=21, AP=0.0738, F1=0.183; group CI 0.031–0.156
-- `phantom_billing`: positives=21, AP=0.1333, F1=0.283; group CI 0.089–0.224
-- `prolonged_los`: positives=21, AP=0.0572, F1=0.167; group CI 0.028–0.097
-- `repeat_billing`: positives=21, AP=0.1645, F1=0.150; group CI 0.044–0.317
-- `unbundling`: positives=22, AP=0.5298, F1=0.364; group CI 0.308–0.742
-- `upcoding`: positives=22, AP=0.0192, F1=0.000; group CI 0.012–0.033
+- `cloning`: positives=22, AP=0.0607, F1=0.148; group CI 0.030–0.117
+- `inflated_bill`: positives=21, AP=0.0629, F1=0.149; group CI 0.027–0.122
+- `phantom_billing`: positives=21, AP=0.1140, F1=0.257; group CI 0.077–0.184
+- `prolonged_los`: positives=21, AP=0.0437, F1=0.135; group CI 0.022–0.072
+- `repeat_billing`: positives=21, AP=0.2877, F1=0.230; group CI 0.113–0.445
+- `unbundling`: positives=22, AP=0.4648, F1=0.295; group CI 0.250–0.712
+- `upcoding`: positives=22, AP=0.1377, F1=0.228; group CI 0.083–0.210
 
 ## Figures
 
 Figur diregenerasi dari model final seed-42 + split dataset yang sama dengan
 training oleh `scripts/visualize_evaluation.py` (gaya sederhana 960×720).
-Ambang keputusan seragam 0.5601 — dipilih di validation (max-F1), lalu
+Ambang keputusan seragam 0.3173 — dipilih di validation (max-F1), lalu
 diterapkan apa adanya ke train/validation/test. Ini demonstrator sintetis,
 bukan validasi BPJS.
 
-### Feature Importance (gain share, 14 fitur teratas)
+### Feature Importance (gain share, 14 fitur teratas — tiga fitur grouper masuk 10 besar)
 
 ![Feature Importance](figures/feature_importance.png)
 
@@ -107,15 +123,15 @@ bukan validasi BPJS.
 
 ![Label Outcome Distribution](figures/label_distribution.png)
 
-### Training Confusion Matrix (ambang 0.5601)
+### Training Confusion Matrix (ambang 0.3173)
 
 ![Training Confusion Matrix](figures/confusion_train.png)
 
-### Validation Confusion Matrix (ambang 0.5601)
+### Validation Confusion Matrix (ambang 0.3173)
 
 ![Validation Confusion Matrix](figures/confusion_validation.png)
 
-### Testing Confusion Matrix (ambang 0.5601 — identik operating point laporan)
+### Testing Confusion Matrix (ambang 0.3173 — identik operating point laporan: TP=1,019 FP=247 FN=481)
 
 ![Testing Confusion Matrix](figures/confusion_test.png)
 
@@ -140,5 +156,6 @@ bukan validasi BPJS.
 - Precision depends strongly on the synthetic 3% prevalence and is not an operational alert budget.
 - Relational features (duplicate groups, per-patient gaps, expected-LOS benchmark) are computed per dataset split; the runtime scorer does not use them.
 - Repeat-billing and cloning AP is bounded by designed legit readmission/duplicate hard negatives that share the same relational pattern.
+- Grouper-consistency features (severity gap, cost-to-severity ratio) lifted recall everywhere; AP slices for cloning (0.0479) and prolonged_los (0.0452) remain weak and `prolonged_los` recall 0.449 keeps them on the feature-development backlog.
 - Grouped bootstrap intervals are single-seed; multi-seed training/evaluation is still pending.
 - Natural-test per-type confidence intervals are reported via the separate enriched and OOD slices, not as natural-prevalence estimates.

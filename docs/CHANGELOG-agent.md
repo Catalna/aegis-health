@@ -82,6 +82,14 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - Added committed script `scripts/visualize_evaluation.py` (rerunnable; defaults point at the seed-42 dataset directory, overridable via args). Deleted old `figures/01..10_*.png`; rewrote the `docs/EVALUATION_REPORT.md` Figures section to the new set with a provenance paragraph (threshold 0.5601 chosen on validation, applied uniformly).
 - Sanity: recomputed Testing confusion [TN 48287, FP 213, FN 675, TP 825] is identical to the recorded operating point; PR AP 0.6258 and ROC-AUC 0.9178 match the report; validation logloss 0.2165 @ round 1 → 0.0779 @ 374. `matplotlib==3.10.9` added to `backend/requirements.txt`; all images synthetic-demonstrator-only.
 
+## Classifier recall upgrade: grouper-consistency features (2026-10-24)
+
+- User target: raise anomaly recall from ~55% into the 60–70% band. First an **operating-policy sweep** (`scripts/sweep_operating_policy.py`; policies selected on validation, single test read) quantified the policy-only ceiling: forcing validation target recall 0.80 still yields test recall 0.585 @ precision 0.724 — the wall is **per-type blindness**, mainly upcoding (recall ≈0.009; 14.3% of positives).
+- Feature development answered the wall: 3 grouper-consistency features from existing columns (`ina_grouper_severity`, `grouper_severity_gap`, `cost_to_sev_factor_ratio`; see DECISIONS entry) + unit tests (7 in `test_v2_features.py`). Retrained seed 42 on the identical dataset (same config SHA); promoted to canonical `backend/models_trained/synthetic_v2/`, legacy 25-feature artifacts preserved at `synthetic_v2_25feat_legacy/` (gitignored).
+- New canonical headline (test natural, synthetic demonstrator): **AP 0.6258 → 0.7259** (group bootstrap CI 0.7037–0.7464), ROC-AUC 0.9178 → 0.9446, operating point threshold 0.3173: **recall 0.5500 → 0.6793**, precision 0.7948 → 0.8049, F1 0.6501 → 0.7368; alerts 1,266/50,000 (2.53%); ECE 0.0163 → 0.0058; enriched AP 0.8462 → 0.8905; OOD AP 0.6078 → 0.7269. Upcoding: AP 0.0156 → 0.0899 with recall 0.009 → **0.651**; recall per type at the operating threshold documented in `docs/EVALUATION_REPORT.md`.
+- Figures regenerated (8 throwback PNGs via `scripts/visualize_evaluation.py`): testing confusion TP=1,019 FP=247 FN=481 identical to the new operating point; PR legend AP=0.7259; validation logloss 0.1156@1 → 0.0601@306. `docs/EVALUATION_REPORT.md` rewritten with the v3 feature-set section, per-type recall table, and updated limitations.
+- Multi-seed replication (n=5) relaunched with the new feature set; aggregate update to follow.
+
 ## Commits made
 
 - `a4585d1` — deterministic relational tier floors.

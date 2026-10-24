@@ -49,7 +49,14 @@ CLASSIFIER_FEATURE_NAMES = [
     "cost_claimed_log", "cost_vs_base_rate", "long_los_flag", "unsupported_severity_flag",
     "copy_group_size", "exact_copy_group_size", "min_same_patient_gap_days",
     "los_vs_expected", "unsupported_secondary_E46_flag", "unsupported_procedure_8151_flag",
+    "ina_grouper_severity", "grouper_severity_gap", "cost_to_sev_factor_ratio",
 ]
+
+# Faktor tarif per tingkat severitas yang dijanjikan demo grouper (sumbu konstan,
+# sama seperti tabel CBG: klaim yang jujur mengklaim sesuai tingkat severitasnya;
+# upcoding mengklaim severitas lebih tinggi namun biayanya sesuai level asli).
+_SEVERITY_FACTOR_BY_LEVEL = {1: 0.82, 2: 1.0, 3: 1.27, 4: 1.55}
+_INA_SEVERITY_BY_LEVEL = {0: 0, "0": 0, "I": 1, "II": 2, "III": 3}
 
 
 def build_cost_features(
@@ -184,6 +191,9 @@ def build_classifier_features(
                 / expected_los.get((str(claim["diagnosis_primary"]), bool(claim.get("outpatient"))), 1.0),
                 float("E46" in (claim.get("diagnosis_secondary") or [])),
                 float("81.51" in (claim.get("procedure_codes") or [])),
+                _ina_severity_value(claim),
+                _grouper_severity_gap(claim),
+                _cost_to_sev_factor_ratio(claim),
             ]
             for index, claim in enumerate(claims)
         ],
@@ -191,3 +201,34 @@ def build_classifier_features(
     )
     matrix = np.column_stack((base, extras, relational))
     return matrix, CLASSIFIER_FEATURE_NAMES
+
+
+def _ina_severity_value(claim: dict[str, Any]) -> float:
+    """Severitas versi demo-grouper ('0'/'I'/'II'/'III') sebagai angka 0–3."""
+    return float(_INA_SEVERITY_BY_LEVEL.get(str(claim.get("ina_cbg_severity", "0")), 0))
+
+
+def _grouper_severity_gap(claim: dict[str, Any]) -> float:
+    """Selisih severitas yang DIKLAIM faskes vs versi grouper.
+
+    Hanya bermakna untuk rawat inap (rawat jalan selalu memetakan '0'). Gap 1
+    pada rawat inap = faskes mengklaim lebih tinggi dari sekata-sekata groupper
+    — tanda khas upcoding; gap 0 = konsisten.
+    """
+    if bool(claim.get("outpatient", False)):
+        return 0.0
+    claimed = float(claim.get("severity_level", 1))
+    return claimed - _ina_severity_value(claim)
+
+
+def _cost_to_sev_factor_ratio(claim: dict[str, Any]) -> float:
+    """Rasio biaya yang diklaim vs ekspektasi tarif untuk level severitas klaim.
+
+    Referensi: tarif regional × faktor severitas per sesep grouper demonstrator.
+    Klaim jujur ~1 (faktor faskes ± noise); upcoding mengklaim level lebih
+    tinggi sementara biayanya dibentuk di level asli → rasio < 0.9.
+    """
+    regional = max(1.0, float(claim.get("regional_base_rate", 0.0)))
+    claimed_sev = int(claim.get("severity_level", 1))
+    factor = _SEVERITY_FACTOR_BY_LEVEL.get(min(claimed_sev, 4), 1.0)
+    return float(claim.get("cost_claimed", 0.0)) / (regional * factor)

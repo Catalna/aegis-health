@@ -121,3 +121,33 @@ def test_unsupported_service_flags_react_to_reference_codes():
     code_index = CLASSIFIER_FEATURE_NAMES.index("unsupported_procedure_8151_flag")
     assert features[0][e46_index] == 1.0 and features[0][code_index] == 0.0
     assert features[1][e46_index] == 0.0 and features[1][code_index] == 1.0
+
+
+def test_ina_severity_and_gap_features_reacord_upcoding():
+    """Grouper-informed features: gap = tanda upcoding, rasio = pemisah dari sev-4 jelas."""
+
+    def _feat(claim, name):
+        features, names = _matrix([claim])
+        return float(features[0][names.index(name)])
+
+    # Rawat inap jujur: severity 2, ina II → gap 0; biaya = tarif × faktor level 2
+    legit = _claim(severity_level=2, ina_cbg_severity="II", cost_claimed=20_000)
+    assert _feat(legit, "ina_grouper_severity") == 2.0
+    assert _feat(legit, "grouper_severity_gap") == 0.0
+    assert _feat(legit, "cost_to_sev_factor_ratio") == 1.0
+
+    # Upcoding: mengklaim severity 3 padahal grouper II; biaya tetap level 2
+    upcode = _claim(severity_level=3, ina_cbg_severity="II", cost_claimed=20_000)
+    assert _feat(upcode, "grouper_severity_gap") == 1.0
+    assert abs(_feat(upcode, "cost_to_sev_factor_ratio") - 20_000 / (20_000 * 1.27)) < 1e-6
+
+    # Severity 4 jelas (3% legit): gap 1 TAPI rasio ~1 → pohon memisahkan dua kasus
+    real_four = _claim(severity_level=4, ina_cbg_severity="III", cost_claimed=31_000)
+    assert _feat(real_four, "grouper_severity_gap") == 1.0
+    assert abs(_feat(real_four, "cost_to_sev_factor_ratio") - 31_000 / (20_000 * 1.55)) < 1e-6
+
+    # Rawat jalan: ina selalu '0' → gap 0, sementara rasio tetap informatif
+    outpatient = _claim(outpatient=True, severity_level=3, ina_cbg_severity="0", cost_claimed=25_400)
+    assert _feat(outpatient, "ina_grouper_severity") == 0.0
+    assert _feat(outpatient, "grouper_severity_gap") == 0.0
+    assert abs(_feat(outpatient, "cost_to_sev_factor_ratio") - 25_400 / (20_000 * 1.27)) < 1e-6
