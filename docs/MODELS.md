@@ -52,7 +52,7 @@ J-ARI/AEGIS menerapkan arsitektur **Multi-Model Intelligence** terpadu. Pendekat
 - **Tujuan**: Menghasilkan estimasi *expected reimbursement benchmark* untuk suatu episode klaim berdasarkan profil klinis dan tipe fasilitas kesehatan.
 - **Peran Sistem**: Model ini berfungsi sebagai benchmark pembanding statistik terhadap pola klaim historis, bukan sebagai grouper tarif resmi INA-CBG dari Kemenkes.
 - **Lokasi File Model**: `backend/models_trained/xgboost_regressor.json`.
-- **Runtime vs kandidat**: runtime memakai regresor biaya dan deterministik rules. `xgboost_classifier_candidate_synthetic_v2.json` adalah eksperimen pembanding sintetis dan bukan komponen runtime.
+- **Runtime vs kandidat**: runtime memakai regresor biaya dan deterministik rules. Kandidat klasifikasi tidak menjadi komponen runtime (lihat 2.5).
 
 ### 2.2 Feature Engineering Pipeline (`backend/app/ml/feature_engineering.py`)
 Untuk mencegah terjadinya kebocoran target (*target leakage*), ekstraksi fitur dipisahkan secara tegas:
@@ -86,6 +86,23 @@ Financial Engine (`backend/app/core/financial_engine.py`) mengintegrasikan `shap
   - **Top 3 Positive Cost Drivers**: Faktor yang paling mendorong kenaikan biaya wajar (misal: `severity_level = 3`, `icu_indicator = 1`, `los = 12`).
   - **Top 3 Negative Cost Drivers**: Faktor yang seharusnya menekan biaya (misal: rawat jalan, usia muda, prosedur non-bedah).
   - Jika `cost_claimed` jauh melampaui `expected_reimbursement` tanpa didukung oleh SHAP positive drivers yang valid, sistem mencatat indikasi kuat *inflated bill* atau *upcoding*.
+
+---
+
+## 2.5 Kandidat Klasifikasi v2 (Synthetic Demonstrator — Bukan Runtime)
+
+**Peran**: model kandidat riset evaluatif pada data sintetis (`synthetic-v2.4.0-demonstrator`). Ia tidak digunakan perhitungan `RiskScore` runtime; deteksi relasional runtime tetap di mesin aturan + similarity komposit (bagian 4 dan 5).
+
+- **Implementasi**: `backend/app/ml/v2_features.py`, pelatihan `backend/app/ml/train_synthetic_v2.py` (XGBoost native, tanpa wrapper sklearn).
+- **25 fitur** = 15 fitur per-klaim (basis regresi + `cost_claimed_log`, `cost_vs_base_rate`) + 4 flag (LOS panjang, severity tanpa prosedur, kode sekunder E46, prosedur 81.51) + 6 fitur relasional batch:
+  1. `copy_group_size` — jumlah klaim se-split dengan kombinasi (provider, diagnosis set, prosedur set, bucket rasio biaya) yang sama.
+  2. `exact_copy_group_size` — versi ketat yang menambahkan `admission_date`.
+  3. `min_same_patient_gap_days` — jarak minimal antar kunjungan pasien yang sama.
+  4. `los_vs_expected` — LOS dibagi median LOS train normal per (diagnosis primer, rawat jalan).
+  Fitur relasional dihitung per split (pasien/provider tidak menyeberangi split) sehingga bebas leakage.
+- **Seleksi hyperparameter hanya di validation**: grid depth {5,6} × `scale_pos_weight` {1,3}, 400 round, early stopping 50 (metric AUCPR). Konfigurasi terpilih: **depth 5, scale_pos_weight 3.0, iterasi 374** (validation AP 0.6153). Threshold operating point juga diambil dari validation F1 maksimum dan dibekukan sebelum test.
+- **Hasil test (seed 42, 50.000 klaim, sintetis)**: AP 0.6258 (baseline acak 0.0299), ROC-AUC 0.9178, F1 0.6501, precision 79.48%, recall 55.00%, MCC 0.6528; OOD stress AP 0.6078; fitur paling berpengaruh: `exact_copy_group_size`, `surgical_indicator`, `outpatient`, `cost_vs_base_rate`.
+- **Batasan**: AP repeat-billing dibatasi oleh hard negative readmission legit yang sengaja identik secara relasional; AP per-tipe sintetis bukan estimasi performa BPJS.
 
 ---
 

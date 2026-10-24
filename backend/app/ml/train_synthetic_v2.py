@@ -16,7 +16,6 @@ from typing import Any
 
 import numpy as np
 
-from backend.app.data.synthetic_v2.generator import DIAGNOSIS_CATALOG
 from backend.app.ml.evaluation_plots import (
     ACCENT,
     AMBER,
@@ -41,64 +40,11 @@ from backend.app.ml.evaluation_plots import (
     threshold_sweep_chart,
 )
 from backend.app.ml.svg_raster import render_svg_files
-
-
-_FACILITY = {value: index for index, value in enumerate(("RS", "KLINIK", "PUSKESMAS"))}
-_CLASS = {value: index for index, value in enumerate(("A", "B", "C", "D"))}
-_REGION = {value: index for index, value in enumerate(("sumatra", "java", "kalimantan", "sulawesi", "bali_nusa", "maluku_papua"))}
-_DIAGNOSIS = {value: index for index, value in enumerate(DIAGNOSIS_CATALOG)}
-
-
-def build_cost_features(
-    claims: list[dict[str, Any]], *, include_severity: bool = True, include_base_rate: bool = True
-) -> tuple[np.ndarray, list[str]]:
-    """Build cost-regression inputs without claimed cost or any derived target feature."""
-    names = [
-        "primary_diag_encoded", "num_secondary_diags", "num_procedures", "patient_age",
-        "num_medications", "length_of_stay", "outpatient", "icu_indicator", "ventilator_used",
-        "surgical_indicator", "facility_type", "facility_class", "region",
-    ]
-    if include_severity:
-        names.append("severity_level")
-    if include_base_rate:
-        names.append("ina_cbg_base_rate")
-    matrix = []
-    for claim in claims:
-        row = [
-            float(_DIAGNOSIS.get(claim["diagnosis_primary"], 0)),
-            float(len(claim.get("diagnosis_secondary", []))),
-            float(len(claim.get("procedure_codes", []))),
-            float(claim.get("patient_age", 0)),
-            float(len(claim.get("medication_codes", []))),
-            float(claim.get("length_of_stay", 0)),
-            float(bool(claim.get("outpatient", False))),
-            float(bool(claim.get("icu_indicator", False))),
-            float(bool(claim.get("ventilator_used", False))),
-            float(bool(claim.get("surgical_indicator", False))),
-            float(_FACILITY.get(claim.get("facility_type"), -1)),
-            float(_CLASS.get(claim.get("facility_class"), -1)),
-            float(_REGION.get(claim.get("region"), -1)),
-        ]
-        if include_severity:
-            row.append(float(claim.get("severity_level", 1)))
-        if include_base_rate:
-            row.append(float(claim.get("regional_base_rate", 0)))
-        matrix.append(row)
-    return np.asarray(matrix, dtype=np.float32), names
-
-
-def build_classifier_features(claims: list[dict[str, Any]]) -> tuple[np.ndarray, list[str]]:
-    base, names = build_cost_features(claims)
-    extras = np.asarray([
-        [
-            math.log1p(max(0.0, float(claim.get("cost_claimed", 0)))),
-            float(claim.get("cost_claimed", 0)) / max(1.0, float(claim.get("regional_base_rate", 0))),
-            float(float(claim.get("length_of_stay", 0)) > 14),
-            float(float(claim.get("severity_level", 1)) >= 3 and not claim.get("procedure_codes")),
-        ]
-        for claim in claims
-    ], dtype=np.float32)
-    return np.column_stack((base, extras)), [*names, "cost_claimed_log", "cost_vs_base_rate", "long_los_flag", "unsupported_severity_flag"]
+from backend.app.ml.v2_features import (
+    build_classifier_features,
+    build_cost_features,
+    build_training_context,
+)
 
 
 def _read_split(input_dir: Path, split: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -271,6 +217,23 @@ def render_training_report(artifact: dict[str, Any]) -> str:
     ]
     for name, metrics in classifier["baselines"].items():
         lines.append(f"  - {name}: {metrics['average_precision']:.4f} (n={metrics['n']:,}, positives={metrics['positive_n']:,})")
+    selection = classifier.get("selection")
+    if selection:
+        lines.extend(["", "### Classifier configuration (selected on validation only)", ""])
+        for item in selection["candidates"]:
+            lines.append(
+                f"- depth {item['max_depth']}, scale_pos_weight {item['scale_pos_weight']:.0f}: "
+                f"validation AP {item['validation_average_precision']:.4f} @ iteration {item['best_iteration']}"
+            )
+        chosen = selection["selected"]
+        lines.append(
+            f"- Selected: depth {chosen['max_depth']}, scale_pos_weight {chosen['scale_pos_weight']:.0f}, "
+            f"iteration {chosen['best_iteration']}; the test set played no part in this choice."
+        )
+    importance = classifier.get("feature_importance_gain_top10")
+    if importance:
+        lines.extend(["", "### Fitur paling berpengaruh (gain)", ""])
+        lines.extend(f"- `{item['feature']}`: {item['gain']:,.0f}" for item in importance[:5])
     operating = clf_metrics.get("operating_point")
     if operating:
         lines.extend([
@@ -449,20 +412,61 @@ def train_synthetic_v2(
         "deciles": decile_rows,
     }
 
-    train_classifier_x, classifier_features = build_classifier_features(train_claims)
-    test_classifier_x, _ = build_classifier_features(test_claims)
-    class_params = {"objective": "binary:logistic", "eval_metric": "aucpr", "max_depth": 5, "eta": 0.05,
-                    "subsample": 0.8, "colsample_bytree": 0.9, "tree_method": "hist", "nthread": 4, "seed": seed}
-    classifier = xgb.train(
-        class_params,
-        xgb.DMatrix(train_classifier_x, label=train_y, feature_names=classifier_features),
-        num_boost_round=180,
+    classifier_context = build_training_context(train_claims, train_y)
+    train_classifier_x, classifier_features = build_classifier_features(train_claims, context=classifier_context)
+    validation_classifier_x, _ = build_classifier_features(val_claims, context=classifier_context)
+    test_classifier_x, _ = build_classifier_features(test_claims, context=classifier_context)
+    d_train = xgb.DMatrix(train_classifier_x, label=train_y, feature_names=classifier_features)
+    d_validation = xgb.DMatrix(validation_classifier_x, label=val_y, feature_names=classifier_features)
+    base_class_params = {
+        "objective": "binary:logistic", "eval_metric": "aucpr", "eta": 0.05,
+        "subsample": 0.8, "colsample_bytree": 0.9, "tree_method": "hist", "nthread": 4, "seed": seed,
+    }
+    grid = []
+    for max_depth in (5, 6):
+        for scale_pos_weight in (1.0, 3.0):
+            booster = xgb.train(
+                {**base_class_params, "max_depth": max_depth, "scale_pos_weight": scale_pos_weight},
+                d_train,
+                num_boost_round=400,
+                evals=[(d_validation, "validation")],
+                early_stopping_rounds=50,
+                verbose_eval=False,
+            )
+            grid.append({
+                "max_depth": max_depth,
+                "scale_pos_weight": scale_pos_weight,
+                "best_iteration": int(booster.best_iteration) + 1,
+                "validation_average_precision": float(booster.best_score),
+                "booster": booster,
+            })
+    candidate = max(
+        grid,
+        key=lambda item: (item["validation_average_precision"], -item["max_depth"], -item["scale_pos_weight"]),
     )
-    classifier_scores = classifier.predict(xgb.DMatrix(test_classifier_x, feature_names=classifier_features))
-    validation_classifier_x, _ = build_classifier_features(val_claims)
-    validation_classifier_scores = classifier.predict(
-        xgb.DMatrix(validation_classifier_x, feature_names=classifier_features)
-    )
+    classifier = candidate["booster"]
+    prediction_range = (0, candidate["best_iteration"])
+
+    def _booster_scores(features: np.ndarray) -> np.ndarray:
+        return classifier.predict(
+            xgb.DMatrix(features, feature_names=classifier_features), iteration_range=prediction_range
+        )
+
+    classifier_scores = _booster_scores(test_classifier_x)
+    validation_classifier_scores = _booster_scores(validation_classifier_x)
+    classifier_selection = {
+        "objective": "validation AUCPR with early stopping; selection never touches the test set",
+        "num_boost_round_cap": 400,
+        "early_stopping_rounds": 50,
+        "candidates": [
+            {k: v for k, v in item.items() if k != "booster"}
+            for item in sorted(grid, key=lambda i: (i["max_depth"], i["scale_pos_weight"]))
+        ],
+        "selected": {
+            key: candidate[key]
+            for key in ("max_depth", "scale_pos_weight", "best_iteration", "validation_average_precision")
+        },
+    }
     threshold_selection = select_threshold(val_y, validation_classifier_scores)
     operating_threshold = float(threshold_selection["threshold"])
     logistic_scores = _logistic_rule_baseline(train_claims, train_labels, test_claims)
@@ -502,9 +506,9 @@ def train_synthetic_v2(
     stress_test_metrics = {}
     for split in ("test_enriched", "ood"):
         stress_claims, stress_labels = _read_split(input_dir, split)
-        stress_x, _ = build_classifier_features(stress_claims)
+        stress_x, _ = build_classifier_features(stress_claims, context=classifier_context)
         stress_y = np.asarray([int(label["is_anomaly"]) for label in stress_labels], dtype=np.int32)
-        stress_scores = classifier.predict(xgb.DMatrix(stress_x, feature_names=classifier_features))
+        stress_scores = _booster_scores(stress_x)
         anomaly_slices = _classification_slices(
             stress_labels,
             stress_scores,
@@ -603,7 +607,9 @@ def train_synthetic_v2(
     classifier.save_model(classifier_path)
     config_hash = hashlib.sha256(json.dumps({
         "regression": reg_params,
-        "classifier": class_params,
+        "classifier": base_class_params,
+        "classifier_grid": {"depths": [5, 6], "scale_pos_weight": [1.0, 3.0],
+                            "num_boost_round_cap": 400, "early_stopping_rounds": 50},
         "seed": seed,
         "num_boost_round": 180,
         "dataset_config_sha256": metadata.get("config_sha256"),
@@ -628,6 +634,13 @@ def train_synthetic_v2(
         },
         "classifier_candidate_not_runtime": {
             "features": classifier_features,
+            "selection": classifier_selection,
+            "feature_importance_gain_top10": [
+                {"feature": name, "gain": round(value, 2)}
+                for name, value in sorted(
+                    classifier.get_score(importance_type="gain").items(), key=lambda kv: -kv[1]
+                )[:10]
+            ],
             "test_metrics": test_classifier_metrics,
             "baselines": {
                 "random": _ranking_metrics(test_y, random_scores),
@@ -642,6 +655,8 @@ def train_synthetic_v2(
             "All claims and labels are synthetic; this does not validate BPJS performance.",
             "Test set was not used for feature or hyperparameter selection; the classifier threshold was fitted on validation only.",
             "Precision depends strongly on the synthetic 3% prevalence and is not an operational alert budget.",
+            "Relational features (duplicate groups, per-patient gaps, expected-LOS benchmark) are computed per dataset split; the runtime scorer does not use them.",
+            "Repeat-billing and cloning AP is bounded by designed legit readmission/duplicate hard negatives that share the same relational pattern.",
             "Grouped bootstrap intervals are single-seed; multi-seed training/evaluation is still pending.",
             "Natural-test per-type confidence intervals are reported via the separate enriched and OOD slices, not as natural-prevalence estimates.",
         ],
@@ -661,6 +676,10 @@ def train_synthetic_v2(
         print(f"Figures: {figures_dir}")
     print(f"Training report: {artifact_path}")
     print(f"Selected regressor: {selected['name']} (validation MedAE={selected['validation_medae']:.2f})")
+    print(
+        f"Selected classifier: depth {candidate['max_depth']}, scale_pos_weight {candidate['scale_pos_weight']}, "
+        f"iteration {candidate['best_iteration']} (validation AP {candidate['validation_average_precision']:.4f})"
+    )
     print(f"Classifier candidate test AP: {artifact['classifier_candidate_not_runtime']['test_metrics']['average_precision']}")
     return artifact
 
