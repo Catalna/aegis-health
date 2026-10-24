@@ -41,6 +41,14 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - Ten PNG figures are written to `docs/figures/` and embedded in `docs/EVALUATION_REPORT.md`; the trainer no longer emits an HTML page.
 - Remaining: at least five independently regenerated seeds, grouped CIs for every natural-test slice, broader runtime-ranking evaluation, and investigation of low-performing anomaly families.
 
+## Artifact cleanup & promotion decision (2026-10-24)
+
+- User request "delete the old models, use the new ones" was investigated, not executed blindly. The v2 regressor needs nine source inputs (`patient_age`, `outpatient`, `icu_indicator`, `ventilator_used`, `surgical_indicator`, `facility_type`, `facility_class`, `region`, `regional_base_rate`) that do not exist in the runtime `ClaimInput` schema or DB; a file swap would feed neutral defaults far outside the training distribution.
+- Decision: runtime keeps `backend/models_trained/xgboost_regressor.json` (Financial Agent) and `isolation_forest.pkl` (Fraud Agent). The synthetic v2 models remain candidates; promotion requirements are documented in `docs/MODELS.md` §2.6.
+- Deleted `backend/models_trained/xgboost_classifier.json` (legacy v1 classifier, 311 KB): grep confirmed no runtime agent, evaluation pipeline, or test loads it; only `train_xgboost.py` writes it and can regenerate it on demand.
+- Kept `evaluation_results.json` and `p1_evaluation_results.json`: they are read by API evaluation endpoints in `app/api/main.py`.
+- Fixed a stale artifact name in `docs/MODELS.md` §3.1 (Isolation Forest file is `isolation_forest.pkl`, trainer confirmed; doc said `.joblib`).
+
 ## Commits made
 
 - `a4585d1` — deterministic relational tier floors.

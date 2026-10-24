@@ -53,6 +53,7 @@ J-ARI/AEGIS menerapkan arsitektur **Multi-Model Intelligence** terpadu. Pendekat
 - **Peran Sistem**: Model ini berfungsi sebagai benchmark pembanding statistik terhadap pola klaim historis, bukan sebagai grouper tarif resmi INA-CBG dari Kemenkes.
 - **Lokasi File Model**: `backend/models_trained/xgboost_regressor.json`.
 - **Runtime vs kandidat**: runtime memakai regresor biaya dan deterministik rules. Kandidat klasifikasi tidak menjadi komponen runtime (lihat 2.5).
+- **Status artefak (Okt 2026)**: regressor legacy ini tetap artefak runtime aktif. Regressor v2 dan klasifikasi v2 statusnya kandidat — syarat promosi ada di bagian 2.6. File legacy `backend/models_trained/xgboost_classifier.json` telah dihapus karena tidak pernah dimuat oleh agent runtime.
 
 ### 2.2 Feature Engineering Pipeline (`backend/app/ml/feature_engineering.py`)
 Untuk mencegah terjadinya kebocoran target (*target leakage*), ekstraksi fitur dipisahkan secara tegas:
@@ -104,13 +105,27 @@ Financial Engine (`backend/app/core/financial_engine.py`) mengintegrasikan `shap
 - **Hasil test (seed 42, 50.000 klaim, sintetis)**: AP 0.6258 (baseline acak 0.0299), ROC-AUC 0.9178, F1 0.6501, precision 79.48%, recall 55.00%, MCC 0.6528; OOD stress AP 0.6078; fitur paling berpengaruh: `exact_copy_group_size`, `surgical_indicator`, `outpatient`, `cost_vs_base_rate`.
 - **Batasan**: AP repeat-billing dibatasi oleh hard negative readmission legit yang sengaja identik secara relasional; AP per-tipe sintetis bukan estimasi performa BPJS.
 
+## 2.6 Syarat Promosi Model v2 ke Runtime (Agenda, Belum Dipromosikan)
+
+Keputusan Oktober 2026: **tidak ada pertukaran file model**. Regressor v2 memakai kontrak 15 fitur yang berbeda (`v2_features.build_cost_features`, termasuk `severity_level` + `ina_cbg_base_rate` hasil ablation terpilih `severity_and_base_rate`; metrik test MAPE 12,83%, R² 0.8640, coverage upper-bound 90,18%). Sembilan input sumbernya **tidak tersedia** pada skema klaim runtime (`ClaimInput`): `patient_age`, `outpatient`, `icu_indicator`, `ventilator_used`, `surgical_indicator`, `facility_type`, `facility_class`, `region`, `regional_base_rate`. Mengisi field hilang dengan default netral berarti keluar dari distribusi data latih, sehingga pertukaran file langsung ditolak — benchmark biaya runtime akan terdegradasi diam-diam.
+
+Promosi regressor v2 hanya boleh dilakukan setelah:
+1. `ClaimInput`/API/DB (dan form demo) diperluas dengan field opsional di atas, lengkap dengan aturan validasinya.
+2. Sumber `regional_base_rate` yang jujur tersedia di runtime (mis. lookup tarif CBG, bukan default 0).
+3. `agents/financial_engine.py` dimuat model v2 beserta SHAP 15 fitur v2 (label terjemahan diperbarui).
+4. `backend/tests/test_financial.py` diperbarui ke kontrak baru dan seluruh suite hijau.
+
+Klasifikasi v2 **tidak memiliki jalur promosi per-klaim**: fitur relasionalnya menuntut kontekstualisasi batch, sehingga komponen relasional runtime tetap berbasis aturan + similarity komposit (bagian 4 dan 5).
+
+Artefak lain yang dipertahankan: `backend/models_trained/evaluation_results.json` dan `p1_evaluation_results.json` dibaca endpoint evaluasi API (`app/api/main.py`), sedangkan `isolation_forest.pkl` tidak memiliki versi pengganti sehingga tetap artefak Fraud Agent.
+
 ---
 
 ## 3. Unsupervised Machine Learning: Isolation Forest & Provider Graph
 
 ### 3.1 Isolation Forest Model (`backend/app/core/isolation_forest.py`)
 - **Tujuan**: Mendeteksi pencilan (*outliers*) multivariat yang tidak tertangkap oleh batasan aturan deterministik sederhana.
-- **Lokasi File Model**: `backend/models_trained/isolation_forest.joblib`.
+- **Lokasi File Model**: `backend/models_trained/isolation_forest.pkl`.
 - **Konfigurasi Pelatihan**:
   - `n_estimators`: 100 pohon isolasi.
   - `contamination`: 0.05 (asumsi 5% klaim memiliki karakteristik distribusi anomali ekstrim).
