@@ -34,7 +34,9 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - Standard run: seed 42, 150k/50k/50k. Results are in `docs/EVALUATION_REPORT.md`; all results are synthetic-only.
 - Trained model files and JSON/Markdown artifacts are in the ignored local path `backend/models_trained/synthetic_v2/`. They are not promoted over the legacy runtime model.
 - The evaluation includes random, benchmark-deviation, and logistic-rule baselines; aggregate group-bootstrap CIs and enriched/OOD slices. Natural per-type results expose poor slices including cloning and upcoding.
-- Classifier operating point (threshold 0.2396 fitted on validation, frozen before test): accuracy 97.97%, precision 80.25%, recall 42.80%, F1 0.5583, specificity 99.67%, balanced accuracy 71.24%, MCC 0.5775, ROC-AUC 0.8488, Brier 0.0180, and ECE 0.0039 on 50,000 test claims.
+- Classifier v2 adds six split-level relational features (duplicate group keys, per-patient minimum gap, train-normal expected-LOS ratio) and two supported-code flags on top of the 19 per-claim features; hyperparameters are chosen on validation only (depth 5 × scale_pos_weight 3.0, early stopping 50 rounds, 400-round cap), then evaluated once on test.
+- Test results: AP 0.6258 (was 0.5480 before relational features), ROC-AUC 0.9178, operating point F1 0.6501 with precision 79.48% and recall 55.00% at threshold 0.5601; OOD stress AP 0.6078. `exact_copy_group_size` is the highest-gain feature, which finally makes cloned claims rankable (AP 0.0610 vs 0.0039 previously).
+- Trade-off noted in the report: unbundling and repeat-billing slice APs moved down (0.5731/0.1753) because flagged groups now contain the designed legit readmission/duplicate hard negatives; repeat-billing AP is capped around the designed tie-group prevalence (~0.18).
 - Regressor test metrics: MAPE 12.83%, MedAE Rp641,852, MAE Rp863,859, RMSE Rp1,177,734, R² 0.8640, upper-bound coverage 90.18%. Coverage falls to 79–85% in the highest predicted-cost deciles.
 - Ten PNG figures are written to `docs/figures/` and embedded in `docs/EVALUATION_REPORT.md`; the trainer no longer emits an HTML page.
 - Remaining: at least five independently regenerated seeds, grouped CIs for every natural-test slice, broader runtime-ranking evaluation, and investigation of low-performing anomaly families.
@@ -48,5 +50,6 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - `b4d569d` — native XGBoost training/evaluation path.
 - `fbb413d` — synthetic v2 validation and training report.
 - `244a1ab` — classification metrics and PNG evaluation figures.
+- `a3968e3` — relational classifier features with validation-only tuning.
 
-Latest verification: 314 passed / 2 skipped; frontend build passed with the chunk-size warning above. Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
+Latest verification: 320 passed / 2 skipped; frontend build passed with the chunk-size warning above. Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
