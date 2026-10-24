@@ -125,6 +125,8 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
   exposure agregat Rp 462,3 jt. Tag DU diselaraskan `expect_high` → `expect>=high`
   (parser harapan sebelumnya tak membacanya); `--dry-run` & snapshot sepenuhnya hijau.
 
+- Hash commit gelombang ini: `8dd1406` (bersih: hapus mockup + skrip legacy + tambah README) dan `6e5d516` (tooling seed/reset + RUNBOOK + DECISIONS + ENTRY CHANGELOG).
+
 ## Commits made
 
 - `a4585d1` — deterministic relational tier floors.
