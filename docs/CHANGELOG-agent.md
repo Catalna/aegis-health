@@ -90,6 +90,12 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - Figures regenerated (8 throwback PNGs via `scripts/visualize_evaluation.py`): testing confusion TP=1,019 FP=247 FN=481 identical to the new operating point; PR legend AP=0.7259; validation logloss 0.1156@1 → 0.0601@306. `docs/EVALUATION_REPORT.md` rewritten with the v3 feature-set section, per-type recall table, and updated limitations.
 - Multi-seed replication (n=5) rerun with the new feature set: test AP **0.7153 ± 0.0104** [0.7038–0.7259] (was 0.6086 ± 0.0102); operating recall **0.6667 ± 0.0122** [0.6533–0.6793] — every seed clears the 60% target; precision 0.8095 ± 0.0199; enriched AP 0.8872 ± 0.0051; OOD 0.7069 ± 0.0254; upcoding AP 0.0967 ± 0.0164 (was 0.0145 ± 0.0014). Aggregates committed in `docs/EVALUATION_MULTISEED.md` + `.json`.
 
+## Deck PPTX dihapus; 8-PNG figure set menjadi satu-satunya visualisasi (2026-10-24)
+
+- User decision: hentikan jalur update/rebuild deck presentasi; seluruh folder `deck_redesign/` dihapus dari repo (2 PPTX + 2 PDF proposal, deck alur kerja, renderer Python `build_full_deck.py`/`build_slide.py`/`deck_kit.py`, render PNG s01–s18 + preview). Alasan: deck menyandang angka evaluasi mini-run lama (3.464 sampel, "Precision@50 0,5, prevalensi 32%", "MAPE 5,2%") yang tidak lagi merepresentasikan model; memelihara dua sumber angka kontraproduktif di depan juri.
+- One valid deliverable: the 8 throwback PNGs in `docs/figures/` regenerated from the promoted seed-42 model (AP 0.7259 / recall 0.6793 @ precision 0.8049, threshold 0.3173) — testing confusion identical to the operating point (TP=1,019 FP=247 FN=481); these images are presentation-ready (video/proposal material).
+- `python-pptx` uninstall check: venv cukup bersih; tidak ada perubahan `backend/requirements.txt`.
+
 ## Commits made
 
 - `a4585d1` — deterministic relational tier floors.
