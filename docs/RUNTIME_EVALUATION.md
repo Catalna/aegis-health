@@ -29,6 +29,8 @@
 
 ## Distribusi tier
 
+> Catatan (2026-10-24): angka distribusi berikut diukur dengan ambang default lama (medium ≥ 25, high ≥ 60) — itu pendorong utama kalibrasi tier; ambang saat ini medium ≥ 48.7, high ≥ 55 (lihat `docs/TIER_CALIBRATION.md`).
+
 - keseluruhan: {"medium": 609, "low": 78, "high": 13}
 
 | Tipe | median skor | tier medium+high |

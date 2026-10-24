@@ -319,7 +319,7 @@ emit "phase2_complete" {review}
 Phase 3: calculate_risk_score(clinical, financial, fraud, review)
   - Murni deterministik, non-LLM
   - Score = clinical(0-20) + financial(0-30) + fraud(0-20) + evidence_support(0-15)
-  - priority_tier: high(>=60) | medium(25-59) | low(<25)
+  - priority_tier: high(>=55) | medium(48.7-54.9) | low(<48.7), floor relasional: exact_duplicate → minimal High; repeat/cloning/unbundling → minimal Medium
         |
         v
 emit "phase3_complete" {risk}

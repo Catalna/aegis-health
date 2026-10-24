@@ -106,6 +106,14 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - Scope notes recorded in the doc: relational context = sample only; exact-duplicate `high` floor is DB-gated (unreachable offline); v1 tariff table covers 10 diagnosis families so most v2 diagnoses fall back to the z-score financial path (known limitation).
 - Artifacts: `docs/RUNTIME_EVALUATION.md` committed; JSON payload at `backend/models_trained/runtime_ranking_eval.json` (gitignored).
 
+## Fase 2 — Tier-band recalibration on validation (2026-10-24)
+
+- Calibration script `scripts/calibrate_tier_bands.py`: pre-registered discipline written in the docstring — score a 700-claim validation slice (50/type + 350 normals) through the deterministic runtime path (`pipeline.score_claims`, no LLM); grid from **observed score values** (rule v3 after two infeasible pre-registered windows against the quantized score distribution); select band maximizing alert precision inside the constraint window, fallback = minimize `|alert_frac − 0.20|`; **test read once** for transfer verification.
+- Finding: runtime scores clump at 35 (136 normal/99 anomaly) and 48 (111/123); zero normals ≥ 48.7 in validation; the pre-registered 10–22% alert window is empty (alert share jumps 0.80 → 0.46 → 0.049 between clumps) — fallback applied and documented.
+- Chosen bands: **medium ≥ 48.7, high ≥ 55.0**. Test verification: alert 5.7% at precision 0.800 (old bands: 88.9% at 0.510); high tier 18 claims, precision 1.000 (13 unbundling + 5 upcoding); tier split 660 low / 22 medium / 18 high (was 609 medium / 78 low / 13 high).
+- Code lands in the same commit: `risk_engine.py` bands 55.0/48.7 + `pipeline.py::_priority_tier` mirror; relational Medium floor extended to **unbundling** (aligns with the engine's own evidence-note narrative; keeps unbundling above the new medium threshold). Report `docs/TIER_CALIBRATION.md`, JSON artifact `backend/models_trained/tier_band_calibration.json` (gitignored), `docs/MODELS.md` §5.2 + `docs/Architecture.md` updated; `RUNTIME_EVALUATION.md` carries a provenance note on the measured-with-default-bands distribution.
+- Honest caveat recorded: alert recall on the enriched slice drops to ~9% — the tier is a capacity-triage label, not the detection instrument; detection stays with runtime ranking (AP 0.5964) and the candidate ML; engine recall recovery is the repair backlog (repeat window 46–60 days, v2 cloning thresholds, v1 tariff map).
+
 ## Commits made
 
 - `a4585d1` — deterministic relational tier floors.
@@ -117,5 +125,9 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - `244a1ab` — classification metrics and PNG evaluation figures.
 - `a3968e3` — relational classifier features with validation-only tuning.
 - `2974bf5` — Gemini schema coercion + thread-offloaded SHAP + throwback evaluation figures.
+- `c77f577` — classifier features 25→28 (grouper-consistency trio); test AP 0.7259, recall 0.6793.
+- `b2d68e8` — multiseed aggregate rewrite (n=5, new features; AP 0.7153 ± 0.0104).
+- `a5ff303` — deck artifacts removed (single-visual policy: docs/figures PNGs only).
+- `74d097a` — Fase 3.4 runtime ranking evaluation (`scripts/runtime_ranking_eval.py` + `docs/RUNTIME_EVALUATION.md`).
 
-Latest verification: 333 passed / 2 skipped; full smoke E2E on the live stack passed (see the E2E section above). Frontend build passed earlier with the chunk-size warning above. Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
+Latest verification: **334 passed / 2 skipped** (after tier-band recalibration). Full smoke E2E on the live stack passed earlier (see the E2E section above). Frontend build passed earlier with the chunk-size warning above. Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.

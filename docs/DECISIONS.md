@@ -1,10 +1,17 @@
 # Engineering Decisions — Synthetic v2 / Risk Evaluation
 
+## Runtime tier band recalibration (2026-10-24)
+
+- **Decision:** Replace the inherited, never-calibrated tier bands (medium ≥ 25, high ≥ 60) with calibrated bands **medium ≥ 48.7, high ≥ 55.0**, selected on a 700-claim validation slice through the deterministic runtime path and verified once on a 700-claim test slice. Applied in `risk_engine.calculate_risk_score` and mirrored in `evaluation.pipeline._priority_tier`. The relational Medium floor now also covers **unbundling**, aligning code with the engine's own evidence narrative.
+- **Reason:** Fase 3.4 exposed hard tier compression — 87% of the enriched test slice landed medium+high (609/700), normals' median score (35.0) equal to most anomaly types' — making the verifier queue useless and the UI unhealthy. The calibrated bands restore separation: high tier = 18 claims with **precision 1.000** (13 unbundling + 5 upcoding), alert (medium+high) 5.7% at precision 0.800 (vs 88.9% at precision 0.510 with old bands). Engine scores are quantized (clumps at 35/48); the 10–22% alert window was empty so the pre-registered fallback (minimize |alert_frac − 0.20|) picked the nearest available band just above the 48-clump, where no normal claims sit.
+- **Discipline:** selection on validation only; test read once; full grid, histogram, and fallback history in `docs/TIER_CALIBRATION.md` + `backend/models_trained/tier_band_calibration.json` (gitignored). Test suite 334 passed / 2 skipped after the change.
+- **Trade-off recorded:** alert recall on the enriched slice drops to ~9% — the tier is a capacity-triage label, not the detection instrument; detection remains runtime ranking (AP 0.5964) and the candidate ML. Restoring engine recall is the engine-repair backlog (repeat window 46–60 days, v2 cloning thresholds, v1 tariff map), not a threshold problem.
+
 ## Score and relational tier floors
 
 - **Decision:** Keep the runtime score as raw deterministic points on a maximum-85 scale; do not normalize it into a probability. UI and API expose `max_score=85`.
 - **Reason:** Actual runtime component caps are 20 + 30 + 20 + 15; Isolation Forest has zero runtime weight. Normalizing would obscure the existing points and require retuning all tier thresholds.
-- **Decision:** Exact duplicates have a High tier floor; strong cloning and repeat billing have a Medium floor. Floors do not alter raw points and are explained in evidence.
+- **Decision:** Exact duplicates have a High tier floor; strong cloning and repeat billing have a Medium floor. Floors do not alter raw points and are explained in evidence. (2026-10-24: the Medium floor additionally covers unbundling alongside the tier-band recalibration, matching the engine's own "strong relational evidence" narrative.)
 
 ## Financial deviation
 

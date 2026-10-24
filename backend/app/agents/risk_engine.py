@@ -160,14 +160,14 @@ def calculate_risk_score(
     total = min(85.0, score)
 
     tier = "low"
-    if total >= 60:
+    if total >= 55.0:
         tier = "high"
-    elif total >= 25:
+    elif total >= 48.7:
         tier = "medium"
 
     if fraud.exact_duplicate:
         tier = "high"
-    elif fraud.repeat_billing_flag or fraud.cloning_flag:
+    elif fraud.repeat_billing_flag or fraud.cloning_flag or fraud.unbundling_flag:
         if tier == "low":
             tier = "medium"
 

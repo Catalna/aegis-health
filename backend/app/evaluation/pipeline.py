@@ -160,9 +160,10 @@ def _fraud_assessment(claim: dict, population: list[dict], include_behavioral_co
 
 
 def _priority_tier(score: float) -> str:
-    if score >= 60:
+    # Mirror band dari risk_engine.calculate_risk_score (hasil kalibrasi tier).
+    if score >= 55.0:
         return "high"
-    if score >= 25:
+    if score >= 48.7:
         return "medium"
     return "low"
 

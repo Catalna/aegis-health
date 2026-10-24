@@ -181,8 +181,8 @@ Menerapkan regulasi teknis petunjuk operasional INA-CBG:
 Skor adalah poin risiko mentah, **bukan probabilitas**, pada rentang `0–85`. Maksimum berasal dari komponen kode: aturan klinis `20` + anomali finansial `30` + relasional `20` + dukungan evidence `15`; konteks Isolation Forest bernilai `0` pada runtime. Deviasi finansial disimpan bertanda, sementara `upward_exposure` hanya mengukur selisih klaim di atas benchmark dan bukan bukti kelebihan bayar.
 
 - Skor dihitung tanpa intervensi LLM. Field `max_score=85` dan UI menampilkan skala tersebut.
-- Tier runtime: High `>=60`, Medium `>=25`, Low `<25` poin.
-- Bukti exact duplicate memberi tier minimum High; cloning atau repeat billing yang terdeteksi memberi tier minimum Medium. Lantai tier tidak mengubah total poin.
+- Tier runtime (hasil kalibrasi kapasitas, `docs/TIER_CALIBRATION.md`): High `>=55`, Medium `>=48.7`, Low `<48.7` poin.
+- Bukti exact duplicate memberi tier minimum High; repeat billing, cloning, atau unbundling yang terdeteksi memberi tier minimum Medium. Lantai tier tidak mengubah total poin.
 
 ### 5.3 Priority Tiering
 Gunakan ambang runtime pada bagian 5.2 dan lantai tier untuk bukti relasional kuat. Tier adalah prioritas verifikasi, bukan konfirmasi fraud atau keputusan penolakan klaim.
