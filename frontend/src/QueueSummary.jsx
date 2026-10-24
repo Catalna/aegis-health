@@ -1,7 +1,18 @@
-import { Clock, ShieldCheck, AlertTriangle, AlertCircle, CheckCircle2, Timer } from 'lucide-react'
-import { formatDuration, formatQueueAge, formatSlaWindow, SLA_TARGETS } from './queueSummaryData'
+import { Users, Target, ShieldCheck, CheckCircle2, ArrowRight, Timer } from 'lucide-react'
+import { formatQueueAge, formatDuration } from './queueSummaryData'
 
-export default function QueueSummary({ summary, now = Date.now() }) {
+const formatRemaining = (ms) => {
+  if (ms == null) return '—'
+  if (ms < 0) return 'Batas terlewati'
+  const hours = ms / 3600000
+  if (hours >= 1.5) return `Sisa ${hours.toFixed(1).replace('.', ',')} jam`
+  const minutes = Math.max(5, Math.round(ms / 60000))
+  return `Sisa ${minutes} menit`
+}
+
+const pctOf = (count, total) => Math.min(100, Math.max(0, Math.round(((count || 0) / (total || 1)) * 100)))
+
+export default function QueueSummary({ summary, now = Date.now(), totalClaims = 0, verifiedCount = 0 }) {
   if (!summary) return null
 
   const queueStats = [
@@ -13,38 +24,58 @@ export default function QueueSummary({ summary, now = Date.now() }) {
     { label: 'Rata-rata waktu verifikasi', value: formatDuration(summary.verificationTiming?.averageMs), sub: 'Keputusan final' },
   ]
 
-  const slaConfigs = [
+  // Strip alur 4 tahap — memakai sisa jendela SLA dari summary yang dihitung
+  // queueSummaryData (queueSla / analysisSla / verificationSla .remainingMs).
+  const totalRef = totalClaims || (summary.pendingCount ?? 0) + (summary.scanningCount ?? 0) + (summary.reviewRequiredCount ?? 0)
+  const steps = [
     {
-      title: 'Tunggu Antrean',
-      metric: summary.queueSla,
-      targetMs: SLA_TARGETS.queueWaitMs,
-      targetLabel: 'Maks. 4 jam',
+      label: 'Antrean Masuk',
+      icon: <Users size={15} />,
+      value: summary.pendingCount ?? 0,
+      remaining: formatRemaining(summary.queueSla?.remainingMs),
+      tone: '',
     },
     {
-      title: 'Pemeriksaan Otomatis',
-      metric: summary.analysisSla,
-      targetMs: SLA_TARGETS.analysisMs,
-      targetLabel: 'Maks. 30 menit',
+      label: 'Analisis AI & ML',
+      icon: <Target size={15} />,
+      value: summary.scanningCount ?? 0,
+      remaining: formatRemaining(summary.analysisSla?.remainingMs),
+      tone: '',
     },
     {
-      title: 'Verifikasi Petugas',
-      metric: summary.verificationSla,
-      targetMs: SLA_TARGETS.verificationMs,
-      targetLabel: 'Maks. 24 jam',
+      label: 'Review Verifikator',
+      icon: <ShieldCheck size={15} />,
+      value: summary.reviewRequiredCount ?? 0,
+      remaining: formatRemaining(summary.verificationSla?.remainingMs),
+      tone: '',
+    },
+    {
+      label: 'Keputusan Final',
+      icon: <CheckCircle2 size={15} />,
+      value: verifiedCount,
+      remaining: 'Jalur selesai',
+      tone: 'tone-slate',
     },
   ]
 
   return (
-    <section className="card queue-overview-card mb-3" aria-labelledby="queue-summary-title">
+    <section className="card queue-overview-card dash-accent mb-3" aria-labelledby="queue-summary-title">
       <div className="section-header-compact">
         <div>
-          <h2 id="queue-summary-title" className="section-title">
-            <Timer size={18} className="text-emerald" aria-hidden="true" />
-            Pemantauan Antrean & Kepatuhan SLA
-          </h2>
-          <p className="section-subtitle">Status beban kerja operasional dan kecepatan pemrosesan klaim real-time. Dihitung dari maks. 1.000 klaim terbaru.</p>
+          <div className="section-title-row">
+            <span className="section-panel-icon" aria-hidden="true">
+              <Timer size={16} />
+            </span>
+            <div>
+              <h2 id="queue-summary-title" className="section-title">Pemantauan Antrean &amp; Kepatuhan SLA</h2>
+              <p className="section-subtitle">Status beban kerja operasional dan kecepatan pemrosesan klaim real-time. Dihitung dari maks. 1.000 klaim terbaru.</p>
+            </div>
+          </div>
         </div>
-        <span className="sample-badge">Monitoring Aktif</span>
+        <span className="live-pill">
+          <span className="live-dot" aria-hidden="true" />
+          Monitoring Aktif
+        </span>
       </div>
 
       {/* Grid Status Antrean */}
@@ -58,62 +89,33 @@ export default function QueueSummary({ summary, now = Date.now() }) {
         ))}
       </div>
 
-      {/* SLA Progress Cards */}
-      <div className="sla-monitor-grid">
-        {slaConfigs.map((sla, idx) => {
-          const maxElapsed = sla.metric?.maxElapsedMs ?? 0
-          const target = sla.metric?.targetMs ?? sla.targetMs
-          const progressPct = Math.min(100, Math.round((maxElapsed / target) * 100))
-          const isBreached = sla.metric?.breachCount > 0 || (sla.metric?.remainingMs != null && sla.metric.remainingMs < 0)
-          const isAtRisk = !isBreached && (sla.metric?.atRiskCount > 0 || progressPct >= 75)
-
-          const statusBadge = isBreached ? (
-            <span className="sla-badge breach">
-              <AlertCircle size={12} /> Melewati Batas ({sla.metric?.breachCount || 1})
-            </span>
-          ) : isAtRisk ? (
-            <span className="sla-badge warning">
-              <AlertTriangle size={12} /> Mendekati Batas
-            </span>
-          ) : (
-            <span className="sla-badge normal">
-              <CheckCircle2 size={12} /> Sesuai Target
-            </span>
-          )
-
-          return (
-            <div className={`sla-card ${isBreached ? 'breach' : isAtRisk ? 'at-risk' : ''}`} key={idx}>
-              <div className="sla-card-head">
-                <span className="sla-card-title">{sla.title}</span>
-                {statusBadge}
+      {/* Strip Alur Pemeriksaan 4 Tahap */}
+      <div className="flow" role="list" aria-label="Alur pemeriksaan klaim">
+        {steps.map((step, idx) => (
+          <div className="flow-step-wrap" key={idx} role="listitem">
+            {idx > 0 && (
+              <span className="flow-arrow" aria-hidden="true">
+                <ArrowRight size={14} strokeWidth={2.2} />
+              </span>
+            )}
+            <div className="flow-step">
+              <div className="flow-top">
+                <span className={`flow-icon ${step.tone}`}>{step.icon}</span>
+                <span className="flow-label">{step.label}</span>
               </div>
-
-              <div className="sla-duration-row">
-                <div className="sla-val-block">
-                  <span className="sla-tiny-label">Durasi Terlama</span>
-                  <span className="sla-val-text">{formatDuration(maxElapsed)}</span>
-                </div>
-                <div className="sla-val-block text-right">
-                  <span className="sla-tiny-label">Target SLA</span>
-                  <span className="sla-target-text">{sla.targetLabel}</span>
-                </div>
+              <div className="flow-value">
+                {(step.value || 0).toLocaleString('id-ID')} <span>klaim</span>
               </div>
-
-              {/* Progress Bar */}
-              <div className="sla-progress-track">
-                <div
-                  className={`sla-progress-bar ${isBreached ? 'bg-error' : isAtRisk ? 'bg-warning' : 'bg-emerald'}`}
-                  style={{ width: `${progressPct}%` }}
-                />
+              <div className="flow-bar">
+                <i style={{ width: `${pctOf(step.value, totalRef)}%` }} />
               </div>
-
-              <div className="sla-footer-row">
-                <span className="sla-window-status">{formatSlaWindow(maxElapsed, target)}</span>
-                <span className="sla-sample-count">Sampel: {sla.metric?.sampleCount || 0} klaim</span>
+              <div className="flow-foot">
+                <span>{step.remaining}</span>
+                <span>{pctOf(step.value, totalRef)}%</span>
               </div>
             </div>
-          )
-        })}
+          </div>
+        ))}
       </div>
     </section>
   )

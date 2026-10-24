@@ -4,13 +4,13 @@ import logging
 import os
 import uuid
 from contextlib import asynccontextmanager, suppress
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException, Request, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 from sqlalchemy.future import select
-from sqlalchemy import func, and_, case, update
+from sqlalchemy import func, and_, case, update, desc, asc, nulls_last
 
 from backend.app.models.schemas import ClaimInput, RiskAssessment
 from backend.app.agents.orchestrator import process_claim, ANALYSIS_VERSION
@@ -774,4 +774,137 @@ async def get_dashboard_stats(db: AsyncSessionLocal = Depends(get_db)):
         "potential_financial_exposure": round(float(potential_financial_exposure or 0)),
         # Deprecated additive compatibility key for older dashboard clients.
         "potential_savings": round(float(potential_financial_exposure or 0)),
+    }
+
+
+@app.get("/api/analytics/trend")
+async def get_analytics_trend(db: AsyncSessionLocal = Depends(get_db)):
+    """Agregasi harian untuk tren 7 hari, delta 'vs kemarin', klaim terbaru, dan preview prioritas."""
+    now_utc = datetime.now(timezone.utc)
+    today = now_utc.date()
+    start = today - timedelta(days=6)
+    start_dt = datetime(start.year, start.month, start.day, tzinfo=timezone.utc)
+    yesterday = today - timedelta(days=1)
+
+    # Jumlah klaim per tanggal penerimaan (+ berapa yang masih pending)
+    received_rows = await db.execute(
+        select(
+            func.date(ClaimRecord.received_at).label("day"),
+            func.count().label("total"),
+            func.sum(case((ClaimRecord.status == "pending", 1), else_=0)).label("pending"),
+        )
+        .where(ClaimRecord.received_at >= start_dt)
+        .group_by(func.date(ClaimRecord.received_at))
+    )
+    received_map = {
+        row.day: {"total": int(row.total or 0), "pending": int(row.pending or 0)}
+        for row in received_rows
+    }
+
+    # Berisiko tinggi per tanggal penerimaan (dari hasil analisis berjalan)
+    high_rows = await db.execute(
+        select(func.date(ClaimRecord.received_at).label("day"), func.count().label("high"))
+        .select_from(ClaimRecord)
+        .join(RiskAnalysisRecord, RiskAnalysisRecord.claim_id == ClaimRecord.claim_id)
+        .where(ClaimRecord.received_at >= start_dt, RiskAnalysisRecord.priority_tier == "high")
+        .group_by(func.date(ClaimRecord.received_at))
+    )
+    high_map = {row.day: int(row.high or 0) for row in high_rows}
+
+    # Selesai dianalisis per tanggal analisis
+    done_rows = await db.execute(
+        select(func.date(ClaimRecord.analyzed_at).label("day"), func.count().label("done"))
+        .where(
+            ClaimRecord.analyzed_at >= start_dt,
+            ClaimRecord.status.in_(CURRENT_ANALYSIS_CLAIM_STATUSES),
+        )
+        .group_by(func.date(ClaimRecord.analyzed_at))
+    )
+    done_map = {row.day: int(row.done or 0) for row in done_rows}
+
+    days_out = []
+    for offset in range(7):
+        day = start + timedelta(days=offset)
+        counts = received_map.get(day, {"total": 0, "pending": 0})
+        days_out.append({
+            "date": day.isoformat(),
+            "total": counts["total"],
+            "pending": counts["pending"],
+            "high_risk": high_map.get(day, 0),
+            "done": done_map.get(day, 0),
+        })
+
+    # Snapshot kemarin (basis delta badge 'vs. kemarin')
+    y_counts = received_map.get(yesterday, {"total": 0, "pending": 0})
+    y_high = high_map.get(yesterday, 0)
+    y_verified = await db.scalar(
+        select(func.count())
+        .select_from(ClaimRecord)
+        .where(ClaimRecord.status == "verified", func.date(ClaimRecord.verified_at) == yesterday)
+    ) or 0
+    t_verified = await db.scalar(
+        select(func.count())
+        .select_from(ClaimRecord)
+        .where(ClaimRecord.status == "verified", func.date(ClaimRecord.verified_at) == today)
+    ) or 0
+
+    # Preview klaim prioritas tertinggi untuk banner 3-zona (ID, skor, alasan)
+    priority_row = (
+        await db.execute(
+            select(ClaimRecord, RiskAnalysisRecord.evidence_json)
+            .join(RiskAnalysisRecord, RiskAnalysisRecord.claim_id == ClaimRecord.claim_id)
+            .where(ClaimRecord.priority_tier == "high")
+            .order_by(desc(ClaimRecord.risk_score), asc(ClaimRecord.claim_id))
+            .limit(1)
+        )
+    ).first()
+    priority_claim = None
+    if priority_row is not None:
+        claim, evidence_raw = priority_row
+        reason = None
+        try:
+            evidence = json.loads(evidence_raw or "{}")
+            reasons = (evidence.get("explanation") or {}).get("ranked_reasons") or []
+            if not reasons:
+                risk_evidence = (evidence.get("risk") or {}).get("evidence") or []
+                if risk_evidence:
+                    reasons = [risk_evidence[0].get("explanation")]
+            reason = next((str(r).rstrip(".") for r in reasons if r), None)
+        except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+            reason = None
+        priority_claim = {
+            "claim_id": claim.claim_id,
+            "risk_score": round(claim.risk_score) if claim.risk_score is not None else None,
+            "reason": reason,
+        }
+
+    # 5 klaim terakhir yang masuk untuk tabel "Klaim Terbaru"
+    recent_rows = await db.execute(
+        select(ClaimRecord).order_by(desc(ClaimRecord.received_at)).limit(5)
+    )
+    recent_claims = [
+        {
+            "claim_id": c.claim_id,
+            "provider_id": c.provider_id,
+            "diagnosis_primary": c.diagnosis_primary,
+            "cost_claimed": c.cost_claimed,
+            "risk_score": round(c.risk_score) if c.risk_score is not None else None,
+            "priority_tier": c.priority_tier,
+            "status": c.status,
+        }
+        for c in recent_rows.scalars()
+    ]
+
+    return {
+        "days": days_out,
+        "yesterday": {
+            "date": yesterday.isoformat(),
+            "total": y_counts["total"],
+            "pending": y_counts["pending"],
+            "high_risk": y_high,
+            "verified": int(y_verified),
+        },
+        "today_verified": int(t_verified),
+        "priority_claim": priority_claim,
+        "recent_claims": recent_claims,
     }

@@ -32,6 +32,7 @@ export const claimsApi = {
 
 export const analyticsApi = {
   dashboard: (config = {}) => api.get('/api/analytics/dashboard', config),
+  trend: (config = {}) => api.get('/api/analytics/trend', config),
 }
 
 export const healthApi = {
