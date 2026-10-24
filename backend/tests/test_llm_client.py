@@ -204,3 +204,52 @@ async def test_explicit_provider_skips_cascade(monkeypatch):
     result = await llm_client._run_llm_with_fallback("p", "s", _S, "m", 0.0, forced_provider="ollama")
     assert result.x == "dari_ollama"
     assert gem.calls == 0 and oll.calls == 1
+
+
+# ---------------------------------------------------------------------------
+# Koersi skema (fix E2E: Gemini mengirim field list sebagai string) + console
+# ---------------------------------------------------------------------------
+
+class _ListSchema(_BM):
+    signals: list[str]
+    ids: list[str]
+
+
+def test_validate_or_raise_comma_string_becomes_list():
+    """GeminiClient menerima field list sebagai STRING — diparse ulang di sini."""
+    from backend.app.core.llm_client import _validate_or_raise
+
+    raw = json.dumps({"signals": "duplikat_len, tindakan_tanpa_diagnosis", "ids": "C1, C2"})
+    parsed = _validate_or_raise(raw, _ListSchema)
+    assert parsed.signals == ["duplikat_len", "tindakan_tanpa_diagnosis"]
+    assert parsed.ids == ["C1", "C2"]
+
+
+def test_validate_or_raise_json_string_and_newline_become_list():
+    from backend.app.core.llm_client import _validate_or_raise
+
+    raw = json.dumps({"signals": ["tuntas_lewat_json"], "ids": "e1\ne2"})
+    parsed = _validate_or_raise(raw, _ListSchema)
+    assert parsed.signals == ["tuntas_lewat_json"]  # list asli tidak diubah
+    assert parsed.ids == ["e1", "e2"]
+
+
+def test_console_safe_survives_unencodable_console(monkeypatch):
+    """Windows console cp850 menolak '→' — fallback ASCII, alur cascade tetap jalan."""
+    import builtins
+
+    from backend.app.core.llm_client import _console_safe
+
+    real_print = builtins.print
+    calls = []
+
+    def broken_console(*args, **kwargs):
+        text = args[0] if args else ""
+        if any(ord(ch) > 255 for ch in text):
+            raise UnicodeEncodeError("charmap", text, 0, 1, "tidak terwakili")
+        calls.append(text)
+        return real_print(*args, **kwargs)
+
+    monkeypatch.setattr(builtins, "print", broken_console)
+    _console_safe("[LLM] gemini gagal → lanjut ollama")  # tidak boleh raise
+    assert calls and "→" not in calls[0]

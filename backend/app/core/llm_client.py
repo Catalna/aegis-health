@@ -133,9 +133,46 @@ def _build_json_instruction(system_prompt: str, output_schema: type[BaseModel]) 
     )
 
 
+def _coerce_for_schema(data: object, output_schema: type[BaseModel]) -> object:
+    """Koersi ringan dari nilai JSON mentah ke bentuk yang diharapkan skema pydantic.
+
+    GeminiClient sengaja mengirim field list sebagai STRING pada responseSchema
+    (menghindari item berganda yang tidak stabil), jadi string-nya harus dipetakan
+    kembali ke list di sini. Pydantic sudah memaklumat angka dari string, tapi
+    menolak string → list, jadi koersi list menjadi tanggung jawab kita.
+    """
+    if not isinstance(data, dict):
+        return data
+    fields = output_schema.model_fields
+    coerced: dict = {}
+    for key, value in data.items():
+        annotation = fields.get(key).annotation if key in fields else None
+        ann_name: str = getattr(annotation, "__name__", "") or str(annotation or "")
+        if "list" in ann_name.lower() and isinstance(value, str):
+            stripped = value.strip()
+            # 1) Model kadang mengembalikan JSON-string list `["a","b"]`
+            if stripped.startswith("[") and stripped.endswith("]"):
+                try:
+                    parsed = json.loads(stripped)
+                    coerced[key] = parsed if isinstance(parsed, list) else [stripped]
+                    continue
+                except json.JSONDecodeError:
+                    pass
+            # 2) string dipisah koma atau baris baru
+            items: list[str] = []
+            for chunk in stripped.replace("\n", ",").split(","):
+                cleaned = chunk.strip().strip('"').strip("'")
+                if cleaned:
+                    items.append(cleaned)
+            coerced[key] = items
+        else:
+            coerced[key] = value
+    return coerced
+
+
 def _validate_or_raise(raw: str, output_schema: type[BaseModel]) -> BaseModel:
     data = json.loads(_clean_json_text(raw))
-    return output_schema.model_validate(data)
+    return output_schema.model_validate(_coerce_for_schema(data, output_schema))
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +381,23 @@ async def get_available_model(preferred: str, fallback: str = DEFAULT_MODEL) -> 
     return await _ollama_client.get_available_model(preferred, fallback)
 
 
+def _console_safe(text: str) -> None:
+    """Cetak teks tanpa membiarkan crash pada console Windows ber-codepage terbatas.
+
+    Pesan bisa mengandung karakter dari API eksternal (mis. simbol matematika pada
+    teks pydantic); console cp850/cp1252 menolak encode-nya. Fallback: ganti
+    karakter tak terwakili dengan '?' alih-alih membiarkan UnicodeEncodeError
+    memberati jalur cascade LLM di Windows.
+    """
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        try:
+            print(text.encode("ascii", "replace").decode("ascii"))
+        except Exception:
+            pass  # console bermasalah total — jangan menabrak alur pengujian/cascade
+
+
 async def _run_llm_with_fallback(
     prompt: str,
     system_prompt: str,
@@ -366,7 +420,9 @@ async def _run_llm_with_fallback(
             result = await client.structured_call(prompt, system_prompt, output_schema, model, temperature)
         except LLMError as exc:
             notes.append(f"{name}: {exc}")
-            print(f"[LLM] Provider '{name}' gagal → lanjut ke backup berikutnya ({str(exc)[:120]})")
+            _console_safe(
+                f"[LLM] Provider '{name}' gagal -> lanjut ke backup berikutnya ({str(exc)[:120]})"
+            )
             continue
         _last_provider.set(name)
         return result

@@ -67,6 +67,21 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - Per-type ordering is stable across seeds: unbundling 0.586 ± 0.019 ≫ repeat_billing 0.164 ± 0.015 > phantom 0.099 ± 0.005 > inflated 0.072 / cloning 0.065 / prolonged 0.051 (± ~0.005) > upcoding 0.0145 ± 0.0014 — stably the worst slice, confirming the known gap.
 - Per-seed trained model files stay gitignored under `models_trained/`; the committed evidence is the aggregate Markdown + JSON.
 
+## E2E verification & runtime reliability fixes (2026-10-24)
+
+- First full smoke E2E pass on a live stack (PostgreSQL :5432 + API :8000 + Ollama :11434): deterministic hard-reject of corrupted admission/discharge dates (`failed` + safe message), a normal claim completes the FIFO queue path to `low_priority` with a stored verifier decision, and duplicate intake returns 409. `scripts/smoke_test.py` passes end-to-end.
+- Found and fixed a cascade-breaking bug (Gemini could never serve): `GeminiClient` deliberately sends list fields as strings in `responseSchema`, but `_validate_or_raise` never parsed them back — every structured call with a list field failed pydantic validation 3× (burning network retries), then the fallback-log `print()` containing '→' raised `UnicodeEncodeError` on the Windows cp1252 console *inside the cascade exception handler*, aborting the loop before Ollama and dropping every call to the template. Fixes: `_coerce_for_schema()` (string→list via JSON-list / comma / newline; one shared point used by both clients) and `_console_safe()` ASCII-degrading print. 3 regression tests added to `test_llm_client.py`.
+- Verified live against the real API: provider=gemini, `model_used=gemini-flash-lite-latest`, 2.26 s, list fields coerced correctly.
+- Found and fixed a severe event-loop blocker: `analyze_financial` ran SHAP `PermutationExplainer` synchronously inside the coroutine (19–49 s/it × 2 ≈ 38–100 s per claim), freezing ALL API requests during every analysis. The whole financial computation now runs via `asyncio.to_thread`; the live log shows HTTP 200 responses continuing mid-SHAP.
+- Latency probe (6 sequential normal claims through the queue worker, POST→terminal): claim 1 is 60.7 s one-time (xgboost/SHAP explainer build), claims 2–6 p50 **7.29 s** (4.7–10.7 s) — faster than the pre-fix ~10 s calls that wasted 3 Gemini retries. `agent_runs` provenance: review_agent=success/gemini-flash-lite-latest. explanation_agent=template for low tier BY DESIGN (clean-claim narration stays deterministic); a medium-tier probe (score 43.0, review_required, 8.5 s) confirmed explanation_agent=success/gemini-flash-lite-latest.
+- Auditability verified directly in PostgreSQL per claim: 6 `agent_runs`, 2 `audit_logs`, 1 `human_decisions`.
+
+## Throwback figure reset (2026-10-24)
+
+- User request: regenerate the evaluation visuals in the style of the earlier ML report document set — 8 plain-matplotlib 960×720 charts (feature importance, outcome distribution, train/val/test confusion matrices, testing PR curve with AP legend, testing ROC with AUC legend, validation log loss per boosting round) — and delete the previous 10-figure set to avoid confusion.
+- Added committed script `scripts/visualize_evaluation.py` (rerunnable; defaults point at the seed-42 dataset directory, overridable via args). Deleted old `figures/01..10_*.png`; rewrote the `docs/EVALUATION_REPORT.md` Figures section to the new set with a provenance paragraph (threshold 0.5601 chosen on validation, applied uniformly).
+- Sanity: recomputed Testing confusion [TN 48287, FP 213, FN 675, TP 825] is identical to the recorded operating point; PR AP 0.6258 and ROC-AUC 0.9178 match the report; validation logloss 0.2165 @ round 1 → 0.0779 @ 374. `matplotlib==3.10.9` added to `backend/requirements.txt`; all images synthetic-demonstrator-only.
+
 ## Commits made
 
 - `a4585d1` — deterministic relational tier floors.
@@ -78,4 +93,4 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - `244a1ab` — classification metrics and PNG evaluation figures.
 - `a3968e3` — relational classifier features with validation-only tuning.
 
-Latest verification: 320 passed / 2 skipped; frontend build passed with the chunk-size warning above. Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
+Latest verification: 333 passed / 2 skipped; full smoke E2E on the live stack passed (see the E2E section above). Frontend build passed earlier with the chunk-size warning above. Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.

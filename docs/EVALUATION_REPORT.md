@@ -93,45 +93,43 @@
 
 ## Figures
 
-### Distribusi skor model
+Figur diregenerasi dari model final seed-42 + split dataset yang sama dengan
+training oleh `scripts/visualize_evaluation.py` (gaya sederhana 960×720).
+Ambang keputusan seragam 0.5601 — dipilih di validation (max-F1), lalu
+diterapkan apa adanya ke train/validation/test. Ini demonstrator sintetis,
+bukan validasi BPJS.
 
-![Distribusi skor model](figures/01_distribusi_skor.png)
+### Feature Importance (gain share, 14 fitur teratas)
 
-### Kurva Precision–Recall
+![Feature Importance](figures/feature_importance.png)
 
-![Kurva Precision–Recall](figures/02_precision_recall.png)
+### Label Outcome Distribution (seluruh split, dataset sintetis v2)
 
-### Kurva ROC
+![Label Outcome Distribution](figures/label_distribution.png)
 
-![Kurva ROC](figures/03_roc_curve.png)
+### Training Confusion Matrix (ambang 0.5601)
 
-### Sapuan ambang keputusan
+![Training Confusion Matrix](figures/confusion_train.png)
 
-![Sapuan ambang keputusan](figures/04_sapuan_ambang.png)
+### Validation Confusion Matrix (ambang 0.5601)
 
-### Confusion matrix pada ambang terpilih
+![Validation Confusion Matrix](figures/confusion_validation.png)
 
-![Confusion matrix pada ambang terpilih](figures/05_confusion_matrix.png)
+### Testing Confusion Matrix (ambang 0.5601 — identik operating point laporan)
 
-### Ringkasan metrik klasifikasi
+![Testing Confusion Matrix](figures/confusion_test.png)
 
-![Ringkasan metrik klasifikasi](figures/06_ringkasan_metrik.png)
+### Testing Precision-Recall Curve
 
-### Average Precision per tipe anomali
+![Testing Precision-Recall Curve](figures/pr_curve_test.png)
 
-![Average Precision per tipe anomali](figures/07_ap_per_tipe.png)
+### Testing ROC Curve
 
-### Prediksi vs biaya aktual
+![Testing ROC Curve](figures/roc_curve_test.png)
 
-![Prediksi vs biaya aktual](figures/08_prediksi_biaya.png)
+### Validation Log Loss per Boosting Round
 
-### Distribusi error relatif regressor
-
-![Distribusi error relatif regressor](figures/09_error_regressor.png)
-
-### Coverage batas atas per desil
-
-![Coverage batas atas per desil](figures/10_coverage_desil.png)
+![Validation Log Loss](figures/validation_logloss.png)
 
 
 ## Limitations

@@ -6,6 +6,7 @@ Fallback    : z-score terhadap peer group baseline — tetap deterministik,
               tetap ada angka, TIDAK PERNAH fallback ke "no score"
               dan TIDAK PERNAH memberi anomaly_score maksimum semu.
 """
+import asyncio
 import os
 import logging
 import math
@@ -124,6 +125,17 @@ def _zscore_fallback(claim: ClaimInput, reason: str) -> FinancialAssessment:
 
 
 async def analyze_financial(claim: ClaimInput) -> FinancialAssessment:
+    """Jalankan perhitungan finansial di thread kerja, bukan di event loop.
+
+    SHAP PermutationExplainer memakan 20-100 detik per klaim (CPU-bound). Bila
+    dipanggil langsung di dalam coroutine, event loop terblokir dan SEMUA request
+    API (health, dashboard, endpoint lain) ikut tertahan lewat masa analisis.
+    asyncio.to_thread melepaskan loop; numpy/xgboost/shap kebanyakan melepas GIL.
+    """
+    return await asyncio.to_thread(_analyze_financial_sync, claim)
+
+
+def _analyze_financial_sync(claim: ClaimInput) -> FinancialAssessment:
     try:
         model, explainer = get_financial_model()
     except Exception as e:
