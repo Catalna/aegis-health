@@ -57,6 +57,16 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - Docs updated: `MODELS.md` §6.1/6.2, `PRD.md` NFR-2, `Architecture.md` client table + diagram, `AgentWorkflow.md` LLM backbone, `DECISIONS.md` (context/options/constraints).
 - Tests: 5 new cascade tests in `test_llm_client.py` (chain order, primary succeeds, fallback to Ollama, all-fail raises, explicit provider skips cascade); targeted agent suites passed (75).
 
+## Multi-seed replication, n=5 (2026-10-24)
+
+- New tooling: `scripts/run_multiseed.py` (per seed: regenerate the standard dataset, then train; deterministic datasets are reused if present; reports go to `backend/models_trained/synthetic_v2_multiseed/seed{N}/` and never touch the canonical docs report) and `backend/app/ml/multiseed_summary.py` (aggregates headline classifier/regressor metrics, per-type AP/F1, stress slices, baselines, and per-seed selections into mean ± sample stdev + min–max), with 5 unit tests in `test_multiseed_summary.py`.
+- Trainer CLI: `--report` default changed to `None` — the figures/canonical report path must be passed explicitly, so replication runs cannot silently overwrite `docs/EVALUATION_REPORT.md`.
+- Ran seeds 43–46 (full regeneration, validator passed, distinct dataset config SHA-256 per seed) and reused the recorded seed-42 run → n = 5 replication reports. Aggregate committed as `docs/EVALUATION_MULTISEED.md` + `docs/EVALUATION_MULTISEED.json`.
+- Headline (test natural, synthetic demonstrator): AP **0.6086 ± 0.0102** [0.6007–0.6258]; ROC-AUC 0.9085 ± 0.0119; operating F1 0.6376 ± 0.0077 [0.6305–0.6501]; enriched AP 0.8526 ± 0.0053; OOD AP 0.5982 ± 0.0304; regressor MAPE 12.86% ± 0.09, R² 0.8628 ± 0.003. Baselines: benchmark-deviation 0.1589 ± 0.0068, logistic rule flags 0.1678 ± 0.0047, random 0.0300.
+- Honest read: the seed-42 headline (test AP 0.6258) is the top of the 5-seed range; a typical run lands ≈ 0.60–0.61. Each seed re-selected hyperparameters on its own validation — 4 of 5 seeds picked `scale_pos_weight` 1.0 while seed 42 picked 3.0; the selection *procedure* was replicated, not a single frozen config (freezing it across regenerated datasets would be tuning against the test set).
+- Per-type ordering is stable across seeds: unbundling 0.586 ± 0.019 ≫ repeat_billing 0.164 ± 0.015 > phantom 0.099 ± 0.005 > inflated 0.072 / cloning 0.065 / prolonged 0.051 (± ~0.005) > upcoding 0.0145 ± 0.0014 — stably the worst slice, confirming the known gap.
+- Per-seed trained model files stay gitignored under `models_trained/`; the committed evidence is the aggregate Markdown + JSON.
+
 ## Commits made
 
 - `a4585d1` — deterministic relational tier floors.

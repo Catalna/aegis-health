@@ -690,7 +690,10 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=Path("backend/models_trained/synthetic_v2"))
     parser.add_argument("--seed", type=int, default=42)
     root = Path(__file__).resolve().parents[3]
-    parser.add_argument("--report", type=Path, default=root / "docs/EVALUATION_REPORT.md")
+    # Tanpa --report: tulis JSON/MD ringkas ke output_dir saja; gambar & laporan
+    # ditanam (docs/EVALUATION_REPORT.md) hanya bila path diberikan eksplisit agar
+    # report kanonik (mis. seed 42) tidak tertimpa run lain secara diam-diam.
+    parser.add_argument("--report", type=Path, default=None)
     args = parser.parse_args()
     train_synthetic_v2(args.dataset, args.out, seed=args.seed, report_path=args.report)
     return 0
