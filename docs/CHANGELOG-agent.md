@@ -127,6 +127,23 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 
 - Hash commit gelombang ini: `8dd1406` (bersih: hapus mockup + skrip legacy + tambah README) dan `6e5d516` (tooling seed/reset + RUNBOOK + DECISIONS + ENTRY CHANGELOG).
 
+## Windows setup README + Docker removal (2026-10-25)
+
+- README rewritten as the canonical end-to-end local Windows guide (clone →
+  PostgreSQL `CREATE DATABASE jari_db` → `.env` from a credential-free template →
+  venv + requirements → `npm ci` → runtime models → `start.bat` → health check →
+  optional synthetic seed/reset → stop; troubleshooting table included).
+- `start.bat` made repository-location independent (`%~dp0`, direct
+  `venv\Scripts\python.exe` call, no hardcoded developer path).
+- `.env.example` converted to a local Windows template with `<password-lokal>`
+  placeholder; no real credentials, no Docker-only hostnames.
+- Docker deployment setup removed: `compose.yaml`, `DOCKER.md`, `.dockerignore`,
+  `deploy/backend.Dockerfile`, `deploy/frontend.Dockerfile`, `deploy/nginx.conf`;
+  active `docs/Architecture.md` entry dropped (historical plan text kept).
+- Verification: README link check green; no active Docker references in tracked
+  files; frontend production build green; no runtime code touched (`/api/health`
+  not re-run — stack offline).
+
 ## Commits made
 
 - `a4585d1` — deterministic relational tier floors.
@@ -143,5 +160,12 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - `2682368` — deck artifacts removed (single-visual policy: docs/figures PNGs only).
 - `1cd0762` — Fase 3.4 runtime ranking evaluation (`scripts/runtime_ranking_eval.py` + `docs/RUNTIME_EVALUATION.md`).
 - `20b38d2` — (teman dev) dashboard redesign + `GET /api/analytics/trend` (dipull; basis rebase).
+- `68ab4b2` — spesifikasi windows README + penghapusan Docker (gate persetujuan).
+- `48fd161` — plan implementasi 6-task untuk pekerjaan ini.
+- `6cf5a98` — drop entri compose.yaml dari tree arsitektur.
+- `80e424b` — `.env.example` template lokal Windows (kredensial placeholder).
+- `3bb875e` — `start.bat` portabel (`%~dp0`).
+- `7aa1309` — README ditulis-ulang sebagai panduan setup end-to-end.
+- `23b5cbe` — hapus setup penerapan Docker (6 berkas).
 
-Latest verification: **334 passed / 2 skipped** (after tier-band recalibration); live demo cycle 2026-10-24 — reset → seed 220/220 → drain `failed=0` → per-scenario snapshot **220/220** (tier high 4 / medium 86 / low 130). Full smoke E2E on the live stack passed earlier (see the E2E section above). Frontend build passed earlier with the chunk-size warning above. Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
+Latest verification: **334 passed / 2 skipped** (after tier-band recalibration); live demo cycle 2026-10-24 — reset → seed 220/220 → drain `failed=0` → per-scenario snapshot **220/220** (tier high 4 / medium 86 / low 130). Full smoke E2E on the live stack passed earlier (see the E2E section above). Frontend build passed earlier with the chunk-size warning above. Docs/config verification 2026-10-25 (README rewrite + Docker removal): README link check green, active Docker refs zero, frontend build green (same chunk warning), `/api/health` not re-run (stack offline). Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
