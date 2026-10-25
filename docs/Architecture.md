@@ -126,7 +126,6 @@ E-Jak/
 �           +-- MLEvaluation.jsx     # Metrik evaluasi ML
 +-- docs/                            # Dokumentasi produk
 +-- scripts/                         # Utility scripts (training, data generation)
-+-- compose.yaml                     # Docker Compose (PostgreSQL)
 +-- start.bat                        # Windows startup script
 ```
 
