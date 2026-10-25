@@ -1,66 +1,111 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
-import { Search, AlertCircle, CheckCircle2, Clock, ChevronLeft, ChevronRight, X } from 'lucide-react'
-import { claimsApi, safeErrorMessage } from '../api'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import {
+  Search, AlertCircle, CheckCircle2, Clock, ChevronLeft, ChevronRight, X,
+  ArrowRight, RotateCw, ListChecks, CircleX, ArrowUpDown, List, SearchX,
+} from 'lucide-react'
+import { claimsApi, analyticsApi, safeErrorMessage } from '../api'
 import { STATUS_LABELS, TIER_LABELS, formatDecision } from '../humanLanguage'
 import DataFreshness from '../DataFreshness'
 import { formatDuration, formatQueueAge as formatQueueAgeValue } from '../queueSummaryData'
+import { ClaimsListSkeleton } from '../Skeleton'
+import { navigateWithTransition } from '../viewTransition'
+import EmptyState from '../EmptyState'
 
 const VALID_STATUSES = ['pending', 'scanning', 'processed', 'review_required', 'failed', 'verified']
 const VALID_SORTS = ['priority', 'queue', 'risk_desc', 'risk_asc', 'cost_desc', 'cost_asc', 'id']
 const FILTER_PARAMS = ['q', 'status', 'tier', 'received_from', 'received_to', 'admission_from', 'admission_to', 'sort']
+const PAGE_SIZE = 25
+// Antrian dianggap "menggantung" setelah 2 jam menunggu
+const QUEUE_WARN_MS = 2 * 60 * 60 * 1000
 
-function RiskBadge({ tier }) {
-  if (!tier) return <span className="text-muted" style={{ fontSize: '0.8rem' }}>—</span>
-  if (tier === 'high') return <span className="badge badge-high"><AlertCircle size={12} /> {TIER_LABELS.high}</span>
-  if (tier === 'medium') return <span className="badge badge-medium"><AlertCircle size={12} /> {TIER_LABELS.medium}</span>
-  return <span className="badge badge-low"><CheckCircle2 size={12} /> {TIER_LABELS.low}</span>
+const QUICK_FILTERS = [
+  { key: '', label: 'Semua klaim', dot: '#128a61', countKey: 'total_claims' },
+  { key: 'review_required', label: 'Perlu ditinjau petugas', dot: '#d97706', countKey: 'review_required_claims' },
+  { key: 'pending', label: 'Menunggu', dot: '#94a3b8', countKey: 'pending_claims' },
+  { key: 'scanning', label: 'Sedang diperiksa', dot: '#2563eb', countKey: 'scanning_claims' },
+  { key: 'verified', label: 'Sudah diputuskan', dot: '#12b76a', countKey: 'verified_claims' },
+  { key: 'failed', label: 'Gagal', dot: '#e11d48', countKey: 'failed_claims' },
+]
+
+/* ---------------------------------------------------------------------------
+   Atoms sel tabel
+--------------------------------------------------------------------------- */
+
+function StatusBadge({ claim }) {
+  const status = claim.status
+  const icons = {
+    pending: <Clock aria-hidden="true" />,
+    scanning: <RotateCw aria-hidden="true" />,
+    review_required: <AlertCircle aria-hidden="true" />,
+    failed: <CircleX aria-hidden="true" />,
+    processed: <CheckCircle2 aria-hidden="true" />,
+    verified: <CheckCircle2 aria-hidden="true" />,
+  }
+  const cls = {
+    pending: 'ckl-st-pending',
+    scanning: 'ckl-st-scanning',
+    review_required: 'ckl-st-review',
+    failed: 'ckl-st-failed',
+    processed: 'ckl-st-pending',
+    verified: 'ckl-st-verified',
+  }[status] || 'ckl-st-pending'
+
+  let label = STATUS_LABELS[status] || status
+  if (status === 'verified') label = `Diputuskan: ${formatDecision(claim.human_decision)}`
+
+  return <span className={`ckl-status-badge ${cls}`}>{icons[status]}{label}</span>
 }
 
-function ScoreBar({ score, tier }) {
-  const fillColors = { high: 'var(--risk-high)', medium: 'var(--risk-medium)', low: 'var(--risk-low)' }
-  const textColors = { high: 'var(--error-text)', medium: 'var(--warning-text)', low: 'var(--risk-low)' }
+function StatusSub({ claim, errorMessage }) {
+  const status = claim.status
+  if (errorMessage) {
+    return (
+      <div className="ckl-status-sub err" title={errorMessage}>{errorMessage}</div>
+    )
+  }
+  let text = null
+  if (status === 'processed') text = 'Menunggu keputusan petugas'
+  else if (status === 'review_required') text = `Upaya pemeriksaan ke-${claim.analysis_attempts ?? 1}`
+  else if (status === 'failed') text = 'Butuh pemeriksaan ulang'
+  else if (status === 'verified' && claim.verified_at) text = `Diputus ${formatReceivedTime(claim.verified_at)}`
+  else if (status === 'scanning' && claim.analysis_started_at) text = `Dimulai ${formatQueueAgeValue(claim.analysis_started_at, Date.now())} lalu`
+  if (!text) return null
+  return <div className="ckl-status-sub">{text}</div>
+}
+
+function RiskCell({ claim }) {
+  const hasScore = !['pending', 'scanning'].includes(claim.status) && claim.risk_score != null
+  if (!hasScore) {
+    return (
+      <span className="ckl-risk-pending">
+        {claim.status === 'pending' ? 'Belum diperiksa' : 'Belum tersedia'}
+      </span>
+    )
+  }
+  const score = Math.round(claim.risk_score)
+  const tier = claim.priority_tier || 'low'
+  const fillColors = { high: 's-high', medium: 's-medium', low: 's-low' }
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-      <div className="progress-bar" style={{ width: 80, height: 5 }}>
-        <div className="progress-fill" style={{ width: `${score}%`, background: fillColors[tier] || 'var(--text-muted)' }} />
+    <div className="ckl-risk-cell">
+      <span className={`ckl-risk-num ${fillColors[tier]}`}>{score}</span>
+      <div className="ckl-risk-bar" role="img" aria-label={`Skor risiko ${score} dari 100, tingkat ${TIER_LABELS[tier] || 'rendah'}`}>
+        <i className={fillColors[tier]} style={{ width: `${score}%` }} />
       </div>
-      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: textColors[tier] || 'var(--text-muted)', minWidth: 28 }}>{score ?? '—'}</span>
+      <div className="ckl-risk-tier-wrap">
+        <span className={`ckl-risk-tier ${fillColors[tier]}`}>{TIER_LABELS[tier] || 'Rendah'}</span>
+      </div>
     </div>
   )
 }
 
-function StatusBadge({ claim }) {
-  if (claim.status === 'verified') {
-    return <div>
-      <span className="badge" style={{ background: 'var(--success)', color: 'white', fontSize: '0.65rem' }}>✓ {STATUS_LABELS.verified}</span>
-       <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>{formatDecision(claim.human_decision)}</div>
-    </div>
-  }
-  const isFailed = claim.status === 'failed'
-  const isReview = claim.status === 'review_required'
-  const isHumanVerificationPending = claim.status === 'processed'
-  const color = isFailed ? 'var(--error-text)' : isReview ? 'var(--risk-medium-bg)' : 'var(--bg-card-hover)'
-  const textColor = isFailed ? 'white' : isReview ? 'var(--warning-text)' : 'var(--text-secondary)'
-  return <div>
-    <span className="badge" style={{ background: color, color: textColor, fontSize: '0.65rem' }}>
-      {claim.status === 'scanning' || claim.status === 'pending' ? <Clock size={12} /> : isFailed || isReview ? <AlertCircle size={12} /> : <CheckCircle2 size={12} />}
-      {STATUS_LABELS[claim.status] || claim.status}
-    </span>
-    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>
-       {isHumanVerificationPending ? 'Menunggu keputusan petugas' : `Upaya pemeriksaan: ${claim.analysis_attempts ?? 0}`}
-    </div>
-  </div>
-}
-
-function formatReceivedAt(value) {
+function formatReceivedTime(value) {
   if (!value) return '—'
   const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })
-}
-
-function formatQueueAge(value, now = Date.now()) {
-  return formatQueueAgeValue(value, now)
+  if (Number.isNaN(parsed.getTime())) return '—'
+  const d = parsed.toLocaleString('id-ID', { day: '2-digit', month: '2-digit' })
+  const t = parsed.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  return `${d}, ${t.replace(':', '.')}`
 }
 
 function formatClaimQueueTime(claim, now) {
@@ -78,15 +123,58 @@ function formatClaimQueueTime(claim, now) {
     if (!Number.isNaN(received) && !Number.isNaN(completedTimestamp) && completedTimestamp >= received) {
       return formatDuration(completedTimestamp - received)
     }
-    return '—'
+    return formatQueueAgeValue(claim.received_at, now)
   }
-  return formatQueueAge(claim.received_at, now)
+  return formatQueueAgeValue(claim.received_at, now)
 }
 
-const PAGE_SIZE = 25
+function QueueCell({ claim, now }) {
+  const age = formatClaimQueueTime(claim, now)
+  let isDone = false
+  let warnRaw = null
+  if (claim.status === 'verified') {
+    isDone = age !== '—'
+  } else {
+    const completedAt = ['failed', 'processed', 'review_required'].includes(claim.status)
+      ? (claim.analyzed_at || claim.analysis_started_at)
+      : null
+    warnRaw = completedAt
+      ? Math.max(0, new Date(completedAt).getTime() - new Date(claim.received_at).getTime())
+      : Math.max(0, now - new Date(claim.received_at).getTime())
+  }
+  const ageText = isDone ? `Selesai ${age}` : `${age} di antrean`
+  return (
+    <div>
+      <div className="ckl-queue-date">{formatReceivedTime(claim.received_at)}</div>
+      <div className={`ckl-queue-age${!isDone && warnRaw > QUEUE_WARN_MS ? ' warn' : ''}`}>
+        {isDone && age === '—' ? '—' : ageText}
+      </div>
+    </div>
+  )
+}
+
+/* daftar nomor halaman ringkas: 1 … (p-1) p (p+1) … last */
+function pageNumbers(page, totalPages) {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i)
+  const pages = new Set([0, 1, page - 1, page, page + 1, totalPages - 2, totalPages - 1])
+  const sorted = [...pages].filter(p => p >= 0 && p < totalPages).sort((a, b) => a - b)
+  const out = []
+  let prev = -1
+  for (const p of sorted) {
+    if (prev >= 0 && p - prev > 1) out.push('gap')
+    out.push(p)
+    prev = p
+  }
+  return out
+}
+
+/* ---------------------------------------------------------------------------
+   Halaman
+--------------------------------------------------------------------------- */
 
 export default function ClaimsList() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const queryTier = searchParams.get('tier')
   const tier = ['high', 'medium', 'low'].includes(queryTier) ? queryTier : ''
   const queryStatus = searchParams.get('status')
@@ -99,6 +187,7 @@ export default function ClaimsList() {
   const admissionFrom = searchParams.get('admission_from') || ''
   const admissionTo = searchParams.get('admission_to') || ''
   const [data, setData] = useState({ total: 0, items: [] })
+  const [counts, setCounts] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -108,6 +197,9 @@ export default function ClaimsList() {
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null)
   const [currentTime, setCurrentTime] = useState(Date.now())
   const [refreshing, setRefreshing] = useState(false)
+  const hasAdvancedParams = Boolean(receivedFrom || receivedTo || admissionFrom || admissionTo)
+  const [showAdvanced, setShowAdvanced] = useState(hasAdvancedParams)
+  const searchInputRef = useRef(null)
   const requestGenerationRef = useRef(0)
   const abortControllerRef = useRef(null)
 
@@ -137,17 +229,27 @@ export default function ClaimsList() {
      } catch (err) {
        if (generation !== requestGenerationRef.current) return
        setError(safeErrorMessage(err, 'dependency_unavailable'))
-    } finally {
+     } finally {
        if (generation === requestGenerationRef.current) {
          setLoading(false)
          setRefreshing(false)
        }
-    }
+     }
   }, [page, search, status, tier, receivedFrom, receivedTo, admissionFrom, admissionTo, sort])
+
+  const fetchCounts = useCallback(async () => {
+    try {
+      const res = await analyticsApi.dashboard()
+      setCounts(res.data)
+    } catch {
+      /* jumlah chip tetap tampil tanpa angka jika statistik gagal dimuat */
+    }
+  }, [])
 
   useEffect(() => {
     fetchClaims()
-    const interval = setInterval(fetchClaims, 15000)
+    fetchCounts()
+    const interval = setInterval(() => { fetchClaims(); fetchCounts() }, 15000)
     const clock = setInterval(() => setCurrentTime(Date.now()), 5000)
      return () => {
        clearInterval(interval)
@@ -155,7 +257,7 @@ export default function ClaimsList() {
        abortControllerRef.current?.abort()
        requestGenerationRef.current += 1
      }
-  }, [fetchClaims])
+  }, [fetchClaims, fetchCounts])
 
   // Debounce search
   useEffect(() => {
@@ -176,8 +278,27 @@ export default function ClaimsList() {
     setSearchInput(search)
   }, [search])
 
+  // Shortcut Ctrl+K / Cmd+K → fokus ke pencarian
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const handleClaimOpen = (claim) => {
     sessionStorage.setItem(`claim_${claim.claim_id}`, JSON.stringify(claim))
+  }
+
+  // Buka detail klaim dengan View Transition (fallback: navigasi biasa)
+  const openClaim = (claim) => (e) => {
+    e.preventDefault()
+    handleClaimOpen(claim)
+    navigateWithTransition(navigate, `/investigate/${claim.claim_id}`)
   }
 
   const updateFilter = (name, value) => {
@@ -191,6 +312,7 @@ export default function ClaimsList() {
   const resetFilters = () => {
     setSearchInput('')
     setPage(0)
+    setShowAdvanced(false)
     const nextParams = new URLSearchParams(searchParams)
     FILTER_PARAMS.forEach(name => nextParams.delete(name))
     setSearchParams(nextParams, { replace: true })
@@ -198,176 +320,307 @@ export default function ClaimsList() {
 
   const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE))
   const activeFilters = search || status || tier || receivedFrom || receivedTo || admissionFrom || admissionTo
+  const activeTags = useMemo(() => {
+    const tags = []
+    if (status) tags.push({ label: `Status: ${STATUS_LABELS[status]}`, param: 'status' })
+    if (tier) tags.push({ label: `Prioritas: ${TIER_LABELS[tier]}`, param: 'tier' })
+    if (receivedFrom || receivedTo) tags.push({
+      label: `Diterima: ${receivedFrom || 'awal'} – ${receivedTo || 'now'}`,
+      param: null, // dihapus bersama: kedua ujung rentang
+      reset: { received_from: '', received_to: '' },
+    })
+    if (admissionFrom || admissionTo) tags.push({
+      label: `Masuk: ${admissionFrom || 'awal'} – ${admissionTo || 'now'}`,
+      param: null,
+      reset: { admission_from: '', admission_to: '' },
+    })
+    return tags
+  }, [status, tier, receivedFrom, receivedTo, admissionFrom, admissionTo])
+
+  const removeTag = (tag) => {
+    setPage(0)
+    const nextParams = new URLSearchParams(searchParams)
+    if (tag.reset) {
+      Object.keys(tag.reset).forEach(name => nextParams.delete(name))
+    } else if (tag.param) {
+      nextParams.delete(tag.param)
+    }
+    setSearchParams(nextParams, { replace: true })
+  }
+
   const initialLoading = loading && !data.items.length
-  const liveStatus = initialLoading
-    ? 'Memuat data klaim...'
-    : loading
-      ? 'Memperbarui daftar klaim...'
-      : error
-        ? error
-        : `${data.total} klaim tersedia.`
 
   if (initialLoading) return (
     <div>
-      <div className="claims-list-live-status" role="status" aria-live="polite" aria-atomic="true">{liveStatus}</div>
-      <div className="p-8 text-center text-muted">Memuat data klaim...</div>
+      <div className="ckl-live-status" role="status" aria-live="polite" aria-atomic="true">Memuat data klaim...</div>
+      <ClaimsListSkeleton />
     </div>
   )
 
-  return (
-    <div>
-      <div className="claims-list-live-status" role="status" aria-live="polite" aria-atomic="true">{liveStatus}</div>
-      <div className="page-header">
-        <div className="page-kicker">Antrian masuk</div>
-         <h1 className="glow-text" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-           <Search size={22} color="var(--accent-green)" aria-hidden="true" />
-           Daftar Klaim
-         </h1>
-         <p>Antrian klaim yang perlu diperiksa, diurutkan dari kebutuhan tindak lanjut tertinggi.</p>
-       </div>
+  const firstVisible = data.total === 0 ? 0 : page * PAGE_SIZE + 1
+  const lastVisible = page * PAGE_SIZE + data.items.length
 
-       <DataFreshness
-         label="Data klaim"
-         lastUpdatedAt={lastUpdatedAt}
-         now={currentTime}
-         onRefresh={fetchClaims}
+  return (
+    <div className="ckl-page">
+      <div className="ckl-live-status" role="status" aria-live="polite" aria-atomic="true">
+        {error ? error : `${data.total} klaim tersedia.`}
+      </div>
+
+      {/* Topbar */}
+      <div className="ckl-topbar">
+        <div>
+          <div className="dashboard-title-row">
+            <div className="header-icon-badge">
+              <List size={20} />
+            </div>
+            <h1>Daftar Klaim</h1>
+          </div>
+          <p className="ckl-page-sub">Antrian klaim yang perlu diperiksa, diurutkan dari kebutuhan tindak lanjut tertinggi.</p>
+        </div>
+        <DataFreshness
+          label="Data klaim"
+          lastUpdatedAt={lastUpdatedAt}
+          now={currentTime}
+          onRefresh={fetchClaims}
           refreshing={refreshing}
           error={Boolean(error)}
           errorMessage={error}
           partial={Boolean(error)}
-         />
+        />
+      </div>
 
-      {/* Toolbar filter */}
-      <div className="card mb-3" style={{ padding: '0.75rem 1rem' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
-          <div style={{ position: 'relative', flex: '1 1 220px', minWidth: 180 }}>
-            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+      {/* Filter */}
+      <div className="ckl-filter-card">
+        <div className="ckl-filter-top">
+          <div className="ckl-search-box" style={{ position: 'relative' }}>
+            <Search size={17} aria-hidden="true" />
             <input
-              className="form-input claims-filter-control"
-              aria-label="Cari klaim"
-              placeholder="Cari ID klaim, peserta, fasilitas, atau diagnosis..."
+              ref={searchInputRef}
+              aria-label="Cari ID klaim, peserta, fasilitas, atau diagnosis"
+              placeholder="Cari ID klaim, peserta, fasilitas, atau diagnosis…"
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
-              style={{ paddingLeft: 30, fontSize: '0.82rem' }}
+              onKeyDown={e => { if (e.key === 'Escape') setSearchInput('') }}
             />
-            {searchInput && (
-             <button className="claims-filter-clear" aria-label="Hapus pencarian" onClick={() => setSearchInput('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+            {searchInput ? (
+              <button type="button" className="ckl-clear-btn" aria-label="Hapus pencarian" onClick={() => setSearchInput('')}>
                 <X size={14} aria-hidden="true" />
+              </button>
+            ) : (
+              <span className="ckl-kbd" aria-hidden="true">Ctrl K</span>
+            )}
+          </div>
+        </div>
+
+        <div className="ckl-quick-chips">
+          {QUICK_FILTERS.map(f => {
+            const active = status === f.key
+            const count = counts ? counts[f.countKey] : null
+            return (
+              <button
+                type="button"
+                key={f.key || 'all'}
+                className="ckl-qchip"
+                aria-pressed={active}
+                onClick={() => updateFilter('status', f.key)}
+              >
+                {f.dot && <span className="ckl-qchip-dot" style={{ background: f.dot }} aria-hidden="true" />}
+                {f.label}
+                <span className="ckl-chip-count">{count == null ? '—' : count.toLocaleString('id-ID')}</span>
+              </button>
+            )
+          })}
+          <span className="ckl-quick-sep" aria-hidden="true" />
+          <button
+            type="button"
+            className="ckl-adv-toggle"
+            aria-expanded={showAdvanced}
+            aria-controls="ckl-advanced"
+            onClick={() => setShowAdvanced(v => !v)}
+          >
+            Filter lanjutan
+            <svg className="caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+        </div>
+
+        <div className={`ckl-adv-wrap${showAdvanced ? ' open' : ''}`} inert={!showAdvanced}>
+          <div className="ckl-adv-clip">
+            <div className="ckl-adv-row" id="ckl-advanced">
+          <div className="ckl-fld">
+            <label className="ckl-fld-label" htmlFor="ckl-tier">Prioritas</label>
+            <select id="ckl-tier" value={tier} onChange={e => updateFilter('tier', e.target.value)}>
+              <option value="">Semua tingkat</option>
+              <option value="high">Risiko Tinggi</option>
+              <option value="medium">Risiko Sedang</option>
+              <option value="low">Risiko Rendah</option>
+            </select>
+          </div>
+          <div className="ckl-fld">
+            <label className="ckl-fld-label" htmlFor="ckl-recd-from">Diterima dari</label>
+            <input id="ckl-recd-from" type="date" value={receivedFrom} onChange={e => updateFilter('received_from', e.target.value)} />
+          </div>
+          <div className="ckl-fld">
+            <label className="ckl-fld-label" htmlFor="ckl-recd-to">s/d</label>
+            <input id="ckl-recd-to" type="date" value={receivedTo} onChange={e => updateFilter('received_to', e.target.value)} />
+          </div>
+          <div className="ckl-fld">
+            <label className="ckl-fld-label" htmlFor="ckl-adm-from">Masuk dari</label>
+            <input id="ckl-adm-from" type="date" value={admissionFrom} onChange={e => updateFilter('admission_from', e.target.value)} />
+          </div>
+          <div className="ckl-fld">
+            <label className="ckl-fld-label" htmlFor="ckl-adm-to">s/d</label>
+            <input id="ckl-adm-to" type="date" value={admissionTo} onChange={e => updateFilter('admission_to', e.target.value)} />
+          </div>
+          <div style={{ flex: 1 }} />
+          <div className="ckl-adv-foot">
+            {activeTags.map(tag => (
+              <span className="ckl-tagx" key={tag.label}>
+                {tag.label}
+                <button type="button" className="ckl-tagx-btn" aria-label={`Hapus filter ${tag.label}`} onClick={() => removeTag(tag)}>
+                  <X size={10} strokeWidth={2.6} aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+            {activeFilters && (
+              <button type="button" className="ckl-adv-reset" onClick={resetFilters}>
+                <RotateCw size={12} strokeWidth={2.4} aria-hidden="true" /> Reset
               </button>
             )}
           </div>
-
-           <select aria-label="Saring berdasarkan status" className="form-select claims-filter-control" value={status} onChange={e => updateFilter('status', e.target.value)} style={{ width: 'auto', fontSize: '0.82rem' }}>
-             <option value="">Semua status</option>
-              <option value="pending">Menunggu pemeriksaan</option>
-              <option value="scanning">Sedang diperiksa</option>
-              <option value="processed">Pemeriksaan selesai</option>
-              <option value="review_required">Perlu ditinjau petugas</option>
-              <option value="failed">Pemeriksaan belum berhasil</option>
-              <option value="verified">Sudah diputuskan petugas</option>
-          </select>
-
-              <select aria-label="Saring berdasarkan prioritas" className="form-select claims-filter-control" value={tier} onChange={e => updateFilter('tier', e.target.value)} style={{ width: 'auto', fontSize: '0.82rem' }}>
-             <option value="">Semua tingkat prioritas</option>
-            <option value="high">Risiko Tinggi</option>
-            <option value="medium">Risiko Sedang</option>
-            <option value="low">Risiko Rendah</option>
-           </select>
-
-           <label className="text-xs text-muted">
-             Dari
-             <input aria-label="Tanggal klaim mulai" className="form-input claims-filter-control" type="date" value={receivedFrom} onChange={e => updateFilter('received_from', e.target.value)} style={{ width: 'auto', fontSize: '0.78rem', marginLeft: 4 }} />
-           </label>
-           <label className="text-xs text-muted">
-             Sampai
-             <input aria-label="Tanggal klaim sampai" className="form-input claims-filter-control" type="date" value={receivedTo} onChange={e => updateFilter('received_to', e.target.value)} style={{ width: 'auto', fontSize: '0.78rem', marginLeft: 4 }} />
-           </label>
-           <label className="text-xs text-muted">
-             Masuk dari
-             <input aria-label="Tanggal masuk mulai" className="form-input claims-filter-control" type="date" value={admissionFrom} onChange={e => updateFilter('admission_from', e.target.value)} style={{ width: 'auto', fontSize: '0.78rem', marginLeft: 4 }} />
-           </label>
-           <label className="text-xs text-muted">
-             Masuk sampai
-             <input aria-label="Tanggal masuk sampai" className="form-input claims-filter-control" type="date" value={admissionTo} onChange={e => updateFilter('admission_to', e.target.value)} style={{ width: 'auto', fontSize: '0.78rem', marginLeft: 4 }} />
-           </label>
-
-             <select aria-label="Urutkan daftar klaim" className="form-select claims-filter-control" value={sort} onChange={e => updateFilter('sort', e.target.value)} style={{ width: 'auto', fontSize: '0.82rem' }}>
-              <option value="priority">Urut: Prioritas</option>
-               <option value="queue">Urut: antrean masuk</option>
-             <option value="risk_desc">Nilai risiko ↓</option>
-             <option value="risk_asc">Nilai risiko ↑</option>
-            <option value="cost_desc">Biaya ↓</option>
-            <option value="cost_asc">Biaya ↑</option>
-            <option value="id">ID Klaim</option>
-          </select>
-
-          {activeFilters && (
-             <button className="btn btn-ghost claims-filter-action" style={{ fontSize: '0.75rem' }} onClick={resetFilters}>
-              Reset Filter
-            </button>
-          )}
-
-          <span className="text-xs text-muted" style={{ marginLeft: 'auto' }}>
-            {data.total.toLocaleString('id-ID')} klaim
-          </span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {error && <div className="alert-disclaimer mb-3" role="alert" style={{ color: 'var(--error-text)' }}>⚠ {error}</div>}
+      {error && (
+        <div className="alert-disclaimer" role="alert" style={{ color: 'var(--error-text)', marginBottom: '0.9rem' }}>⚠ {error}</div>
+      )}
 
-      <div className="card" style={{ padding: 0 }}>
-        <div className="table-container">
-          <table>
+      {/* Tabel */}
+      <div className="ckl-table-card">
+        <div className="ckl-table-head">
+          <div className="ckl-th-title">
+            <span className="ckl-th-icon"><ListChecks size={16} aria-hidden="true" /></span>
+            Antrian Masuk
+          </div>
+          <div className="ckl-hcounts">
+            <span className="ckl-hcount high">
+              <span className="ckl-qchip-dot" style={{ background: 'var(--risk-high)' }} aria-hidden="true" />
+              Prioritas tinggi
+              <span className="num">{counts ? (counts.high_risk_claims ?? '—').toLocaleString('id-ID') : '—'}</span>
+            </span>
+            <span className="ckl-hcount review">
+              <span className="ckl-qchip-dot" style={{ background: 'var(--risk-medium)' }} aria-hidden="true" />
+              Perlu ditinjau
+              <span className="num">{counts ? (counts.review_required_claims ?? '—').toLocaleString('id-ID') : '—'}</span>
+            </span>
+            <span className="ckl-hcount done">
+              <span className="ckl-qchip-dot" style={{ background: 'var(--risk-low)' }} aria-hidden="true" />
+              Diputuskan
+              <span className="num">{counts ? (counts.verified_claims ?? '—').toLocaleString('id-ID') : '—'}</span>
+            </span>
+          </div>
+          <div className="ckl-head-spacer" />
+          <div className="ckl-sort-wrap">
+            <ArrowUpDown size={13} aria-hidden="true" />
+            <select
+              className="ckl-sort-select"
+              aria-label="Urutkan daftar klaim"
+              value={sort}
+              onChange={e => updateFilter('sort', e.target.value)}
+            >
+              <option value="priority">Urut: Prioritas</option>
+              <option value="queue">Urut: antrean masuk</option>
+              <option value="risk_desc">Nilai risiko ↓</option>
+              <option value="risk_asc">Nilai risiko ↑</option>
+              <option value="cost_desc">Biaya ↓</option>
+              <option value="cost_asc">Biaya ↑</option>
+              <option value="id">ID Klaim</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="table-scroll-x">
+          <table className="ckl-table">
             <thead>
               <tr>
-                 <th scope="col">ID Klaim</th>
-                 <th scope="col">Fasilitas Kesehatan</th>
-                 <th scope="col">Diagnosis</th>
-                 <th scope="col">Biaya Klaim</th>
-                  <th scope="col">Lama Rawat</th>
-                  <th scope="col">Diterima</th>
-                  <th scope="col">Usia / Durasi</th>
-                  <th scope="col">Skor Risiko</th>
-                  <th scope="col">Prioritas</th>
-                  <th scope="col">Status pemeriksaan</th>
-                   <th scope="col">Catatan terakhir</th>
+                <th scope="col" className="ckl-rail" aria-hidden="true" style={{ width: 3, padding: 0, background: 'var(--accent-green-glow)', borderBottom: '1px solid rgba(16, 185, 129, 0.25)' }} />
+                <th scope="col" style={{ minWidth: 210 }}>Klaim</th>
+                <th scope="col" style={{ minWidth: 120 }}>Biaya</th>
+                <th scope="col" style={{ minWidth: 180 }}>Skor Risiko</th>
+                <th scope="col" style={{ minWidth: 170 }}>Status Pemeriksaan</th>
+                <th scope="col" style={{ minWidth: 110 }}>Antrean</th>
+                <th scope="col">Aksi</th>
               </tr>
             </thead>
-            <tbody>
-              {data.items.map(c => (
-                 <tr key={c.claim_id}>
-                   <td><Link className="claim-link" to={`/investigate/${c.claim_id}`} onClick={() => handleClaimOpen(c)} aria-label={`Buka klaim ${c.claim_id}`}><span className="font-mono" style={{ fontSize: '0.78rem' }}>{c.claim_id}</span></Link></td>
-                  <td>
-                    <div style={{ fontWeight: 500 }}>{c.provider_id}</div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Sumber klaim</div>
-                  </td>
-                  <td><span className="badge badge-blue">{c.diagnosis_primary}</span></td>
-                  <td>Rp {c.cost_claimed?.toLocaleString('id-ID')}</td>
-                   <td>{c.length_of_stay} hari</td>
-                   <td className="text-xs">{formatReceivedAt(c.received_at)}</td>
-                    <td className="text-xs">{formatClaimQueueTime(c, currentTime)}</td>
-                   <td>
-                     {c.status === 'pending' || c.status === 'scanning' || c.risk_score == null
-                       ? <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Belum tersedia</span>
-                      : <ScoreBar score={Math.round(c.risk_score)} tier={c.priority_tier || 'low'} />}
-                  </td>
-                  <td>
-                    {c.status === 'pending'
-                       ? <span className="badge" style={{ background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }}><Clock size={12}/> Menunggu pemeriksaan</span>
-                      : <RiskBadge tier={c.priority_tier} />}
-                   </td>
+            <tbody key={`${search}|${status}|${tier}|${sort}|${page}|${receivedFrom}|${receivedTo}|${admissionFrom}|${admissionTo}`}>
+              {data.items.map((c, idx) => {
+                const tierClass = ['pending', 'scanning'].includes(c.status) || c.risk_score == null
+                  ? 'ckl-t-unknown'
+                  : `ckl-t-${c.priority_tier === 'medium' ? 'medium' : c.priority_tier || 'low'}`
+                const noteError = c.last_analysis_error
+                  ? safeErrorMessage({ code: c.last_analysis_error_code, message: c.last_analysis_error })
+                  : null
+                return (
+                  <tr key={c.claim_id} className={`${tierClass} ckl-row-in`} style={{ '--i': idx }}>
+                    <td className="ckl-rail" aria-hidden="true" />
+                    <td>
+                      <Link
+                        className="ckl-id-link"
+                        to={`/investigate/${c.claim_id}`}
+                        onClick={openClaim(c)}
+                        aria-label={`Buka klaim ${c.claim_id}`}
+                      >
+                        {c.claim_id}
+                      </Link>
+                      <div className="ckl-cell-sub">{c.provider_id || 'Sumber klaim'}</div>
+                      {c.diagnosis_primary && (
+                        <span className="ckl-dx-chip" title={c.diagnosis_primary}>{c.diagnosis_primary}</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="ckl-cost">Rp {c.cost_claimed?.toLocaleString('id-ID')}</div>
+                      <div className="ckl-los">
+                        <Clock strokeWidth={2.2} aria-hidden="true" />
+                        {c.length_of_stay} hari rawat
+                      </div>
+                    </td>
+                    <td><RiskCell claim={c} /></td>
                     <td>
                       <StatusBadge claim={c} />
+                      <StatusSub claim={c} errorMessage={noteError} />
                     </td>
-                     <td className="text-xs" style={{ maxWidth: 220, color: c.last_analysis_error ? 'var(--risk-high-text)' : 'var(--text-muted)' }} title={c.last_analysis_error ? safeErrorMessage({ code: c.last_analysis_error_code }) : ''}>
-                       {c.last_analysis_error ? safeErrorMessage({ code: c.last_analysis_error_code }) : '—'}
+                    <td><QueueCell claim={c} now={currentTime} /></td>
+                    <td>
+                      <Link
+                        className="ckl-row-action"
+                        to={`/investigate/${c.claim_id}`}
+                        onClick={openClaim(c)}
+                        aria-label={`Periksa klaim ${c.claim_id}`}
+                      >
+                        Periksa <ArrowRight strokeWidth={2.2} aria-hidden="true" />
+                      </Link>
                     </td>
-                </tr>
-              ))}
+                  </tr>
+                )
+              })}
               {data.items.length === 0 && (
-                <tr>
-                   <td colSpan={11} className="text-center text-muted" style={{ padding: '2rem' }}>
-                     Tidak ada klaim yang sesuai dengan pilihan pencarian.
+                <tr className="ckl-empty">
+                  <td colSpan={7}>
+                    <EmptyState
+                      icon={SearchX}
+                      title="Tidak ada klaim yang cocok"
+                      hint={activeFilters
+                        ? 'Coba longgarkan kata kunci atau hapus sebagian filter yang aktif.'
+                        : 'Belum ada klaim yang masuk ke antrian saat ini.'}
+                      action={activeFilters
+                        ? (
+                          <button type="button" className="ckl-adv-reset" onClick={resetFilters}>
+                            <RotateCw size={12} strokeWidth={2.4} aria-hidden="true" /> Reset filter
+                          </button>
+                        )
+                        : null}
+                    />
                   </td>
                 </tr>
               )}
@@ -376,16 +629,45 @@ export default function ClaimsList() {
         </div>
 
         {/* Pagination */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', borderTop: '1px solid var(--border)' }}>
-          <span className="text-xs text-muted">
-            Halaman {page + 1} dari {totalPages} — menampilkan {data.items.length} dari {data.total.toLocaleString('id-ID')} klaim
+        <div className="ckl-table-foot">
+          <span className="ckl-foot-info">
+            Menampilkan <b>{firstVisible}–{lastVisible}</b> dari <b>{data.total.toLocaleString('id-ID')}</b> klaim
+            &nbsp;·&nbsp; halaman {page + 1} dari {totalPages}
           </span>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button className="btn btn-ghost" disabled={page === 0} onClick={() => setPage(p => p - 1)} style={{ opacity: page === 0 ? 0.4 : 1 }}>
-              <ChevronLeft size={14} /> Sebelumnya
+          <div className="ckl-pager">
+            <button
+              type="button"
+              className="ckl-pg-btn nav"
+              disabled={page === 0}
+              onClick={() => setPage(p => p - 1)}
+              aria-label="Halaman sebelumnya"
+            >
+              <ChevronLeft size={14} aria-hidden="true" />
             </button>
-            <button className="btn btn-ghost" disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)} style={{ opacity: page + 1 >= totalPages ? 0.4 : 1 }}>
-              Berikutnya <ChevronRight size={14} />
+            {pageNumbers(page, totalPages).map((p, i) =>
+              p === 'gap'
+                ? <span className="ckl-pg-dots" key={`gap-${i}`} aria-hidden="true">…</span>
+                : (
+                  <button
+                    type="button"
+                    key={p}
+                    className={`ckl-pg-btn${p === page ? ' active' : ''}`}
+                    {...(p === page ? { 'aria-current': 'page' } : {})}
+                    onClick={() => p !== page && setPage(p)}
+                    aria-label={`Halaman ${p + 1}`}
+                  >
+                    {p + 1}
+                  </button>
+                )
+            )}
+            <button
+              type="button"
+              className="ckl-pg-btn nav"
+              disabled={page + 1 >= totalPages}
+              onClick={() => setPage(p => p + 1)}
+              aria-label="Halaman berikutnya"
+            >
+              <ChevronRight size={14} aria-hidden="true" />
             </button>
           </div>
         </div>

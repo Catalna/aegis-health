@@ -482,8 +482,8 @@ export default function Investigation() {
               <div className="flex items-center justify-between mb-1">
                   <span>Seberapa jauh biaya berbeda</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div className="progress-bar" style={{ width: 80 }}>
-                    <div className="progress-fill" style={{ width: `${(financial.anomaly_score || 0) * 100}%` }} />
+                  <div className="progress-bar-container" style={{ width: 80, margin: 0 }}>
+                    <div className="progress-bar-fill" style={{ width: `${(financial.anomaly_score || 0) * 100}%` }} />
                   </div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{(financial.anomaly_score * 100).toFixed(0)}%</span>
                 </div>
@@ -497,8 +497,8 @@ export default function Investigation() {
               <div className="flex items-center justify-between mb-1">
                   <span>Perbedaan dari pola umum</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div className="progress-bar" style={{ width: 80 }}>
-                    <div className="progress-fill" style={{ width: `${(fraud.isolation_forest_score || 0) * 100}%`, background: fraud.isolation_forest_score > 0.7 ? 'var(--risk-high)' : 'var(--accent-green)' }} />
+                  <div className="progress-bar-container" style={{ width: 80, margin: 0 }}>
+                    <div className="progress-bar-fill" style={{ width: `${(fraud.isolation_forest_score || 0) * 100}%`, background: fraud.isolation_forest_score > 0.7 ? 'var(--risk-high)' : 'var(--accent-green)' }} />
                   </div>
                   <span style={{ fontSize: '0.75rem', fontWeight: 600, color: fraud.isolation_forest_score > 0.7 ? 'var(--error-text)' : 'inherit' }}>{((fraud.isolation_forest_score || 0) * 100).toFixed(0)}%</span>
                 </div>

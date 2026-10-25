@@ -25,6 +25,7 @@ export const DECISION_LABELS = {
 export const RULE_LABELS = {
   tariff_deviation_extreme: 'Biaya jauh di atas perkiraan biaya penggantian',
   tariff_deviation_high: 'Biaya di atas perkiraan biaya penggantian',
+  benchmark_deviation: 'Biaya melebihi perkiraan penggantian',
   severity_proc_mismatch: 'Ketidaksesuaian tingkat keparahan dengan tindakan',
   severity_med_mismatch: 'Perbedaan tingkat keparahan dengan biaya pengobatan',
   los_outlier: 'Lama rawat jauh di atas pola umum',

@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { FilePlus } from 'lucide-react'
 import { claimsApi, safeErrorMessage } from '../api'
+import { toast } from '../Toast'
 
 const EMPTY_FORM = {
   claim_id: '',
@@ -88,6 +90,7 @@ export default function ClaimIntake() {
       if (res.data.status !== 'success') throw new Error(res.data.message || 'Klaim belum berhasil disimpan.')
 
       sessionStorage.setItem(`claim_${payload.claim_id}`, JSON.stringify(payload))
+      toast(`Klaim ${payload.claim_id} berhasil disimpan dan masuk antrian.`)
       navigate('/claims')
     } catch (e) {
       setError(safeErrorMessage(e, 'dependency_unavailable'))
@@ -98,36 +101,67 @@ export default function ClaimIntake() {
 
   const handleChange = (field, value) => setForm(f => ({ ...f, [field]: value }))
 
+// Syntax highlight JSON — key hijau, string biru, angka amber, null abu miring.
+// Teks di-escape dulu supaya nilai bebas user tetap aman dirender sebagai HTML.
+const highlightJson = (json) => {
+  const escaped = json.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]))
+  return escaped.replace(
+    /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g,
+    (m, str, colon, word, num) => {
+      if (colon !== undefined) return `<span class="int-json-key">${str}</span>${colon}`
+      if (str) return `<span class="int-json-str">${str}</span>`
+      if (word) return `<span class="int-json-null">${word}</span>`
+      if (num) return `<span class="int-json-num">${num}</span>`
+      return m
+    }
+  )
+}
+
   const blockingErrors = clientErrors.filter(e => !e.startsWith('Peringatan'))
   const warnings = clientErrors.filter(e => e.startsWith('Peringatan'))
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1>Input Klaim Baru</h1>
-            <p>Masukkan data klaim untuk memulai pemeriksaan dan menentukan prioritas tindak lanjut.</p>
-          </div>
-          <div className="flex gap-1">
-             <button className={`btn btn-ghost ${viewMode === 'form' ? 'active' : ''}`} onClick={() => setViewMode('form')}>Isi data</button>
-             <button className={`btn btn-ghost ${viewMode === 'json' ? 'active' : ''}`} onClick={() => setViewMode('json')}>Lihat data lengkap</button>
-          </div>
-        </div>
-
-      </div>
-
-      <div className="alert-disclaimer mb-4">
-         ⓘ <strong>Catatan:</strong> Data yang dikirim dari halaman ini langsung disimpan ke backend dan masuk ke antrian pemeriksaan.
-      </div>
-
-      <div className="grid-2" style={{ gap: '1.5rem' }}>
+    <div className="int-page">
+      {/* Topbar — pola sama dengan Dashboard & Daftar Klaim */}
+      <header className="int-topbar">
         <div>
-          {viewMode === 'form' ? (
-            <div className="card">
-              <div className="card-title">Data Klaim</div>
+          <div className="dashboard-title-row">
+            <div className="header-icon-badge">
+              <FilePlus size={20} />
+            </div>
+            <h1>Input Klaim</h1>
+          </div>
+          <p className="int-page-sub">Masukkan data klaim untuk memulai pemeriksaan — setelah disimpan, klaim langsung masuk antrian.</p>
+        </div>
+        <div className="int-toggle" role="group" aria-label="Mode tampilan data">
+          <button
+            type="button"
+            className={viewMode === 'form' ? 'active' : ''}
+            aria-pressed={viewMode === 'form'}
+            onClick={() => setViewMode('form')}
+          >
+            Isi data
+          </button>
+          <button
+            type="button"
+            className={viewMode === 'json' ? 'active' : ''}
+            aria-pressed={viewMode === 'json'}
+            onClick={() => setViewMode('json')}
+          >
+            Lihat data lengkap
+          </button>
+        </div>
+      </header>
 
-              <div className="grid-2">
+      <div className="int-grid">
+        {/* Kolom utama: form + validasi + aksi */}
+        <div className="int-main">
+          <div className="int-view" key={viewMode}>
+          {viewMode === 'form' ? (
+            <div className="card int-form-card">
+              {/* Seksi: Identitas */}
+              <div className="int-section-label">Identitas</div>
+              <div className="int-form-cols">
                 <div className="form-group">
                   <label className="form-label" htmlFor="claim-id">ID Klaim *</label>
                   <input id="claim-id" className="form-input" value={form.claim_id} onChange={e => handleChange('claim_id', e.target.value)} />
@@ -136,9 +170,6 @@ export default function ClaimIntake() {
                   <label className="form-label" htmlFor="patient-id">ID Peserta *</label>
                   <input id="patient-id" className="form-input" value={form.patient_id} onChange={e => handleChange('patient_id', e.target.value)} />
                 </div>
-              </div>
-
-              <div className="grid-2">
                 <div className="form-group">
                   <label className="form-label" htmlFor="provider-id">Fasilitas Kesehatan *</label>
                   <input id="provider-id" className="form-input" value={form.provider_id} onChange={e => handleChange('provider_id', e.target.value)} />
@@ -149,27 +180,25 @@ export default function ClaimIntake() {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="primary-diagnosis">Diagnosis Utama (Kode Penyakit) *</label>
-                <input id="primary-diagnosis" className="form-input" value={form.diagnosis_primary} onChange={e => handleChange('diagnosis_primary', e.target.value)} placeholder="Contoh: I21.9" />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="secondary-diagnosis">Diagnosis Tambahan</label>
-                <input id="secondary-diagnosis" className="form-input" value={form.diagnosis_secondary} onChange={e => handleChange('diagnosis_secondary', e.target.value)} placeholder="Pisahkan dengan koma, contoh: I10, A41.9" />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="procedure-codes">Kode Tindakan</label>
-                <input id="procedure-codes" className="form-input" value={form.procedure_codes} onChange={e => handleChange('procedure_codes', e.target.value)} placeholder="Pisahkan dengan koma, contoh: 36.10, 89.52" />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="medication">Obat dan Jumlah</label>
-                <input id="medication" className="form-input" value={form.medication} onChange={e => handleChange('medication', e.target.value)} placeholder="Contoh: Aspirin 30, Metformin 30" />
-              </div>
-
-              <div className="grid-2">
+              {/* Seksi: Data klinis */}
+              <div className="int-section-label">Data Klinis</div>
+              <div className="int-form-cols">
+                <div className="form-group int-col-full">
+                  <label className="form-label" htmlFor="primary-diagnosis">Diagnosis Utama (Kode Penyakit) *</label>
+                  <input id="primary-diagnosis" className="form-input" value={form.diagnosis_primary} onChange={e => handleChange('diagnosis_primary', e.target.value)} placeholder="Contoh: I21.9" />
+                </div>
+                <div className="form-group int-col-full">
+                  <label className="form-label" htmlFor="secondary-diagnosis">Diagnosis Tambahan</label>
+                  <input id="secondary-diagnosis" className="form-input" value={form.diagnosis_secondary} onChange={e => handleChange('diagnosis_secondary', e.target.value)} placeholder="Pisahkan dengan koma, contoh: I10, A41.9" />
+                </div>
+                <div className="form-group int-col-full">
+                  <label className="form-label" htmlFor="procedure-codes">Kode Tindakan</label>
+                  <input id="procedure-codes" className="form-input" value={form.procedure_codes} onChange={e => handleChange('procedure_codes', e.target.value)} placeholder="Pisahkan dengan koma, contoh: 36.10, 89.52" />
+                </div>
+                <div className="form-group int-col-full">
+                  <label className="form-label" htmlFor="medication">Obat dan Jumlah</label>
+                  <input id="medication" className="form-input" value={form.medication} onChange={e => handleChange('medication', e.target.value)} placeholder="Contoh: Aspirin 30, Metformin 30" />
+                </div>
                 <div className="form-group">
                   <label className="form-label" htmlFor="severity">Tingkat Keparahan (1-4)</label>
                   <select id="severity" className="form-select" value={form.severity_level} onChange={e => handleChange('severity_level', e.target.value)}>
@@ -186,12 +215,13 @@ export default function ClaimIntake() {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="claimed-cost">Biaya Klaim (Rp) *</label>
-                <input id="claimed-cost" className="form-input" type="number" inputMode="decimal" value={form.cost_claimed} onChange={e => handleChange('cost_claimed', e.target.value)} />
-              </div>
-
-              <div className="grid-2">
+              {/* Seksi: Biaya & waktu */}
+              <div className="int-section-label">Biaya &amp; Waktu</div>
+              <div className="int-form-cols">
+                <div className="form-group">
+                  <label className="form-label" htmlFor="claimed-cost">Biaya Klaim (Rp) *</label>
+                  <input id="claimed-cost" className="form-input int-input-mono" type="number" inputMode="decimal" value={form.cost_claimed} onChange={e => handleChange('cost_claimed', e.target.value)} />
+                </div>
                 <div className="form-group">
                   <label className="form-label" htmlFor="admission-date">Tanggal Masuk</label>
                   <input id="admission-date" className="form-input" type="date" value={form.admission_date} onChange={e => handleChange('admission_date', e.target.value)} />
@@ -203,48 +233,54 @@ export default function ClaimIntake() {
               </div>
             </div>
           ) : (
-            <div className="card">
-               <div className="card-title">Data Klaim Lengkap</div>
-              <pre className="form-textarea" style={{ display: 'block', overflow: 'auto', fontSize: '0.72rem', lineHeight: 1.7, padding: '1rem' }}>
-                {JSON.stringify(buildClaimPayload(), null, 2)}
-              </pre>
+            <div className="card int-form-card">
+              <div className="int-section-label">Data Klaim Lengkap</div>
+              <pre
+              className="int-json"
+              dangerouslySetInnerHTML={{ __html: highlightJson(JSON.stringify(buildClaimPayload(), null, 2)) }}
+            />
             </div>
           )}
+          </div>
 
           {/* Validasi klien real-time */}
           {blockingErrors.length > 0 && (
-            <div role="alert" style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: 'var(--error-text)', fontSize: '0.8rem' }}>
-              {blockingErrors.map((err, i) => <div key={i}>⚠ {err}</div>)}
+            <div role="alert" className="int-alert int-alert-error">
+              <div className="int-alert-title">{blockingErrors.length} data wajib belum lengkap</div>
+              <ul>
+                {blockingErrors.map((err, i) => <li key={i}>{err}</li>)}
+              </ul>
             </div>
           )}
           {warnings.length > 0 && (
-            <div role="status" style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, color: 'var(--warning-text)', fontSize: '0.8rem' }}>
-              {warnings.map((w, i) => <div key={i}>ⓘ {w}</div>)}
+            <div role="status" className="int-alert int-alert-warn">
+              <div className="int-alert-title">Perlu diperiksa lagi</div>
+              <ul>
+                {warnings.map((w, i) => <li key={i}>{w.replace(/^Peringatan:\s*/, '')}</li>)}
+              </ul>
             </div>
           )}
           {error && (
-            <div role="alert" style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: 'var(--error-text)', fontSize: '0.8rem' }}>
-              ⚠ {error}
+            <div role="alert" className="int-alert int-alert-error">
+              <div className="int-alert-title">Klaim belum berhasil disimpan</div>
+              <ul><li>{error}</li></ul>
             </div>
           )}
 
-          <div style={{ marginTop: '1rem' }}>
-            <button
-              className="btn btn-primary"
-              style={{ width: '100%', padding: '0.8rem', fontSize: '0.9rem', opacity: blockingErrors.length ? 0.5 : 1 }}
-              onClick={handleAnalyze}
-              disabled={submitting || blockingErrors.length > 0}
-            >
-              {submitting ? '⟳ Menyimpan klaim...' : 'Simpan dan mulai pemeriksaan'}
-            </button>
-          </div>
+          <button
+            className="btn btn-primary int-submit"
+            onClick={handleAnalyze}
+            disabled={submitting || blockingErrors.length > 0}
+          >
+            {submitting ? 'Menyimpan klaim…' : 'Simpan dan mulai pemeriksaan'}
+          </button>
         </div>
 
-        {/* Right panel: hint about architecture */}
-        <div>
-          <div className="card mb-2">
-             <div className="card-title">Tahapan Pemeriksaan</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        {/* Panel kanan: alur pemeriksaan */}
+        <aside className="int-aside">
+          <div className="card int-steps-card">
+            <div className="card-title">Tahapan Pemeriksaan</div>
+            <ol className="int-steps">
               {[
                 { step: '0', agent: 'Pemeriksaan Data', desc: 'Memastikan data wajib, tanggal, dan duplikat sudah benar.' },
                 { step: '1', agent: 'Pemeriksaan Medis', desc: 'Membandingkan diagnosis, tindakan, obat, dan tingkat keparahan.' },
@@ -254,22 +290,20 @@ export default function ClaimIntake() {
                 { step: '5', agent: 'Penentuan Prioritas', desc: 'Menghitung tingkat kebutuhan tindak lanjut secara konsisten.' },
                 { step: '6', agent: 'Penjelasan Hasil', desc: 'Menyusun ringkasan yang mudah dibaca verifier.' },
               ].map(item => (
-                <div key={item.step} className="flex items-center gap-2" style={{ padding: '0.5rem', background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)' }}>
-                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--accent-green-glow)', border: '1px solid var(--accent-green)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', color: 'var(--accent-green)', fontWeight: 700, flexShrink: 0 }}>
-                    {item.step}
+                <li key={item.step} className="int-step">
+                  <span className="int-step-num" aria-hidden="true">{item.step}</span>
+                  <div className="int-step-body">
+                    <div className="int-step-name">{item.agent}</div>
+                    <div className="int-step-desc">{item.desc}</div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>{item.agent}</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{item.desc}</div>
-                  </div>
-                </div>
+                </li>
               ))}
-            </div>
+            </ol>
+            <p className="int-step-footnote">
+              Pemeriksaan medis, biaya, dan pola klaim berjalan bersamaan — jika salah satu data belum tersedia, hasil tetap ditampilkan dan ditandai dengan jelas.
+            </p>
           </div>
-          <div className="alert-disclaimer">
-             ⓘ Pemeriksaan medis, biaya, dan pola klaim berjalan bersamaan. Jika salah satu data belum tersedia, hasil tetap ditampilkan dan ditandai dengan jelas.
-          </div>
-        </div>
+        </aside>
       </div>
     </div>
   )

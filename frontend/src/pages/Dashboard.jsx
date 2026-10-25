@@ -34,8 +34,39 @@ import { analyticsApi, safeErrorMessage } from '../api'
 import DataFreshness from '../DataFreshness'
 import QueueSummary from '../QueueSummary'
 import { fetchQueueSummary } from '../queueSummaryData'
+import { DashboardSkeleton } from '../Skeleton'
+import { navigateWithTransition } from '../viewTransition'
+import EmptyState from '../EmptyState'
 
 const formatRp = (value) => `Rp ${(value || 0).toLocaleString('id-ID')}`
+
+// Angka mengalir ke target baru dengan ease-out cubik. Data yang stabil
+// (target sama) gak mengulang animasi, jadi auto-refresh tiap 10 detik
+// gak bikin kedip. Menghormati prefers-reduced-motion.
+function useCountUp(target, duration = 640) {
+  const [display, setDisplay] = useState(target)
+  useEffect(() => {
+    if (display === target) return undefined
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setDisplay(target)
+      return undefined
+    }
+    const from = display
+    const start = performance.now()
+    let raf
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / duration)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setDisplay(Math.round(from + (target - from) * eased))
+      if (p < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+    // display sengaja gak masuk deps — restart tiap frame dihindari
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, duration])
+  return display
+}
 
 const MONTHS_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
 const dayLabel = (isoDate) => {
@@ -44,14 +75,9 @@ const dayLabel = (isoDate) => {
   return `${d} ${MONTHS_ID[m - 1]}`
 }
 
-const STATUS_LABELS = {
-  pending: 'Menunggu',
-  scanning: 'Pemeriksaan',
-  processed: 'Analisis AI',
-  review_required: 'Perlu Verifikasi',
-  verified: 'Diputuskan',
-  failed: 'Gagal',
-}
+// ID klaim panjang dipendekkan ke bagian pembeda di ujung — full ID
+// tetap tersedia lewat title/tooltip.
+const shortClaimId = (id = '') => (id.length > 14 ? `…${id.slice(-11)}` : id)
 
 function CustomChartTooltip({ active, payload, label }) {
   if (active && payload && payload.length) {
@@ -180,13 +206,31 @@ export default function Dashboard() {
     }
   }, [fetchData])
 
+  // Rules of Hooks: semua hook WAJIB dipanggil sebelum early-return apa pun.
+  // Sebelumnya useCountUp ditaruh setelah `if (loading)` sehingga jumlah hook
+  // berubah antar render → React crash → halaman blank.
+  const highRiskCount = stats?.high_risk_claims || 0
+  const progressPercent = stats?.total_claims
+    ? Math.round(((stats.processed_claims || stats.analyzed_claims || 0) / stats.total_claims) * 100)
+    : 0
+
+  // Nilai beranimasi untuk angka di kartu metrik & ringkasan
+  const animTotal = useCountUp(stats?.total_claims || 0)
+  const animPending = useCountUp(stats?.pending_claims ?? 0)
+  const animHighRisk = useCountUp(highRiskCount)
+  const animVerified = useCountUp(stats?.verified_claims || 0)
+  const animAnalyzed = useCountUp(stats?.analyzed_claims || 0)
+  const animExposure = useCountUp(stats?.potential_financial_exposure || 0)
+  const animProgress = useCountUp(progressPercent)
+
   if (loading) {
     return (
-      <div className="status-message loading-state" aria-live="polite">
-        <div className="loading-spinner" />
-        <strong>Memuat Dashboard</strong>
-        <p>Menyiapkan ringkasan klaim dan metrik risiko terkini...</p>
-      </div>
+      <>
+        <p className="sr-only" role="status" aria-live="polite">
+          Memuat dashboard — menyiapkan ringkasan klaim dan metrik risiko terkini.
+        </p>
+        <DashboardSkeleton />
+      </>
     )
   }
 
@@ -237,11 +281,6 @@ export default function Dashboard() {
     { name: 'Gagal', total: stats?.failed_claims ?? 0, fullLabel: 'Pemeriksaan Gagal' },
   ]
 
-  const highRiskCount = stats?.high_risk_claims || 0
-  const progressPercent = stats?.total_claims
-    ? Math.round(((stats.processed_claims || stats.analyzed_claims || 0) / stats.total_claims) * 100)
-    : 0
-
   // Delta "vs. kemarin" dari agregasi endpoint trend
   const tDays = trend?.days || []
   const tToday = tDays[tDays.length - 1] || {}
@@ -251,7 +290,7 @@ export default function Dashboard() {
   const statCards = [
     {
       label: 'Total Klaim',
-      value: stats?.total_claims || 0,
+      value: animTotal,
       sub: 'Seluruh berkas masuk',
       icon: <FileText size={22} />,
       toneClass: 'tone-green',
@@ -260,7 +299,7 @@ export default function Dashboard() {
     },
     {
       label: 'Menunggu Analisis',
-      value: stats?.pending_claims ?? 0,
+      value: animPending,
       sub: 'Dalam antrean pemrosesan',
       icon: <Clock size={22} />,
       toneClass: 'tone-amber',
@@ -269,7 +308,7 @@ export default function Dashboard() {
     },
     {
       label: 'Risiko Tinggi',
-      value: highRiskCount,
+      value: animHighRisk,
       sub: 'Perlu prioritas verifikasi',
       icon: <ShieldAlert size={22} />,
       toneClass: 'tone-red',
@@ -278,7 +317,7 @@ export default function Dashboard() {
     },
     {
       label: 'Selesai Diputuskan',
-      value: stats?.verified_claims || 0,
+      value: animVerified,
       sub: 'Verifikasi rampung',
       icon: <CheckCircle2 size={22} />,
       toneClass: 'tone-green',
@@ -520,7 +559,7 @@ export default function Dashboard() {
           </div>
           <div>
             <span className="summary-label">Klaim Telah Dianalisis</span>
-            <div className="summary-value">{(stats?.analyzed_claims || 0).toLocaleString('id-ID')}</div>
+            <div className="summary-value">{animAnalyzed.toLocaleString('id-ID')}</div>
             <span className="summary-sub">Evaluasi risiko selesai</span>
           </div>
         </div>
@@ -534,7 +573,7 @@ export default function Dashboard() {
           <div>
             <span className="summary-label">Perkiraan selisih biaya</span>
             <div className="summary-value" style={{ color: 'var(--warning-text)' }}>
-              {formatRp(stats?.potential_financial_exposure)}
+              {formatRp(animExposure)}
             </div>
             <span className="summary-sub">Estimasi deviasi biaya klaim</span>
           </div>
@@ -549,12 +588,16 @@ export default function Dashboard() {
           <div className="w-full">
             <div className="flex justify-between items-center mb-1">
               <span className="summary-label">Progres Pemeriksaan</span>
-              <span className="summary-badge-percent">{progressPercent}%</span>
+              <span className="summary-badge-percent">{animProgress}%</span>
             </div>
             <div className="progress-bar-container">
-              <div className="progress-bar-fill" style={{ width: `${progressPercent}%` }} />
+              <div className="progress-bar-fill" style={{ width: `${animProgress}%` }} />
             </div>
-            <span className="summary-sub">
+            <span
+              className="summary-sub"
+              aria-label={`${stats?.analyzed_claims || 0} dari ${stats?.total_claims || 0} total klaim`}
+              aria-live="off"
+            >
               {stats?.analyzed_claims || 0} dari {stats?.total_claims || 0} total klaim
             </span>
           </div>
@@ -631,27 +674,30 @@ export default function Dashboard() {
                 <tr>
                   <th>ID Klaim</th>
                   <th>Fasilitas</th>
-                  <th>Diagnosis</th>
+                  <th>Dx</th>
                   <th className="cell-right">Biaya</th>
                   <th className="cell-right">Skor</th>
                   <th>Prioritas</th>
-                  <th>Status</th>
                   <th aria-label="Aksi" />
                 </tr>
               </thead>
               <tbody>
                 {recentClaims.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="chart-empty" style={{ textAlign: 'center' }}>
-                      Belum ada klaim yang masuk.
+                    <td colSpan={7}>
+                      <EmptyState
+                        icon={FileText}
+                        title="Belum ada klaim masuk"
+                        hint="Klaim terbaru akan muncul di sini begitu diterima sistem."
+                      />
                     </td>
                   </tr>
                 ) : (
                   recentClaims.map((claim) => (
                     <tr key={claim.claim_id}>
-                      <td><span className="claim-id">{claim.claim_id}</span></td>
-                      <td className="cell-text">{claim.provider_id}</td>
-                      <td className="cell-text">{claim.diagnosis_primary}</td>
+                      <td><span className="claim-id" title={claim.claim_id}>{shortClaimId(claim.claim_id)}</span></td>
+                      <td className="cell-text" title={claim.provider_id}>{claim.provider_id}</td>
+                      <td className="cell-text" title={claim.diagnosis_primary}>{claim.diagnosis_primary}</td>
                       <td className="cost">{formatRp(claim.cost_claimed)}</td>
                       <td className="score">{claim.risk_score ?? '-'}</td>
                       <td>
@@ -661,9 +707,19 @@ export default function Dashboard() {
                             : claim.priority_tier === 'low' ? 'Rendah' : '—'}
                         </span>
                       </td>
-                      <td><span className="dash-pill dash-pill-neutral">{STATUS_LABELS[claim.status] || claim.status}</span></td>
-                      <td>
-                        <Link className="row-action" to={`/investigate/${claim.claim_id}`}>Lihat</Link>
+                      <td className="cell-action">
+                        <Link
+                          className="row-action"
+                          to={`/investigate/${claim.claim_id}`}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            navigateWithTransition(navigate, `/investigate/${claim.claim_id}`)
+                          }}
+                          aria-label={`Lihat klaim ${claim.claim_id}`}
+                          title="Lihat klaim"
+                        >
+                          <ArrowUpRight size={12} />
+                        </Link>
                       </td>
                     </tr>
                   ))

@@ -1,12 +1,20 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
-import { RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
+import { RefreshCw, ChevronDown, ChevronRight, Check } from 'lucide-react'
 import { claimsApi, formatRecommendedAction, formatFeature, ANALYSIS_VERSION, safeErrorMessage, publicAnalysisProjection } from '../api'
 import { COMPONENT_LABELS as PLAIN_COMPONENT_LABELS, RULE_LABELS, SIGNAL_LABELS, humanizeText } from '../humanLanguage'
 
 // Maps for technical terms -> human readable
 const COMPONENT_LABELS = PLAIN_COMPONENT_LABELS
+
+// Warna komponen skor — satu jengkal hijau AEGIS (ramp monokrom, bukan pelangi)
+const COMPONENT_COLORS = {
+  financial_anomaly: '#065f46',
+  similarity_fraud: '#047857',
+  evidence_support: '#10b981',
+  clinical_rule_flags: '#34d399',
+  isolation_forest_anomaly: '#6ee7b7',
+}
 
 const EVIDENCE_LEVEL_LABELS = {
   strong_multi_signal: 'Banyak Indikasi Kuat',
@@ -15,6 +23,25 @@ const EVIDENCE_LEVEL_LABELS = {
 }
 
 const fmtRp = (x) => `Rp ${Math.round(x || 0).toLocaleString('id-ID')}`
+const fmtScore = (x) => Number(x || 0).toLocaleString('id-ID', { maximumFractionDigits: 1 })
+
+// Rp ringkas utk label grafik: 1.499.706 -> Rp1,5 jt
+const fmtRpShort = (x) => {
+  const v = Math.abs(x || 0)
+  const s = v >= 1e9
+    ? `${(v / 1e9).toLocaleString('id-ID', { maximumFractionDigits: 2 })} M`
+    : v >= 1e6
+      ? `${(v / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 2 })} jt`
+      : v >= 1e3
+        ? `${Math.round(v / 1e3).toLocaleString('id-ID')} rb`
+        : `${Math.round(v)}`
+  return `Rp${s}`
+}
+
+// Temuan sering mengulang judulnya ("Temuan berdasarkan aturan pemeriksaan: X" di bawah judul X) — buang gema tersebut
+const stripEchoPrefix = (t) => String(t || '')
+  .replace(/^(?:Sinyal deterministik|Temuan berdasarkan aturan pemeriksaan|Temuan pola klaim)\s*[:.]\s*/i, '')
+
 const INTERNAL_ANALYSIS_TEXT = /(?:\b(?:traceback|stack\s*trace|call\s*stack|exception)\b|\b(?:internal|unexpected|unhandled|runtime|value|type|key|json|sql|database|connection|timeout|permission|assertion)\s*[-_ ]?(?:error|failure|exception)\b|\b(?:failed|failure|error|gagal|tidak\s+tersedia)\b|\bsecret(?:[_\s-]+[a-z0-9]+)+\b|\[[^\]]*\b(?:fallback|error|exception|unavailable)\b[^\]]*\])/i
 
 function plainText(value, section) {
@@ -272,47 +299,60 @@ export default function Assessment() {
     </div>
   )
 
-  if (!data) return <div className="p-8 text-center text-muted">Memuat hasil analisis...</div>
+  if (!data) {
+    return (
+      <div className="status-message loading-state" role="status" aria-live="polite">
+        <span className="loading-spinner" aria-hidden="true" />
+        <p>Memuat hasil analisis…</p>
+      </div>
+    )
+  }
 
   const { risk, explanation, clinical, financial, fraud, review } = data
   const tierColor = { high: 'var(--risk-high)', medium: 'var(--risk-medium)', low: 'var(--risk-low)' }
+  const tierLabel = { high: 'Prioritas Tinggi', medium: 'Prioritas Sedang', low: 'Prioritas Rendah' }
 
-  // Breakdown skor untuk chart
-  const shapData = Object.entries(risk.breakdown || {})
-    .map(([key, val]) => ({ name: COMPONENT_LABELS[key] || 'Komponen pemeriksaan', value: val }))
-    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+  // Komposisi skor — komponen bernilai 0 tetap tampil di legenda
+  const composition = Object.entries(risk.breakdown || {})
+    .map(([key, val]) => ({
+      key,
+      name: COMPONENT_LABELS[key] || key,
+      value: Math.max(0, Number(val) || 0),
+      color: COMPONENT_COLORS[key] || '#a7f3d0',
+    }))
+    .sort((a, b) => b.value - a.value)
 
-  // SHAP features asli dari model (bukan breakdown bobot)
+  // Faktor biaya (SHAP) — nilai Rp asli dari model
   const shapFeatures = financial?.shap_top_features || []
+  const shapMax = Math.max(1, ...shapFeatures.map(f => Math.abs(Number(f.contribution) || 0)))
 
   const similarClaims = fraud?.similar_claims || []
   const deterministicEvidence = (risk?.evidence || [])
     .filter(item => item.source_family !== 'behavioral_context')
+  const ruleFlagCount = clinical?.rule_flags?.length || 0
 
   const DECISION_OPTIONS = [
-    { value: 'Verified Valid', label: 'Klaim Valid — Setujui' },
-    { value: 'Needs Further Review', label: 'Perlu Peninjauan Lebih Lanjut' },
-    { value: 'Escalate', label: 'Eskalasi ke Supervisor' },
-    { value: 'Request Clarification', label: 'Minta Klarifikasi ke Faskes' },
+    { value: 'Verified Valid', label: 'Klaim valid — setujui' },
+    { value: 'Needs Further Review', label: 'Perlu peninjauan lebih lanjut' },
+    { value: 'Escalate', label: 'Eskalasi ke supervisor' },
+    { value: 'Request Clarification', label: 'Minta klarifikasi ke faskes' },
   ]
   const DECISION_LABELS = Object.fromEntries(DECISION_OPTIONS.map(o => [o.value, o.label]))
 
   return (
-    <div>
-      <div className="page-header">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1>Hasil Pemeriksaan Klaim</h1>
-            <p className="font-mono text-sm" style={{ color: 'var(--text-muted)' }}>Klaim: {claimId}</p>
-          </div>
-          <div className="flex gap-1">
-             <button className="btn btn-ghost" onClick={handleRerun} title="Hapus hasil lama dan periksa kembali">
-               <RefreshCw size={14} aria-hidden="true" /> Periksa Ulang
-            </button>
-            <button className="btn btn-ghost" onClick={() => navigate('/claims')}>
-              ← Daftar Klaim
-            </button>
-          </div>
+    <div className="asm-page">
+      <div className="page-header asm-topbar">
+        <div>
+          <h1>Hasil Pemeriksaan Klaim</h1>
+          <p className="font-mono text-sm" style={{ color: 'var(--text-muted)' }}>Klaim: {claimId}</p>
+        </div>
+        <div className="page-actions">
+          <button className="btn btn-ghost" onClick={handleRerun} title="Hapus hasil lama dan periksa kembali">
+            <RefreshCw size={14} aria-hidden="true" /> Periksa Ulang
+          </button>
+          <button className="btn btn-ghost" onClick={() => navigate('/claims')}>
+            ← Daftar Klaim
+          </button>
         </div>
       </div>
 
@@ -324,273 +364,272 @@ export default function Assessment() {
       )}
 
       {data.partial && (
-        <div className="alert-disclaimer mb-3" style={{ borderLeft: '4px solid var(--warning-text)' }}>
-         ⚠ <strong>Pemeriksaan belum lengkap</strong> — sebagian data tidak tersedia sehingga temuan perlu dibaca dengan perhatian tambahan.
+        <div className="alert-disclaimer mb-3" role="alert">
+          <strong>Pemeriksaan belum lengkap</strong> — sebagian data tidak tersedia.
         </div>
       )}
 
-      <div className="alert-disclaimer mb-4">
-        ⓘ <strong>PENTING:</strong> Sistem ini membantu menentukan prioritas verifikasi — keputusan akhir tetap di tangan petugas verifier BPJS.
-      </div>
-
-      <div className="grid-2" style={{ gap: '1.5rem', marginBottom: '1.5rem' }}>
-        {/* Executive Result */}
-        <div className="card" style={{ borderTop: `4px solid ${tierColor[risk.priority_tier]}` }}>
-          <div className="card-title">Ringkasan Hasil · {risk.max_score ?? 85} poin maksimum</div>
-          <div className="flex items-center gap-3">
-            <div className={`score-circle ${risk.priority_tier}`}>
-              {risk.total_score}
-            </div>
+      {/* ---------- Baris 1: skor + keputusan ---------- */}
+      <div className="asm-head-grid">
+        {/* Skor Risiko */}
+        <section className="card asm-score-card" style={{ '--rail': tierColor[risk.priority_tier] }}>
+          <div className="asm-score-hero">
             <div>
-              <div className="text-xs text-muted mb-1">Makin tinggi, makin perlu diverifikasi lebih dulu</div>
-              <div className="mb-1">
-                <span className={`badge badge-${risk.priority_tier}`}>
-                  Prioritas {risk.priority_tier === 'high' ? 'Tinggi' : risk.priority_tier === 'medium' ? 'Sedang' : 'Rendah'}
-                </span>
+              <div className="asm-kicker">Skor Risiko</div>
+              <div className="asm-hero-num" style={{ color: tierColor[risk.priority_tier] }}>{fmtScore(risk.total_score)}</div>
+              <div className="asm-score-of">dari {risk.max_score ?? 85} poin maksimum</div>
+            </div>
+            <div className="asm-hero-side">
+              <span className={`badge badge-${risk.priority_tier}`}>{tierLabel[risk.priority_tier]}</span>
+              <div className="asm-hero-action">{formatRecommendedAction(explanation.recommended_action)}</div>
+              <div className="asm-hero-sub">
+                {ruleFlagCount > 0 ? `${ruleFlagCount} temuan medis perlu diperhatikan` : 'Tanpa temuan medis'}
               </div>
-               <p style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '0.2rem' }}>
-                 {formatRecommendedAction(explanation.recommended_action)}
-               </p>
-              <p className="text-muted text-sm">
-                 {clinical?.rule_flags?.length > 0
-                   ? `${clinical.rule_flags.length} temuan medis perlu diperhatikan`
-                   : 'Tidak ada temuan medis yang perlu ditindaklanjuti'}
-              </p>
             </div>
           </div>
-        </div>
 
-        {/* Human Decision */}
-        <div className="card">
-          <div className="card-title">Keputusan Petugas Verifier</div>
+          {/* Penggaris zona risiko 0-100 (high ≥60, medium ≥25) */}
+          <div
+            className="asm-ruler"
+            role="img"
+            aria-label={`Skor ${fmtScore(risk.total_score)} dari 100, ${tierLabel[risk.priority_tier]}`}
+          >
+            <div className="asm-ruler-track">
+              <i className="asm-zone asm-zone-low" style={{ width: '25%' }} />
+              <i className="asm-zone asm-zone-med" style={{ width: '35%' }} />
+              <i className="asm-zone asm-zone-high" style={{ width: '40%' }} />
+              <b className="asm-needle" style={{ left: `${Math.min(100, Math.max(0, risk.total_score))}%` }} />
+            </div>
+            <div className="asm-ruler-ticks" aria-hidden="true">
+              <span>0</span><span>25</span><span>60</span><span>100</span>
+            </div>
+            <div className="asm-ruler-zones" aria-hidden="true">
+              <span style={{ width: '25%' }}>Rendah</span>
+              <span style={{ width: '35%' }}>Sedang</span>
+              <span style={{ width: '40%' }}>Tinggi</span>
+            </div>
+          </div>
+
+          {/* Fakta ringkas klaim */}
+          <div className="asm-quickstats">
+            <div className="asm-quick-stat">
+              <span>Pengaruh terbesar</span>
+              <b>{composition[0]?.name || '—'}</b>
+            </div>
+            <div className="asm-quick-stat">
+              <span>Selisih biaya</span>
+              <b>{financial?.deviation_pct != null ? `+${fmtScore(financial.deviation_pct)}%` : '—'}</b>
+            </div>
+            <div className="asm-quick-stat">
+              <span>Klaim serupa</span>
+              <b>{similarClaims.length > 0 ? `${similarClaims.length} kandidat` : '—'}</b>
+            </div>
+          </div>
+        </section>
+
+        {/* Keputusan Verifier */}
+        <section className="card asm-decision-card">
+          <div className="card-title">Keputusan Verifier</div>
           {submitted ? (
-            <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--success)' }}>
-              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✓</div>
-              <div style={{ fontWeight: 600 }}>Keputusan Berhasil Disimpan</div>
-              {existingDecision && (
-                <>
-                  <p className="text-sm text-muted" style={{ marginTop: '0.25rem' }}>
-                    Keputusan: <strong style={{ color: 'var(--text-secondary)' }}>
-                      {DECISION_LABELS[existingDecision.decision] || existingDecision.decision}
-                    </strong>
-                  </p>
-                  <p className="text-sm text-muted">Dicatat oleh: {existingDecision.reviewer}</p>
-                  {existingDecision.verified_at && (
-                    <p className="text-xs text-muted" style={{ marginTop: '0.25rem' }}>
-                      Diverifikasi: {new Date(existingDecision.verified_at).toLocaleString('id-ID')}
-                    </p>
+            <div className="asm-confirmed">
+              <div className="asm-confirmed-icon" aria-hidden="true"><Check size={18} /></div>
+              <div>
+                <div className="asm-confirmed-title">{DECISION_LABELS[existingDecision?.decision] || existingDecision?.decision}</div>
+                <div className="asm-confirmed-sub">
+                  {existingDecision?.verified_at && (
+                    <>Diputuskan {new Date(existingDecision.verified_at).toLocaleString('id-ID')} · {existingDecision.reviewer}</>
                   )}
-                </>
-              )}
-              <button
-                className="btn btn-ghost"
-                style={{ marginTop: '0.75rem', fontSize: '0.75rem' }}
-                onClick={() => { setSubmitted(false); setExistingDecision(null) }}
-              >
-                Ubah Keputusan
-              </button>
-              {decisionLoadError && (
-                <div className="status-message error" role="alert" style={{ marginTop: '1rem', textAlign: 'left' }}>
-                  <strong>Riwayat keputusan belum dapat diperbarui</strong>
-                  <p>{decisionLoadError}</p>
-                  <button className="btn btn-outline" style={{ marginTop: '0.75rem' }} onClick={handleDecisionRetry}>
-                    Muat keputusan lagi
-                  </button>
                 </div>
-              )}
+                {decisionLoadError && (
+                  <div className="status-message error" role="alert" style={{ marginTop: '0.5rem', textAlign: 'left' }}>
+                    <strong>Riwayat keputusan belum dapat diperbarui</strong>
+                    <p>{decisionLoadError}</p>
+                    <button className="btn btn-outline" style={{ marginTop: '0.5rem' }} onClick={handleDecisionRetry}>Muat lagi</button>
+                  </div>
+                )}
+              </div>
+              <button className="btn btn-ghost asm-confirm-change" onClick={() => { setSubmitted(false); setExistingDecision(null) }}>
+                Ubah
+              </button>
+            </div>
+          ) : decisionLoadError ? (
+            <div className="status-message error" role="alert" style={{ padding: '1rem' }}>
+              <strong>Riwayat keputusan belum dapat dimuat</strong>
+              <p>{decisionLoadError}</p>
+              <button className="btn btn-outline" style={{ marginTop: '0.75rem' }} onClick={handleDecisionRetry}>Muat lagi</button>
             </div>
           ) : (
-            <div>
-              {decisionLoadError ? (
-                <div className="status-message error" role="alert" style={{ padding: '1rem' }}>
-                  <strong>Riwayat keputusan belum dapat dimuat</strong>
-                  <p>{decisionLoadError}</p>
-                  <button className="btn btn-outline" style={{ marginTop: '0.75rem' }} onClick={handleDecisionRetry}>
-                    Muat keputusan lagi
-                  </button>
+            <fieldset className="asm-decision-fieldset" disabled={loadingDecision} aria-busy={loadingDecision}>
+              <legend className="sr-only">Keputusan Petugas Verifier</legend>
+              {decisionError && (
+                <div className="status-message error" role="alert" style={{ padding: '0.75rem', marginBottom: '0.75rem' }}>
+                  <strong>Keputusan belum tersimpan</strong>
+                  <p>{decisionError}</p>
+                  <button className="btn btn-outline" style={{ marginTop: '0.5rem' }} onClick={handleSubmitDecision} disabled={savingDecision}>Coba simpan lagi</button>
                 </div>
-              ) : loadingDecision ? (
-                <div className="text-sm text-muted text-center" style={{ padding: '1rem' }}>
-                  Memeriksa riwayat keputusan...
-                </div>
-              ) : (
-                <>
-                  {decisionError && (
-                    <div className="status-message error" role="alert" style={{ padding: '1rem', marginBottom: '1rem' }}>
-                      <strong>Keputusan belum tersimpan</strong>
-                      <p>{decisionError}</p>
-                      <button className="btn btn-outline" style={{ marginTop: '0.75rem' }} onClick={handleSubmitDecision} disabled={savingDecision}>
-                        Coba simpan lagi
-                      </button>
-                    </div>
-                  )}
-                  <fieldset className="assessment-decision-fieldset">
-                    <legend className="sr-only">Keputusan Petugas Verifier</legend>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-                      {DECISION_OPTIONS.map(opt => (
-                        <label key={opt.value} className="assessment-decision-option" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.5rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: '6px', border: decision === opt.value ? '1px solid var(--accent-green)' : '1px solid var(--border)' }}>
-                          <input type="radio" name="decision" value={opt.value} checked={decision === opt.value} onChange={e => setDecision(e.target.value)} />
-                          <span style={{ fontSize: '0.85rem' }}>{opt.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </fieldset>
-                  <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleSubmitDecision} disabled={!decision || savingDecision}>
-                    {savingDecision ? '⟳ Menyimpan...' : 'Simpan Keputusan'}
-                  </button>
-                </>
               )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="grid-2" style={{ gap: '1.5rem' }}>
-        <div className="flex-col" style={{ gap: '1.5rem', display: 'flex' }}>
-          <div className="card">
-         <div className="card-title">Dasar Penilaian</div>
-            <p className="text-xs text-muted mb-2">
-               Temuan berikut berasal dari aturan dan pemeriksaan terukur. Ringkasan otomatis tidak mengubah nilai risiko.
-            </p>
-            {deterministicEvidence.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                {deterministicEvidence.map(item => (
-                  <div key={item.evidence_id} style={{ padding: '0.65rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--accent-green)' }}>
-                    <div className="text-xs" style={{ fontWeight: 700 }}>
-                      {RULE_LABELS[item.signal_type] || SIGNAL_LABELS[item.signal_type] || plainText(item.signal_type)}
-                    </div>
-                    <div className="text-sm" style={{ marginTop: 3 }}>{plainText(item.explanation)}</div>
-                  </div>
+              <div className="asm-options">
+                {DECISION_OPTIONS.map(opt => (
+                  <label key={opt.value} className="asm-opt" data-checked={decision === opt.value || undefined}>
+                    <input
+                      type="radio"
+                      name="decision"
+                      value={opt.value}
+                      checked={decision === opt.value}
+                      onChange={e => setDecision(e.target.value)}
+                    />
+                    <span>{opt.label}</span>
+                  </label>
                 ))}
               </div>
+              <button className="btn btn-primary asm-save" onClick={handleSubmitDecision} disabled={!decision || savingDecision || loadingDecision}>
+                {savingDecision ? 'Menyimpan…' : 'Simpan Keputusan'}
+              </button>
+            </fieldset>
+          )}
+        </section>
+      </div>
+
+      {/* ---------- Baris 2: dokumen kiri / grafik kanan ---------- */}
+      <div className="asm-body-grid">
+        <div className="asm-col">
+          {/* Temuan Utama */}
+          <section className="card">
+            <div className="asm-title-row">
+              <div className="card-title" style={{ marginBottom: 0 }}>Temuan Utama</div>
+              {deterministicEvidence.length > 0 && <span className="asm-count">{deterministicEvidence.length} temuan</span>}
+            </div>
+            {deterministicEvidence.length > 0 ? (
+              <ol className="asm-findings">
+                {deterministicEvidence.map((item, i) => {
+                  const label = RULE_LABELS[item.signal_type] || SIGNAL_LABELS[item.signal_type] || plainText(item.signal_type)
+                  return (
+                  <li key={item.evidence_id}>
+                    <span className="asm-findex" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+                    <div>
+                      <div className="asm-ftitle">{label}</div>
+                      {(() => {
+                        const body = plainText(stripEchoPrefix(item.explanation))
+                        const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+                        // Sembunyikan isi yang cuma segema judul ("lama rawat jauh…" di bawah "Lama rawat jauh…")
+                        if (!body || norm(body) === norm(label)) return null
+                        return <p className="asm-ftext">{body}</p>
+                      })()}
+                    </div>
+                  </li>
+                  )
+                })}
+              </ol>
             ) : (
-               <div className="text-sm text-muted">Belum ada temuan yang mendukung tingkat prioritas.</div>
+              <p className="asm-empty">Belum ada temuan yang mendukung tingkat prioritas.</p>
             )}
-          </div>
+          </section>
 
-          {/* Narasi Sistem */}
-          <div className="card">
-            <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-               Ringkasan Pemeriksaan
+          {/* Ringkasan + QA */}
+          <section className="card">
+            <div className="card-title">Ringkasan Pemeriksaan</div>
+            <div className="asm-narrative">
+              {plainText(explanation?.narrative_id) || 'Ringkasan tidak tersedia.'}
             </div>
-            <div className="qa-answer mb-2" style={{ marginTop: 0 }}>
-               {plainText(explanation?.narrative_id) || 'Ringkasan tidak tersedia.'}
-            </div>
-            <div className="text-xs text-muted mb-3" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
-              <span style={{ color: 'var(--accent-green)' }}>
-                 Angka dalam ringkasan dicocokkan dengan data klaim. Ringkasan ini membantu menentukan prioritas, bukan menggantikan keputusan petugas.
-              </span>
-            </div>
+            <p className="asm-footnote asm-footnote-line">
+              Angka sesuai data klaim · bukan pengganti keputusan petugas.
+            </p>
 
-            <div className="card-title" style={{ fontSize: '0.75rem', marginBottom: '0.5rem' }}>Pertanyaan Panduan Verifikasi</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div className="asm-qa-title">Panduan Verifikasi</div>
+            <div className="asm-qa">
               {[
                 { label: 'Kenapa klaim ini mendapat prioritas ini?', key: 'why_top_priority' },
                 { label: 'Apa temuan terkuat dari analisis?', key: 'strongest_evidence' },
                 { label: 'Apakah ada klaim serupa sebelumnya?', key: 'most_similar_claim' },
-                 { label: 'Apakah temuan ini sudah dikonfirmasi?', key: 'is_this_fraud' }
+                { label: 'Apakah temuan ini sudah dikonfirmasi?', key: 'is_this_fraud' },
               ].map(q => (
-                <details key={q.key} style={{ background: 'var(--bg-secondary)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
-                  <summary className="assessment-qa-summary" style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 500 }}>
+                <details key={q.key} className="asm-qa-item">
+                  <summary className="asm-qa-summary">
+                    <ChevronRight className="asm-qa-caret" size={13} aria-hidden="true" />
                     {q.label}
                   </summary>
-                  <div style={{ padding: '1rem', borderTop: '1px solid var(--border)', fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, background: 'var(--bg-card)' }}>
-                     {plainText(explanation?.qa_panel?.[q.key]) || '—'}
-                  </div>
+                  <div className="asm-qa-body">{plainText(explanation?.qa_panel?.[q.key]) || '—'}</div>
                 </details>
               ))}
             </div>
-          </div>
+          </section>
 
-          {/* Hanya relasi repeat billing atau cloning yang ditampilkan.
-              Skor komposit mengurutkan kandidat yang sudah lolos aturan relasi. */}
-           <div className="card">
-             <div className="card-title">Riwayat Klaim Serupa</div>
-             <p className="text-xs text-muted mb-2">
-                Pengulangan klaim (pasien &amp; tindakan sama dalam 45 hari) dan kemiripan tidak wajar antar-klaim ditampilkan di sini.
-                Klik baris untuk melihat alasan kemiripannya.
-             </p>
-             {fraud?.repeat_billing_matched_claim_id && (
-               <div
-                 className="text-sm mb-2"
-                 style={{ padding: '0.65rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--risk-high)' }}
-               >
-                 <strong>Klaim berulang terdeteksi: {fraud.repeat_billing_matched_claim_id}</strong>
-                 <div className="text-xs text-muted" style={{ marginTop: '0.25rem' }}>
-                   Pasien dan tindakan yang sama ditemukan dalam rentang 45 hari. Periksa dokumen sumber sebelum mengambil keputusan.
-                 </div>
-               </div>
-             )}
-             {similarClaims.length > 0 ? (
-              <div className="table-container">
-                <table>
+          {/* Klaim Serupa */}
+          <section className="card">
+            <div className="asm-title-row">
+              <div className="card-title" style={{ marginBottom: 0 }}>Klaim Serupa</div>
+              {similarClaims.length > 0 && <span className="asm-count">{similarClaims.length} kandidat</span>}
+            </div>
+            {fraud?.repeat_billing_matched_claim_id && (
+              <div className="asm-repeat">
+                <strong>Klaim berulang: {fraud.repeat_billing_matched_claim_id}</strong>
+                <span>Pasien &amp; tindakan sama dalam 45 hari — periksa dokumen sumber.</span>
+              </div>
+            )}
+            <p className="asm-footnote">Klik baris untuk melihat faktor kemiripan.</p>
+            {similarClaims.length > 0 ? (
+              <div className="asm-table-wrap">
+                <table className="asm-table">
                   <thead>
                     <tr>
                       <th scope="col">ID Klaim</th>
                       <th scope="col">Diagnosis</th>
-                        <th scope="col">Biaya yang diajukan</th>
+                      <th scope="col">Biaya</th>
                       <th scope="col">Kemiripan</th>
                     </tr>
                   </thead>
                   <tbody>
                     {similarClaims.map(sc => (
                       <Fragment key={sc.claim_id}>
-                        <tr
-                        >
-                          <td className="font-mono" style={{ fontSize: '0.75rem' }}>
+                        <tr>
+                          <td>
                             <button
                               type="button"
-                              className="similar-claim-toggle"
+                              className="asm-sim-toggle"
                               aria-label={`Buka rincian faktor kemiripan untuk klaim ${sc.claim_id}`}
                               aria-expanded={expandedSimilar === sc.claim_id}
                               aria-controls={`similar-claim-${sc.claim_id}`}
                               onClick={() => setExpandedSimilar(expandedSimilar === sc.claim_id ? null : sc.claim_id)}
-                              title="Buka rincian faktor kemiripan"
-                              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', width: '100%', border: 0, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer' }}
                             >
                               {expandedSimilar === sc.claim_id ? <ChevronDown size={12} aria-hidden="true" /> : <ChevronRight size={12} aria-hidden="true" />}
-                              {sc.claim_id}
+                              <span className="font-mono">{sc.claim_id}</span>
+                              {sc.same_patient && <em className="asm-sim-flag">pasien sama</em>}
                             </button>
-                            {sc.same_patient && (
-                              <div style={{ fontSize: '0.6rem', color: 'var(--error-text)' }}>pasien sama</div>
-                            )}
                           </td>
-                          <td><span className="badge badge-blue" style={{ fontSize: '0.65rem' }}>{sc.diagnosis_primary || '—'}</span></td>
-                          <td style={{ fontSize: '0.78rem' }}>{fmtRp(sc.cost_claimed)}</td>
+                          <td><span className="asm-dx">{sc.diagnosis_primary || '—'}</span></td>
+                          <td className="asm-num">{fmtRp(sc.cost_claimed)}</td>
                           <td>
-                            <div className="flex items-center gap-1">
-                              <div className="progress-bar" style={{ width: 40, height: 4 }}>
-                                <div className="progress-fill" style={{ width: `${sc.similarity * 100}%`, background: sc.similarity > 0.85 ? 'var(--risk-high)' : 'var(--accent-green)' }} />
+                            <div className="asm-sim-cell">
+                              <div className="asm-sim-bar" aria-hidden="true">
+                                <i style={{
+                                  width: `${Math.round((sc.similarity || 0) * 100)}%`,
+                                  background: sc.similarity > 0.85 ? 'var(--risk-high)' : 'var(--accent-green)',
+                                }} />
                               </div>
-                              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{(sc.similarity * 100).toFixed(0)}%</span>
+                              <span className="asm-num asm-sim-pct">{(sc.similarity * 100).toFixed(0)}%</span>
                             </div>
                           </td>
                         </tr>
                         {expandedSimilar === sc.claim_id && (
                           <tr>
-                            <td id={`similar-claim-${sc.claim_id}`} colSpan={4} style={{ background: 'var(--bg-secondary)', padding: '0.75rem 1rem' }}>
-                               <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.45rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                                 Alasan kemiripan
-                              </div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                                 <span className="badge badge-blue" style={{ fontSize: '0.65rem' }} title="Kesesuaian kode diagnosis dan tindakan">
-                                   Diagnosis dan tindakan: {((sc.code_similarity ?? 0) * 100).toFixed(0)}%
+                            <td id={`similar-claim-${sc.claim_id}`} colSpan={4} className="asm-sim-detail">
+                              <div className="asm-sim-reason-title">Faktor kemiripan</div>
+                              <div className="asm-sim-chips">
+                                <span className="asm-chip" title="Kesesuaian kode diagnosis dan tindakan">
+                                  Kode: {((sc.code_similarity ?? 0) * 100).toFixed(0)}%
                                 </span>
-                                 <span className={`badge ${(sc.cost_proximity ?? 0) > 0.9 ? 'badge-high' : 'badge-blue'}`} style={{ fontSize: '0.65rem' }} title="Kedekatan jumlah biaya">
-                                  Kedekatan biaya: {((sc.cost_proximity ?? 0) * 100).toFixed(0)}%
+                                <span className={`asm-chip ${((sc.cost_proximity ?? 0) > 0.9 ? 'asm-chip-warn' : '')}`} title="Kedekatan jumlah biaya">
+                                  Biaya: {((sc.cost_proximity ?? 0) * 100).toFixed(0)}%
                                 </span>
-                                 <span className={`badge ${sc.same_provider ? 'badge-high' : 'badge-low'}`} style={{ fontSize: '0.65rem' }} title="Kesesuaian fasilitas kesehatan">
-                                   Fasilitas kesehatan: {sc.same_provider ? `sama${sc.provider_id ? ` (${sc.provider_id})` : ''}` : 'berbeda'}
+                                <span className={`asm-chip ${sc.same_provider ? 'asm-chip-warn' : ''}`} title="Kesesuaian fasilitas kesehatan">
+                                  Faskes: {sc.same_provider ? 'sama' : 'berbeda'}
                                 </span>
-                                 <span className={`badge ${sc.days_apart != null && sc.days_apart <= 7 ? 'badge-high' : 'badge-low'}`} style={{ fontSize: '0.65rem' }} title="Jarak tanggal klaim">
-                                  Jarak waktu: {sc.days_apart != null ? `${sc.days_apart} hari` : 'tidak diketahui'}
+                                <span className={`asm-chip ${sc.days_apart != null && sc.days_apart <= 7 ? 'asm-chip-warn' : ''}`} title="Jarak tanggal klaim">
+                                  Jarak: {sc.days_apart != null ? `${sc.days_apart} hari` : '?'}
                                 </span>
-                                 <span className={`badge ${sc.same_patient ? 'badge-high' : 'badge-low'}`} style={{ fontSize: '0.65rem' }} title="Kesesuaian peserta">
-                                   Peserta: {sc.same_patient ? `sama${sc.patient_id ? ` (${sc.patient_id})` : ''}` : 'berbeda'}
+                                <span className={`asm-chip ${sc.same_patient ? 'asm-chip-warn' : ''}`} title="Kesesuaian peserta">
+                                  Peserta: {sc.same_patient ? 'sama' : 'berbeda'}
                                 </span>
-                              </div>
-                              <div className="text-xs text-muted" style={{ marginTop: '0.5rem' }}>
-                                Faktor berwarna merah menunjukkan konteks yang mendukung investigasi. Pola klinis lintas faskes tidak ditampilkan sebagai kandidat cloning.
                               </div>
                             </td>
                           </tr>
@@ -601,104 +640,123 @@ export default function Assessment() {
                 </table>
               </div>
             ) : (
-              <div className="text-sm text-muted text-center p-4">
+              <p className="asm-empty">
                 {fraud?.repeat_billing_matched_claim_id
-                  ? 'Tidak ada kandidat vector tambahan; pasangan repeat billing ditampilkan di atas.'
+                  ? 'Pasangan repeat billing ditampilkan di atas.'
                   : fraud?.similarity_matched_claim_id
-                  ? `Klaim paling mirip: ${fraud.similarity_matched_claim_id} (${((fraud.similarity_max_score || 0) * 100).toFixed(0)}%)`
-                   : 'Tidak ada kandidat pengulangan klaim atau kemiripan tidak wajar. Kemiripan pola penyakit semata dianggap wajar.'}
-              </div>
+                    ? `Klaim paling mirip: ${fraud.similarity_matched_claim_id} (${((fraud.similarity_max_score || 0) * 100).toFixed(0)}%)`
+                    : 'Tidak ada pengulangan atau kemiripan yang tidak wajar.'}
+              </p>
             )}
-          </div>
+          </section>
         </div>
 
-        <div className="flex-col" style={{ gap: '1.5rem', display: 'flex' }}>
-           {/* Grafik bagian yang memengaruhi nilai risiko */}
-          <div className="card">
-             <div className="card-title">Bagian yang Memengaruhi Nilai Risiko</div>
-            <p className="text-xs text-muted mb-2">Bagian pemeriksaan yang paling memengaruhi tingkat prioritas klaim.</p>
-            <div style={{ height: 250, width: '100%' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={shapData} layout="vertical" margin={{ top: 5, right: 30, left: 120, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={true} vertical={false} />
-                  <XAxis type="number" stroke="var(--text-muted)" fontSize={11} />
-                  <YAxis dataKey="name" type="category" stroke="var(--text-muted)" fontSize={11} tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} width={120} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)', borderRadius: 8, fontSize: '0.8rem' }}
-                    itemStyle={{ color: 'var(--text-primary)' }}
-                    formatter={(value) => [`${Number(value).toFixed(1)} poin`, 'Kontribusi']}
-                  />
-                  <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                    {shapData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.value > 0 ? 'var(--risk-high)' : 'var(--success)'} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+        <div className="asm-col">
+          {/* Komposisi Skor */}
+          <section className="card">
+            <div className="card-title">Komposisi Skor Risiko</div>
+            <div
+              className="asm-stack"
+              role="img"
+              aria-label={`Skor ${fmtScore(risk.total_score)} dari 100 tersusun dari ${composition.map(c => `${c.name} ${fmtScore(c.value)}`).join(', ')}`}
+            >
+              {composition.filter(c => c.value > 0).map(c => (
+                <i
+                  key={c.key}
+                  style={{ width: `${c.value}%`, background: c.color }}
+                  title={`${c.name}: ${fmtScore(c.value)}`}
+                />
+              ))}
             </div>
-          </div>
+            <ul className="asm-legend">
+              {composition.map(c => (
+                <li key={c.key}>
+                  <i style={{ background: c.color }} aria-hidden="true" />
+                  <span>{c.name}</span>
+                  <b className="asm-num">{c.value > 0 ? `${fmtScore(c.value)} poin` : '—'}</b>
+                </li>
+              ))}
+              <li className="asm-legend-total">
+                <i aria-hidden="true" />
+                <span>Tersusun dari 100</span>
+                <b className="asm-num">{fmtScore(risk.total_score)}</b>
+              </li>
+            </ul>
+          </section>
 
-           {/* Faktor yang memengaruhi perkiraan biaya */}
+          {/* Faktor Perkiraan Biaya — diverging Rp */}
           {shapFeatures.length > 0 && (
-            <div className="card">
-                <div className="card-title">Faktor yang Memengaruhi Perkiraan Biaya</div>
-               <p className="text-xs text-muted mb-2">
-                  Faktor yang paling memengaruhi perkiraan biaya untuk kasus ini.
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                {shapFeatures.map((f, i) => (
-                  <div key={i}>
-                    <div className="flex justify-between text-xs mb-1">
-                       <span>{plainText(f.feature_label || formatFeature(f.feature_name))}</span>
-                       <span style={{ fontWeight: 600, color: f.direction === 'positive' ? 'var(--error-text)' : 'var(--success)' }}>
-                          {f.direction === 'positive' ? '↑ perkiraan biaya lebih tinggi' : '↓ perkiraan biaya lebih rendah'}
+            <section className="card">
+              <div className="asm-title-row">
+                <div className="card-title" style={{ marginBottom: 0 }}>Faktor Perkiraan Biaya</div>
+                <div className="asm-div-legend" aria-hidden="true">
+                  <span className="up">↑ menaikkan</span>
+                  <span className="down">↓ menurunkan</span>
+                </div>
+              </div>
+              <div className="asm-div">
+                {shapFeatures.map((f, i) => {
+                  const contribution = Number(f.contribution) || 0
+                  const positive = f.direction === 'positive'
+                  // % dari track penuh; bar pendek tetap mencapai 8% supaya terlihat
+                  const width = Math.min(100, Math.max(8, (Math.abs(contribution) / shapMax) * 100))
+                  return (
+                    <div
+                      key={i}
+                      className="asm-div-row"
+                      style={positive ? { '--w': `${width}%`, '--bar': 'var(--risk-high)' } : { '--w': `${width}%`, '--bar': 'var(--accent-green)' }}
+                      data-dir={positive ? 'up' : 'down'}
+                    >
+                      <span className="asm-div-name">{plainText(f.feature_label || formatFeature(f.feature_name))}</span>
+                      <div className="asm-div-track" aria-hidden="true"><i className="asm-div-axis" /><i className="asm-div-bar" /></div>
+                      <span className={`asm-div-val ${positive ? 'up' : 'down'}`}>
+                        {positive ? '↑' : '↓'} {fmtRpShort(contribution)}
                       </span>
                     </div>
-                    <div className="progress-bar" style={{ height: 5 }}>
-                      <div className="progress-fill" style={{
-                        width: `${Math.min(100, (f.contribution / (shapFeatures[0]?.contribution || 1)) * 100)}%`,
-                        background: f.direction === 'positive' ? 'var(--risk-high)' : 'var(--accent-green)',
-                      }} />
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
-            </div>
+              <p className="asm-footnote asm-footnote-line">Pengaruh tiap faktor terhadap perkiraan biaya penggantian.</p>
+            </section>
           )}
 
           {/* Catatan Temuan */}
-          <div className="card">
-             <div className="card-title">Catatan Temuan</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--accent-green)' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
-                   <span>Temuan Medis</span>
-                    <span>{clinical?.evidence_source === 'llm_local' ? 'Catatan tambahan' : clinical?.evidence_source === 'fallback_no_data' ? 'Belum tersedia' : 'Aturan pemeriksaan'}</span>
+          <section className="card">
+            <div className="card-title">Catatan Temuan</div>
+            <ul className="asm-notes">
+              <li>
+                <div className="asm-note-head">
+                  <span className="asm-note-title">Temuan Medis</span>
+                  <span className="asm-note-src">{clinical?.evidence_source === 'llm_local' ? 'Catatan tambahan' : clinical?.evidence_source === 'fallback_no_data' ? 'Belum tersedia' : 'Aturan pemeriksaan'}</span>
                 </div>
-                  <div style={{ fontSize: '0.82rem' }}>{plainText(clinical?.evidence_text, 'clinical') || 'Tidak ada temuan medis yang signifikan.'}</div>
-              </div>
-               <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--warning-text)' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
-                     <span>Temuan Perkiraan Biaya</span>
-                     <span>{financial?.method === 'zscore_peer_fallback' ? 'Rata-rata sejenis' : (financial?.anomaly_score === 0 && financial?.deviation_pct === 0) ? 'Belum tersedia' : 'Perkiraan biaya'}</span>
+                <p>{plainText(clinical?.evidence_text, 'clinical') || 'Tidak ada temuan yang signifikan.'}</p>
+              </li>
+              <li>
+                <div className="asm-note-head">
+                  <span className="asm-note-title">Perkiraan Biaya</span>
+                  <span className="asm-note-src">{financial?.method === 'zscore_peer_fallback' ? 'Rata-rata sejenis' : (financial?.anomaly_score === 0 && financial?.deviation_pct === 0) ? 'Belum tersedia' : 'Perkiraan biaya'}</span>
                 </div>
-                  <div style={{ fontSize: '0.82rem' }}>{plainText(financial?.evidence_text, 'financial') || 'Biaya berada dalam kisaran yang wajar.'}</div>
-              </div>
-               <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--error-text)' }}>
-                 <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase' }}>Temuan Pola Klaim</div>
-                  <div style={{ fontSize: '0.82rem' }}>{plainText(fraud?.evidence_text, 'fraud') || 'Tidak ditemukan pola pengulangan klaim yang perlu ditindaklanjuti.'}</div>
-              </div>
-              <div style={{ padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: 8, borderLeft: '3px solid var(--border)' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.25rem', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between' }}>
-                   <span>Ringkasan Temuan</span>
-                   <span>{review?.reasoning_source === 'rule_fallback' ? 'Aturan pemeriksaan' : 'Analisis tambahan'}</span>
+                <p>{plainText(financial?.evidence_text, 'financial') || 'Biaya berada dalam kisaran wajar.'}</p>
+              </li>
+              <li>
+                <div className="asm-note-head">
+                  <span className="asm-note-title">Pola Klaim</span>
                 </div>
-                  <div style={{ fontSize: '0.82rem' }}>{plainText(review?.reasoning_narrative, 'review') || '—'}</div>
-              </div>
-            </div>
-          </div>
+                <p>{plainText(fraud?.evidence_text, 'fraud') || 'Tidak ada pola pengulangan yang perlu ditindaklanjuti.'}</p>
+              </li>
+              <li>
+                <div className="asm-note-head">
+                  <span className="asm-note-title">Ringkasan</span>
+                  <span className="asm-note-src">{review?.reasoning_source === 'rule_fallback' ? 'Aturan pemeriksaan' : 'Analisis tambahan'}</span>
+                </div>
+                <p>{plainText(review?.reasoning_narrative, 'review') || '—'}</p>
+              </li>
+            </ul>
+          </section>
         </div>
       </div>
+
+      <p className="asm-disclaimer">Sistem hanya membantu menentukan prioritas — keputusan akhir tetap di petugas verifier BPJS.</p>
     </div>
   )
 }

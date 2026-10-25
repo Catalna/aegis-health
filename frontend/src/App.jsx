@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom'
 import './index.css'
 import Logo from './Logo'
+import ErrorBoundary from './ErrorBoundary'
+import ToastHost from './Toast'
 import Dashboard from './pages/Dashboard'
 import ClaimsList from './pages/ClaimsList'
 import ClaimIntake from './pages/ClaimIntake'
@@ -12,6 +14,32 @@ import MLEvaluation from './pages/MLEvaluation'
 import { LayoutDashboard, List, Activity, Brain, FilePlus } from 'lucide-react'
 
 function Sidebar() {
+  const location = useLocation()
+  const sidebarRef = useRef(null)
+  const [pill, setPill] = useState({ y: 0, h: 44, show: false })
+  const [pillAnimated, setPillAnimated] = useState(false)
+
+  // Pill aktif "meluncur" ke menu tujuan: ukur posisi link aktif,
+  // gerakkan satu elemen indikator (bukan background per-link).
+  useLayoutEffect(() => {
+    const bar = sidebarRef.current
+    const active = bar?.querySelector('.nav-item.active')
+    if (!bar || !active) {
+      setPill(p => ({ ...p, show: false }))
+      return
+    }
+    const barRect = bar.getBoundingClientRect()
+    const activeRect = active.getBoundingClientRect()
+    setPill({ y: activeRect.top - barRect.top, h: activeRect.height, show: true })
+  }, [location.pathname])
+
+  // Jangan animasikan posisi awal saat halaman pertama kali dibuka.
+  useEffect(() => {
+    if (!pill.show || pillAnimated) return undefined
+    const raf = requestAnimationFrame(() => setPillAnimated(true))
+    return () => cancelAnimationFrame(raf)
+  }, [pill.show, pillAnimated])
+
   const navItems = [
     { label: 'Dashboard Utama', path: '/', icon: <LayoutDashboard size={18} /> },
     { label: 'Daftar Klaim', path: '/claims', icon: <List size={18} /> },
@@ -24,7 +52,12 @@ function Sidebar() {
   ]
 
   return (
-    <aside className="sidebar" aria-label="Navigasi utama">
+    <aside ref={sidebarRef} className="sidebar" aria-label="Navigasi utama">
+      <span
+        className={`nav-pill${pillAnimated ? ' is-animated' : ''}`}
+        style={{ transform: `translateY(${pill.y}px)`, height: pill.h, opacity: pill.show ? 1 : 0 }}
+        aria-hidden="true"
+      />
       <div className="sidebar-logo">
         <Logo width={34} height={34} />
         <div className="sidebar-brand-copy">
@@ -46,10 +79,8 @@ function Sidebar() {
         ))}
       </nav>
       
-      <div className="sidebar-section-label" style={{ marginTop: '2rem', padding: '0 1rem', fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-         Alat Bantu
-      </div>
-      <nav className="sidebar-nav" aria-label="Menu alat bantu" style={{ marginTop: '0.5rem' }}>
+      <div className="sidebar-section-label">Alat Bantu</div>
+      <nav className="sidebar-nav" aria-label="Menu alat bantu">
         {toolItems.map(item => (
           <NavLink
             key={item.path}
@@ -87,15 +118,21 @@ function RoutedMain() {
 
   return (
     <main ref={mainRef} id="main-content" className="main-content" tabIndex="-1">
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/claims" element={<ClaimsList />} />
-        <Route path="/monitoring" element={<Monitoring />} />
-        <Route path="/ml-eval" element={<MLEvaluation />} />
-        <Route path="/intake" element={<ClaimIntake />} />
-        <Route path="/investigate/:claimId" element={<Investigation />} />
-        <Route path="/assessment/:claimId" element={<Assessment />} />
-      </Routes>
+      {/* Keyed by pathname so the arrival animation replays on every nav.
+          ErrorBoundary di dalam sini ikut ter-reset saat pindah halaman. */}
+      <div className="route-reveal" key={location.pathname}>
+        <ErrorBoundary>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/claims" element={<ClaimsList />} />
+            <Route path="/monitoring" element={<Monitoring />} />
+            <Route path="/ml-eval" element={<MLEvaluation />} />
+            <Route path="/intake" element={<ClaimIntake />} />
+            <Route path="/investigate/:claimId" element={<Investigation />} />
+            <Route path="/assessment/:claimId" element={<Assessment />} />
+          </Routes>
+        </ErrorBoundary>
+      </div>
     </main>
   )
 }
@@ -107,6 +144,7 @@ function App() {
         <a className="skip-link" href="#main-content">Lewati ke isi utama</a>
         <Sidebar />
         <RoutedMain />
+        <ToastHost />
       </div>
     </BrowserRouter>
   )
