@@ -169,3 +169,4 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - `23b5cbe` — hapus setup penerapan Docker (6 berkas).
 
 Latest verification: **334 passed / 2 skipped** (after tier-band recalibration); live demo cycle 2026-10-24 — reset → seed 220/220 → drain `failed=0` → per-scenario snapshot **220/220** (tier high 4 / medium 86 / low 130). Full smoke E2E on the live stack passed earlier (see the E2E section above). Frontend build passed earlier with the chunk-size warning above. Docs/config verification 2026-10-25 (README rewrite + Docker removal): README link check green, active Docker refs zero, frontend build green (same chunk warning), `/api/health` not re-run (stack offline). Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
+- b486135 � catatan changelog pekerjaan README/Docker (2026-10-25).
