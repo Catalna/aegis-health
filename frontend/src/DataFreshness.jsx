@@ -9,12 +9,13 @@ export default function DataFreshness({
   refreshing = false,
   partial = false,
   error = false,
-  errorMessage = null,
 }) {
   if (!lastUpdatedAt && !partial && !error) return null
 
   const age = lastUpdatedAt ? now - lastUpdatedAt : Infinity
   const stale = partial || age > STALE_DATA_AFTER_MS
+  // Error harus menang atas stale: kegagalan refresh tidak boleh tampil sebagai "data lama".
+  const state = error ? 'error' : stale ? 'stale' : 'live'
   const updatedAt = lastUpdatedAt
     ? new Date(lastUpdatedAt).toLocaleTimeString('id-ID', {
         hour: '2-digit',
@@ -25,7 +26,7 @@ export default function DataFreshness({
 
   return (
     <div
-      className={`data-freshness data-freshness-pill ${stale ? 'stale' : error ? 'error' : 'live'}`}
+      className={`data-freshness data-freshness-pill ${state}`}
       role="status" aria-live="polite" aria-atomic="true"
     >
       <div className="freshness-indicator">

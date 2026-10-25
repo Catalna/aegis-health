@@ -120,6 +120,9 @@ button, a, input, select, textarea, summary {
   left: -9999px;
   top: var(--ui-space-4);
   z-index: 999;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   background: var(--text-primary);
   color: white;
   padding: var(--ui-space-2) var(--ui-space-4);
@@ -2432,6 +2435,7 @@ tr:hover td {
 .ckl-search-box input {
   border: none; outline: none; background: transparent;
   flex: 1; min-width: 0;
+  align-self: stretch;
   font: inherit; font-size: 0.875rem;
   color: var(--text-primary);
 }
@@ -2902,7 +2906,7 @@ tr:hover td {
   .ckl-hcounts { gap: 10px; }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 720px) {
   .ckl-table-head { gap: 0.6rem; }
   .ckl-sort-wrap { margin-left: auto; }
   .ckl-adv-foot { margin-left: 0; }
@@ -3859,9 +3863,18 @@ html:active-view-transition .route-reveal { animation: none; }
   background: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 2px;
-  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: var(--ui-radius-xs);
   flex: none;
+  margin: -4px -4px -4px 0;
+}
+.toast-close:focus-visible {
+  outline: 2px solid var(--accent-green);
+  outline-offset: 1px;
 }
 .toast-close:hover { color: var(--text-primary); background: var(--bg-card-hover); }
 
@@ -3998,7 +4011,7 @@ html:active-view-transition .route-reveal { animation: none; }
    BANNER PRIORITAS — susun ulang di layar menengah
    Sebelumnya fakta klaim mendesak judul sampai teks pecah per kata.
    ============================================================ */
-@media (max-width: 1100px) {
+@media (max-width: 1200px) {
   .dash-banner {
     flex-wrap: wrap;
     align-items: flex-start;
@@ -4040,6 +4053,128 @@ html:active-view-transition .route-reveal { animation: none; }
     align-self: stretch;
   }
 }
+
+/* ============================================================
+   SIDEBAR — blok status & fokus navigasi
+   ============================================================ */
+.sidebar-status {
+  margin-top: auto;
+  padding: var(--ui-space-4) var(--ui-space-5);
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-status-line {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-1);
+  font-size: var(--ui-fs-micro);
+  color: var(--text-muted);
+}
+
+.sidebar-status-note {
+  margin-top: 4px;
+  font-size: var(--ui-fs-micro);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.nav-item:focus-visible {
+  outline: 2px solid var(--accent-green);
+  outline-offset: -2px;
+  color: var(--accent-green);
+}
+
+/* ============================================================
+   PERANGKAT SENTUH — hover tidak boleh "menempel" setelah tap
+   ============================================================ */
+@media (hover: none) {
+  .nav-item:hover {
+    background: transparent;
+    color: var(--text-secondary);
+  }
+  .nav-item.active:hover { color: var(--accent-green); }
+  .sidebar-nav .nav-item:hover svg { transform: none; }
+
+  .card:hover,
+  .ckl-table-card:hover { border-color: var(--border); }
+
+  .btn-primary:hover { background: var(--accent-green); transform: none; box-shadow: none; }
+  .btn-secondary:hover { background: var(--text-primary); transform: none; }
+  .btn-danger:hover { background: var(--risk-high); transform: none; }
+  .btn-outline:hover,
+  .btn-ghost:hover {
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border-color: var(--border);
+  }
+
+  .ckl-table tbody tr:hover td,
+  .asm-table tbody tr:hover td,
+  .recent-table tbody tr:hover td,
+  .mon-health-row:hover,
+  .eval-row:hover,
+  .eval-table tbody tr:hover { background: transparent; }
+
+  .ckl-row-action:hover {
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border-color: var(--border-light);
+  }
+  .ckl-row-action:hover svg { transform: none; }
+
+  .ckl-qchip:hover {
+    background: var(--bg-card);
+    border-color: var(--border-light);
+    color: var(--text-secondary);
+  }
+
+  .freshness-refresh-btn:hover:not(:disabled) {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+    color: var(--text-primary);
+  }
+
+  .ckl-id-link:hover,
+  .link-more:hover,
+  .row-action:hover,
+  .asm-qa-summary:hover { text-decoration: none; }
+}
+
+/* ============================================================
+   TARGET SENTUH — minimal 44px di layar sentuh
+   ============================================================ */
+@media (pointer: coarse) {
+  .ckl-pg-btn {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .int-toggle button { min-height: 44px; }
+
+  /* Perluas area tap tautan ID tanpa mengubah tinggi baris tabel */
+  .ckl-id-link { position: relative; }
+  .ckl-id-link::after {
+    content: '';
+    position: absolute;
+    inset: -6px -8px;
+  }
+
+  .toast-close {
+    width: 44px;
+    height: 44px;
+    margin: -8px -6px -8px 0;
+  }
+}
+
+/* ============================================================
+   Kelengkapan class state & wrapper
+   ============================================================ */
+.monitoring-analytics-state,
+.monitoring-queue-state,
+.monitoring-health-state,
+.eval-limits { min-width: 0; }
+
 
 
 

@@ -55,9 +55,16 @@ function ToastItem({ item, onDismiss }) {
   return (
     <div
       className={`toast toast-${item.type}${leaving ? ' is-leaving' : ''}`}
-      role="status"
       onMouseEnter={pause}
       onMouseLeave={resume}
+      onFocus={pause}
+      onBlur={(e) => {
+        // focusout juga terpicu saat pindah antar anak; resume hanya kalau fokus keluar toast
+        if (!e.currentTarget.contains(e.relatedTarget)) resume()
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') setLeaving(true)
+      }}
     >
       <Icon size={17} aria-hidden="true" className="toast-icon" />
       <p className="toast-msg">{item.message}</p>

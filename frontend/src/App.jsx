@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom'
 import './index.css'
 import Logo from './Logo'
@@ -21,7 +21,7 @@ function Sidebar() {
 
   // Pill aktif "meluncur" ke menu tujuan: ukur posisi link aktif,
   // gerakkan satu elemen indikator (bukan background per-link).
-  useLayoutEffect(() => {
+  const measurePill = useCallback(() => {
     const bar = sidebarRef.current
     const active = bar?.querySelector('.nav-item.active')
     if (!bar || !active) {
@@ -31,7 +31,17 @@ function Sidebar() {
     const barRect = bar.getBoundingClientRect()
     const activeRect = active.getBoundingClientRect()
     setPill({ y: activeRect.top - barRect.top, h: activeRect.height, show: true })
-  }, [location.pathname])
+  }, [])
+
+  useLayoutEffect(() => {
+    measurePill()
+  }, [location.pathname, measurePill])
+
+  // Ukuran sidebar berubah saat resize/rotasi: ukur ulang supaya pill tidak nyangkut.
+  useEffect(() => {
+    window.addEventListener('resize', measurePill)
+    return () => window.removeEventListener('resize', measurePill)
+  }, [measurePill])
 
   // Jangan animasikan posisi awal saat halaman pertama kali dibuka.
   useEffect(() => {
@@ -93,12 +103,12 @@ function Sidebar() {
         ))}
       </nav>
       
-      <div className="sidebar-status" style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', marginTop: 'auto' }}>
-        <div className="flex items-center gap-1 text-xs text-muted">
+      <div className="sidebar-status">
+        <div className="sidebar-status-line">
           <span className="status-dot online" aria-hidden="true" />
           <span>Sistem aktif</span>
         </div>
-        <div className="text-xs text-muted" style={{ marginTop: '4px' }}>
+        <div className="sidebar-status-note">
           Layanan pemeriksaan aktif
           <br />
           Data klaim tersimpan aman

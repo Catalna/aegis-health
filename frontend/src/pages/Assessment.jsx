@@ -708,7 +708,7 @@ export default function Assessment() {
                       data-dir={positive ? 'up' : 'down'}
                     >
                       <span className="asm-div-name">{plainText(f.feature_label || formatFeature(f.feature_name))}</span>
-                      <div className="asm-div-track" aria-hidden="true"><i className="asm-div-axis" /><i className="asm-div-bar" /></div>
+                      <div className="asm-div-track" aria-hidden="true"><i className="asm-div-bar" /></div>
                       <span className={`asm-div-val ${positive ? 'up' : 'down'}`}>
                         {positive ? '↑' : '↓'} {fmtRpShort(contribution)}
                       </span>
