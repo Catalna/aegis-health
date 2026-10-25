@@ -41,7 +41,7 @@ Facts verified in repo (used verbatim below):
 **Files:**
 - Modify: `docs/Architecture.md` (line 129 area, file-tree block)
 
-- [ ] **Step 1: Edit the tree**
+- [x] **Step 1: Edit the tree**
 
 Replace:
 
@@ -60,12 +60,12 @@ with:
 +-- start.bat                        # Windows startup script
 ```
 
-- [ ] **Step 2: Verify no other active reference**
+- [x] **Step 2: Verify no other active reference**
 
 Run: `git grep -n -i "compose.yaml" -- docs/Architecture.md README.md`
 Expected: no output (historical plans in `docs/plans/*` may keep old context; leave them).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bat
 git add docs/Architecture.md
@@ -79,7 +79,7 @@ git commit -m "docs: drop docker compose entry from architecture tree"
 **Files:**
 - Modify (replace content): `.env.example`
 
-- [ ] **Step 1: Replace content with the local template**
+- [x] **Step 1: Replace content with the local template**
 
 Full new content (verbatim):
 
@@ -112,12 +112,12 @@ EXPLANATION_MODEL_FALLBACK=mistral:7b
 HF_TOKEN=
 ```
 
-- [ ] **Step 2: Safety check**
+- [x] **Step 2: Safety check**
 
 Run: `git grep -n "jari_bpjs2026\|host.docker.internal" -- .env.example`
 Expected: no output. Also confirm it contains `<password-lokal>` placeholder exactly once.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bat
 git add .env.example
@@ -131,7 +131,7 @@ git commit -m "docs: local windows env template with placeholder credentials"
 **Files:**
 - Modify (replace content): `start.bat`
 
-- [ ] **Step 1: Replace content (verbatim)**
+- [x] **Step 1: Replace content (verbatim)**
 
 Full new content:
 
@@ -150,12 +150,12 @@ start cmd /k "cd /d %~dp0frontend && npm run dev"
 echo J-ARI System started!
 ```
 
-- [ ] **Step 2: Static verification**
+- [x] **Step 2: Static verification**
 
 Run: `Select-String -Path start.bat -Pattern "%~dp0|C:\\Users"`
 Expected: `%~dp0` present in cd and both start lines; no `C:\Users` absolute path.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bat
 git add start.bat
@@ -169,7 +169,7 @@ git commit -m "fix: make start.bat portable to any repo location"
 **Files:**
 - Modify (full rewrite, two passes): `README.md`
 
-- [ ] **Step 1: Write part 1 (title → setup step 7)**
+- [x] **Step 1: Write part 1 (title → setup step 7)**
 
 Replace the whole file with:
 
@@ -286,7 +286,7 @@ curl http://localhost:8000/api/health
 `database`, `queue_worker`, `vector_store`, `ml_*`. UI di `http://localhost:5173`.
 ````
 
-- [ ] **Step 2: Append part 2 (step 8 → footer)**
+- [x] **Step 2: Append part 2 (step 8 → footer)**
 
 Edit `README.md` — append after the health-verification line block:
 
@@ -357,9 +357,9 @@ Prosedur artefak model mengikuti `docs/MODELS.md` (verifikasi angka dulu, baru p
 data riil tidak diizinkan di repositori ini.
 ````
 
-- [ ] **Step 3: Read the whole README and fix inconsistencies (duplicate spacing, broken tables)**
+- [x] **Step 3: Read the whole README and fix inconsistencies (duplicate spacing, broken tables)**
 
-- [ ] **Step 4: Link check — every referenced doc exists**
+- [x] **Step 4: Link check — every referenced doc exists**
 
 Run: `git ls-files docs/PRD.md docs/Architecture.md docs/BusinessCore.md docs/EVALUATION_REPORT.md docs/RUNTIME_EVALUATION.md docs/TIER_CALIBRATION.md docs/MODELS.md docs/DECISIONS.md docs/CHANGELOG-agent.md docs/DEMO_RUNBOOK.md scripts/demo_seed.py scripts/demo_reset.py scripts/train_all.py scripts/smoke_test.py`
 Expected: every path listed (no missing).
@@ -367,7 +367,7 @@ Expected: every path listed (no missing).
 Run: `git grep -n -i "docker" -- README.md`
 Expected: no output.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bat
 git add README.md
@@ -381,7 +381,7 @@ git commit -m "docs: rewrite README as end-to-end local Windows setup guide"
 **Files:**
 - Delete: `.dockerignore`, `compose.yaml`, `DOCKER.md`, `deploy/backend.Dockerfile`, `deploy/frontend.Dockerfile`, `deploy/nginx.conf`
 
-- [ ] **Step 1: Remove tracked Docker files**
+- [x] **Step 1: Remove tracked Docker files**
 
 ```bat
 git rm .dockerignore compose.yaml DOCKER.md deploy/backend.Dockerfile deploy/frontend.Dockerfile deploy/nginx.conf
@@ -389,17 +389,17 @@ git rm .dockerignore compose.yaml DOCKER.md deploy/backend.Dockerfile deploy/fro
 
 (`deploy/` becomes empty and disappears from the working tree.)
 
-- [ ] **Step 2: Verify no active tracked references remain**
+- [x] **Step 2: Verify no active tracked references remain**
 
 Run: `git grep -n -i "docker\|compose.yaml" -- "*.py" "*.md" "*.yaml" "*.bat" README.md .env.example`
 Expected: only historical `docs/plans/*` and `docs/CHANGELOG-agent.md` mentions; nothing in README, setup docs, launchers, or code.
 
-- [ ] **Step 3: Confirm nothing sensitive/artifact staged**
+- [x] **Step 3: Confirm nothing sensitive/artifact staged**
 
 Run: `git status -sb`
 Expected: staged deletions are exactly the six Docker files; `docs/Planning.md` and `docs/docs_competition/` remain untracked; `.env` and `backend/models_trained/` never appear.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bat
 git commit -m "chore: remove unused docker deployment setup"
@@ -412,22 +412,22 @@ git commit -m "chore: remove unused docker deployment setup"
 **Files:**
 - Modify: `docs/CHANGELOG-agent.md` (append entry)
 
-- [ ] **Step 1: Frontend production build**
+- [x] **Step 1: Frontend production build**
 
 Run: `cd frontend && npm run build`
 Expected: `✓ built` (chunk-size warning acceptable; record it).
 
-- [ ] **Step 2: Runtime health (if local stack is up)**
+- [x] **Step 2: Runtime health (if local stack is up)**
 
 Run: `curl http://localhost:8000/api/health`
 Expected: `database/queue_worker/vector_store/ml_*` `ok` — confirms docs/config changes touched nothing runtime.
 
-- [ ] **Step 3: Workspace review**
+- [x] **Step 3: Workspace review**
 
 Run: `git status -sb` and `git log --oneline -6`
 Expected: working tree clean except intentionally untracked user files; history shows the six task commits.
 
-- [ ] **Step 4: Append changelog entry (no self-hash inside the same commit)**
+- [x] **Step 4: Append changelog entry (no self-hash inside the same commit)**
 
 Add to `docs/CHANGELOG-agent.md` before the report tail:
 
@@ -450,7 +450,7 @@ Add to `docs/CHANGELOG-agent.md` before the report tail:
   production build green; `/api/health` unchanged.
 ```
 
-- [ ] **Step 5: Commit changelog, then record hashes in a follow-up docs commit**
+- [x] **Step 5: Commit changelog, then record hashes in a follow-up docs commit**
 
 ```bat
 git add docs/CHANGELOG-agent.md
@@ -464,7 +464,7 @@ git add docs/CHANGELOG-agent.md
 git commit -m "docs: record commit hashes for readme and docker cleanup"
 ```
 
-- [ ] **Step 6: Stop — do not push**
+- [x] **Step 6: Stop — do not push**
 
 Per spec: commit locally; push only if the user separately asks for it.
 
@@ -472,9 +472,9 @@ Per spec: commit locally; push only if the user separately asks for it.
 
 ## Self-review checklist (run after editing)
 
-- [ ] Every spec bullet maps to a task above (README flow, verified baseline, privacy note, models recovery note, seed scoping, portable start.bat, local `.env.example`, six Docker deletions, Architecture.md entry, no runtime changes).
-- [ ] No placeholders — all commands and file contents are verbatimRunnable.
-- [ ] No real credential anywhere in tracked content (`jari_bpjs2026` only appears in the code-default mention inside this plan header, never in README/.env.example).
-- [ ] Task numbering and anchors match the actual file states.
+- [x] Every spec bullet maps to a task above (README flow, verified baseline, privacy note, models recovery note, seed scoping, portable start.bat, local `.env.example`, six Docker deletions, Architecture.md entry, no runtime changes).
+- [x] No placeholders — all commands and file contents are verbatimRunnable.
+- [x] No real credential anywhere in tracked content (`jari_bpjs2026` only appears in the code-default mention inside this plan header, never in README/.env.example).
+- [x] Task numbering and anchors match the actual file states.
 
 
