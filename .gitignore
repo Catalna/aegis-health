@@ -33,3 +33,4 @@ __MACOSX/
 
 # Tooling
 .playwright-mcp/
+data/

@@ -17,9 +17,11 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--out", type=Path, default=ROOT / "data/synthetic_v2")
     parser.add_argument("--format", choices=("parquet", "csv", "both"), default="parquet")
+    parser.add_argument("--calibrated", action="store_true", default=False,
+                        help="aktifkan kalibrasi marginals L8/L9 (dataset_version: -calibrated)")
     args = parser.parse_args()
     try:
-        bundle = generate_synthetic_v2(profile=args.profile, seed=args.seed)
+        bundle = generate_synthetic_v2(profile=args.profile, seed=args.seed, calibration=args.calibrated)
         result = write_synthetic_v2(bundle, args.out, args.format)
     except Exception as exc:
         print(f"Synthetic v2 generation failed: {exc}", file=sys.stderr)
