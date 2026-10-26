@@ -106,7 +106,7 @@ Menyunting `risk_engine.py`, `financial_engine.py`, `demo_seed.py`/`demo_reset.p
 | 3. Spesifikasi A1/A2: tabel atribut (atribut \| sumber \| siapa mengisi) | ✅ selesai 2026-10-26 | `docs/specs/2026-10-26-A1-A2-intake-attributes.md` (prinsip no-new-input, proses admisi AD1–AD3, tabel atribut jalur J1/J2/J3, desain adapter tipis) | komit ini |
 | 4. Retraining benchmark biaya pada subset wajar (`FKL47 = FKL48`) | terjadwal | — | — |
 | 5. Gate promosi + ablation (offline; promosi biaya tetap pasca-1-Nov) | terjadwal | — | — |
-| 6. Aturan pakai data riil di `DECISIONS.md` | terjadwal | — | — |
+| 6. Aturan pakai data riil di `DECISIONS.md` | ✅ selesai 2026-10-26 | `docs/DECISIONS.md`: masuk git no-PII, subset wajar + split subjek + konstanta gap terekplisit, freeze gate A3, force `LLM_PROVIDER=ollama` untuk tugas LLM yang menyentuh data riil | komit ini |
 
 Catatan eksekusi Langkah 1: parser tanggal Stata adalah `datetime64[ns]` langsung (run pertama salah menafsir); komponen `FKL33/35/41/44` berisi literal `"NONE"` sehingga kehadiran dihitung non-NONE. Temuan utama: **99,9% tagih == verifikasi** (mayoritas diterima penuh → dasar subset wajar), **899 kode INACBG dengan dominasi hemodialisis `Q-5-44-0` 47,1%** (baseline wajib condition on kode), **SA 0% → ICU resmi jadi gap terdeklarasi**, LOS p50 = 0 hari (dominan day-care).
 
