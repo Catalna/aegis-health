@@ -171,3 +171,14 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 Latest verification: **334 passed / 2 skipped** (after tier-band recalibration); live demo cycle 2026-10-24 — reset → seed 220/220 → drain `failed=0` → per-scenario snapshot **220/220** (tier high 4 / medium 86 / low 130). Full smoke E2E on the live stack passed earlier (see the E2E section above). Frontend build passed earlier with the chunk-size warning above. Docs/config verification 2026-10-25 (README rewrite + Docker removal): README link check green, active Docker refs zero, frontend build green (same chunk warning), `/api/health` not re-run (stack offline). Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
 - b486135 � catatan changelog pekerjaan README/Docker (2026-10-25).
 - 4b7dbae � README restyle mengikuti layout wumpus (badge/daftar isi/mermaid/tabel skor/dokumentasi/batasan); isi setup tetap akurat.
+
+## 2026-10-26 — Gelombang data riil BPJS (Langkah 1-6, post-model roadmap)
+
+- Eksekusi enam langkah eksploitasi sampel BPJS Reguler 2025 (ackend/app/data/2025/, gitignored) tanpa menyentuh skoring runtime (freeze 1-Nov tetap utuh); promosi hanya lewat gate A3.
+- L1 profiling: scripts/bpjs/profile_reguler.py + docs/BPJS_SAMPLE_PROFILING.md (5 file, 10,5 jt baris; temuan: 99,9% tagih==verifikasi, 899 kode INACBG dgn dominasi hemodialisis 47,1%, SA 0% = gap ICU, LOS p50=0).
+- L2 peer baseline real: scripts/bpjs/extract_peer_baseline.py + docs/BPJS_PEER_BASELINE.md (main/fallback/kelas; fallback nasional menutup 100% baris; sel dense = tabel tarif implisit).
+- L3 spesifikasi A1/A2: docs/specs/2026-10-26-A1-A2-intake-attributes.md (no-new-input, jalur J1/J2/J3, admisi AD1-AD3, adapter tipis dikunci saat file E-Klaim riil pertama).
+- L4 retraining benchmark: scripts/bpjs/retrain_cost_benchmark.py + docs/BPJS_RETRAINING_REPORT.md (split subjek crc32; A runtime legacy MAPE 1285% R2 -0.61; B kontrak legacy retrain 51,5% R2 0.43; C kontrak v2+konteks **MAPE 8,59% R2 0.8184, within-10% 80,1%**; strata dialysis medAPE 1,58% R2 0,10; 7/9 input hilang kini riil; ICU+ventilator gap konstanta 0).
+- L5 visual final: docs/figures/bpjs_real_benchmark_eval.png (2x2: MAPE/MAE log, R2, medAPE stratum) dari scripts/bpjs/plot_retraining_results.py; thdp artefak gate: ackend/app/data/analysis/{retrain_results.json, base_rate_trainonly.csv, models/xgboost_cost_real_*}.
+- L6 aturan data riil: docs/DECISIONS.md + entri 2026-10-26 (no-PII in git, subset wajar + split subjek + konstanta gap eksplisit, force LLM_PROVIDER=ollama untuk LLM yang menyentuh data riil, freeze gate A3).
+- Log status semua langkah: docs/specs/2026-10-25-post-model-roadmap-design.md paragraf 8.
