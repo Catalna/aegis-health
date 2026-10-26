@@ -102,10 +102,12 @@ Menyunting `risk_engine.py`, `financial_engine.py`, `demo_seed.py`/`demo_reset.p
 | Langkah | Status | Keluaran | Komit |
 |---|---|---|---|
 | 1. Profiling paket Reguler | ✅ selesai 2026-10-26 | `docs/BPJS_SAMPLE_PROFILING.md` + artefak `backend/app/data/analysis/profile_reguler.json` (ter-ignasi); skrip `scripts/bpjs/profile_reguler.py` | komit ini |
-| 2. Peer baseline per (prov × tipe faskes × INACBG × severitas) | terjadwal | — | — |
+| 2. Peer baseline per (prov × tipe faskes × INACBG × severitas) | ✅ selesai 2026-10-26 | `docs/BPJS_PEER_BASELINE.md` + artefak `backend/app/data/analysis/peer_baseline_reguler_{main,fallback,kelas}.csv` (ter-ignasi); skrip `scripts/bpjs/extract_peer_baseline.py` | komit ini |
 | 3. Spesifikasi A1/A2: tabel atribut (atribut \| sumber \| siapa mengisi) | terjadwal | — | — |
 | 4. Retraining benchmark biaya pada subset wajar (`FKL47 = FKL48`) | terjadwal | — | — |
 | 5. Gate promosi + ablation (offline; promosi biaya tetap pasca-1-Nov) | terjadwal | — | — |
 | 6. Aturan pakai data riil di `DECISIONS.md` | terjadwal | — | — |
 
 Catatan eksekusi Langkah 1: parser tanggal Stata adalah `datetime64[ns]` langsung (run pertama salah menafsir); komponen `FKL33/35/41/44` berisi literal `"NONE"` sehingga kehadiran dihitung non-NONE. Temuan utama: **99,9% tagih == verifikasi** (mayoritas diterima penuh → dasar subset wajar), **899 kode INACBG dengan dominasi hemodialisis `Q-5-44-0` 47,1%** (baseline wajib condition on kode), **SA 0% → ICU resmi jadi gap terdeklarasi**, LOS p50 = 0 hari (dominan day-care).
+
+Catatan eksekusi Langkah 2: subset wajar 1.697.588 baris (99,90%). Granularitas utama (prov × tipe × INACBG × severitas) = 51.215 sel, menutup 96,4% baris pada ambang n≥5; fallback nasional (INACBG × severitas) = 898 sel menutup **100% baris** (n≥30: 99,8%). Temuan strategis: distribusi biaya pada sel dense **degenerasi ke nilai tarif persis** (q25 = median = q75, mis. `Q-5-44-0` sev 1 tipe 7 = Rp 196.100 tiga provinsi identik) → benchmark biaya wajar berperan sebagai *tabel tarif implisit*; sinyal anomali bergantung pada stray dari tarif, bukan ragam internal sel. Evaluasi regresor (Langkah 4) wajib dilaporkan per stratum agar jujur.
