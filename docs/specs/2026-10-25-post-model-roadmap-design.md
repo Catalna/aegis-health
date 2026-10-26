@@ -103,7 +103,7 @@ Menyunting `risk_engine.py`, `financial_engine.py`, `demo_seed.py`/`demo_reset.p
 |---|---|---|---|
 | 1. Profiling paket Reguler | ✅ selesai 2026-10-26 | `docs/BPJS_SAMPLE_PROFILING.md` + artefak `backend/app/data/analysis/profile_reguler.json` (ter-ignasi); skrip `scripts/bpjs/profile_reguler.py` | komit ini |
 | 2. Peer baseline per (prov × tipe faskes × INACBG × severitas) | ✅ selesai 2026-10-26 | `docs/BPJS_PEER_BASELINE.md` + artefak `backend/app/data/analysis/peer_baseline_reguler_{main,fallback,kelas}.csv` (ter-ignasi); skrip `scripts/bpjs/extract_peer_baseline.py` | komit ini |
-| 3. Spesifikasi A1/A2: tabel atribut (atribut \| sumber \| siapa mengisi) | terjadwal | — | — |
+| 3. Spesifikasi A1/A2: tabel atribut (atribut \| sumber \| siapa mengisi) | ✅ selesai 2026-10-26 | `docs/specs/2026-10-26-A1-A2-intake-attributes.md` (prinsip no-new-input, proses admisi AD1–AD3, tabel atribut jalur J1/J2/J3, desain adapter tipis) | komit ini |
 | 4. Retraining benchmark biaya pada subset wajar (`FKL47 = FKL48`) | terjadwal | — | — |
 | 5. Gate promosi + ablation (offline; promosi biaya tetap pasca-1-Nov) | terjadwal | — | — |
 | 6. Aturan pakai data riil di `DECISIONS.md` | terjadwal | — | — |
