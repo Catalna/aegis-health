@@ -179,7 +179,7 @@ Latest verification: **334 passed / 2 skipped** (after tier-band recalibration);
 - L2 peer baseline real: scripts/bpjs/extract_peer_baseline.py + docs/BPJS_PEER_BASELINE.md (main/fallback/kelas; fallback nasional menutup 100% baris; sel dense = tabel tarif implisit).
 - L3 spesifikasi A1/A2: docs/specs/2026-10-26-A1-A2-intake-attributes.md (no-new-input, jalur J1/J2/J3, admisi AD1-AD3, adapter tipis dikunci saat file E-Klaim riil pertama).
 - L4 retraining benchmark: scripts/bpjs/retrain_cost_benchmark.py + docs/BPJS_RETRAINING_REPORT.md (split subjek crc32; A runtime legacy MAPE 1285% R2 -0.61; B kontrak legacy retrain 51,5% R2 0.43; C kontrak v2+konteks **MAPE 8,59% R2 0.8184, within-10% 80,1%**; strata dialysis medAPE 1,58% R2 0,10; 7/9 input hilang kini riil; ICU+ventilator gap konstanta 0).
-- L5 visual final: docs/figures/bpjs_real_benchmark_eval.png (2x2: MAPE/MAE log, R2, medAPE stratum) dari scripts/bpjs/plot_retraining_results.py; thdp artefak gate: ackend/app/data/analysis/{retrain_results.json, base_rate_trainonly.csv, models/xgboost_cost_real_*}.
+- L5 visual final (arsip, digantikan 2026-10-26): visual benchmark biaya A/B/C; artefak sumber tetap di `backend/app/data/analysis/` (gitignored).
 - L6 aturan data riil: docs/DECISIONS.md + entri 2026-10-26 (no-PII in git, subset wajar + split subjek + konstanta gap eksplisit, force LLM_PROVIDER=ollama untuk LLM yang menyentuh data riil, freeze gate A3).
 - Log status semua langkah: docs/specs/2026-10-25-post-model-roadmap-design.md paragraf 8.
 
@@ -199,3 +199,9 @@ Latest verification: **334 passed / 2 skipped** (after tier-band recalibration);
 - L12 scan cadence per-strata: `docs/BPJS_CADENCE_SIGNAL_SCAN.md` (non-dialisis repeat p50 6 h; dialisis p50 21 h, 25% >60 h; hari-sama <0,7%) → kandidat kalibrasi pilar relasional: baseline relatif per-strata + prioritas identitas kode×faskes×tanggal di atas jendela absolut.
 - Portofolio pra-gate siap untuk gate A3 (per-strata, `MODELS.md §2.6`): biaya-C + klasifier v2.4 + klasifier v3. Runtime/demo/skoring tidak disentuh; freeze 1-Nov tetap utuh.
 - Komit: `c3a1cf6` (L10), `02f1595` (L12), `173f323` (L11). Penutup gelombang: suite backend 331 passed / 2 skipped / **3 failed** — ketiganya `test_frontend_contract` (berkas frontend terakhir disentuh `c3b4201` 2026-10-23, sebelum gelombang; tidak ada artefak gelombang yang menyentuhnya). Tes lingkup gelombang (generator/fitur/trainer/multiseed) **29 passed penuh**.
+
+## 2026-10-26 — Visualisasi portofolio model terbaru
+
+- Menghapus 9 PNG lama di `docs/figures/` (8 visual v2.4 historis + benchmark biaya terpisah) dan menggantinya dengan `docs/figures/model_performance_portfolio.png`.
+- Visual baru merangkum benchmark biaya A/B/C pada test riil BPJS, klasifier v2.4/v3 sintetis dengan CI bootstrap, dan precision/recall pada anggaran alert 5%; domain tiap model dinyatakan jelas.
+- Generator: `scripts/plot_model_portfolio.py`; laporan evaluasi, retraining BPJS, kalibrasi sintetis, dan roadmap menunjuk visual baru. Tidak ada runtime/model/threshold yang diubah.

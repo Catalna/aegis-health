@@ -1,4 +1,9 @@
-# Synthetic v2 Model Training & Evaluation
+# Synthetic v2.4 Model Training & Evaluation — Historical Baseline
+
+> This document preserves the v2.4 seed-42 evaluation record. For the current
+> cross-model portfolio (real-data cost benchmark A/B/C and synthetic classifier
+> candidates v2.4/v3), see [`BPJS_SYNTH_CALIBRATION_REPORT.md`](BPJS_SYNTH_CALIBRATION_REPORT.md)
+> and the portfolio figure below. Classifier results remain synthetic-only.
 
 > **Synthetic demonstrator only — not BPJS performance validation.**
 
@@ -107,45 +112,15 @@ praktis buta (~0.009) dan kini tertangkap lewat kedua fitur grouper.
 - `unbundling`: positives=22, AP=0.4648, F1=0.295; group CI 0.250–0.712
 - `upcoding`: positives=22, AP=0.1377, F1=0.228; group CI 0.083–0.210
 
-## Figures
+## Current model portfolio visualization
 
-Figur diregenerasi dari model final seed-42 + split dataset yang sama dengan
-training oleh `scripts/visualize_evaluation.py` (gaya sederhana 960×720).
-Ambang keputusan seragam 0.3173 — dipilih di validation (max-F1), lalu
-diterapkan apa adanya ke train/validation/test. Ini demonstrator sintetis,
-bukan validasi BPJS.
+The former seed-42 v2.4-only figures have been retired. The replacement below
+shows the current cost-regression comparisons on real BPJS FKRTL test data and
+classifier candidate comparisons on synthetic test data. These domains are
+separate; no classifier performance on BPJS is implied and no candidate is
+promoted to runtime.
 
-### Feature Importance (gain share, 14 fitur teratas — tiga fitur grouper masuk 10 besar)
-
-![Feature Importance](figures/feature_importance.png)
-
-### Label Outcome Distribution (seluruh split, dataset sintetis v2)
-
-![Label Outcome Distribution](figures/label_distribution.png)
-
-### Training Confusion Matrix (ambang 0.3173)
-
-![Training Confusion Matrix](figures/confusion_train.png)
-
-### Validation Confusion Matrix (ambang 0.3173)
-
-![Validation Confusion Matrix](figures/confusion_validation.png)
-
-### Testing Confusion Matrix (ambang 0.3173 — identik operating point laporan: TP=1,019 FP=247 FN=481)
-
-![Testing Confusion Matrix](figures/confusion_test.png)
-
-### Testing Precision-Recall Curve
-
-![Testing Precision-Recall Curve](figures/pr_curve_test.png)
-
-### Testing ROC Curve
-
-![Testing ROC Curve](figures/roc_curve_test.png)
-
-### Validation Log Loss per Boosting Round
-
-![Validation Log Loss](figures/validation_logloss.png)
+![Current ML model portfolio: cost benchmark and classifier candidates](figures/model_performance_portfolio.png)
 
 
 ## Limitations

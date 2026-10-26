@@ -4,6 +4,9 @@
 **Artefak (ter-ignasi, `backend/app/data/analysis/`):** `retrain_results.json`, `base_rate_trainonly.csv`, `models/xgboost_cost_real_{legacy_b,v2_c}.json` (+ `*_features.json`)
 **Disiplin:** OFFLINE ONLY — tidak menyentuh skoring runtime (freeze sampai 1 Nov); promosi hanya melalui gate A3 sesuai `docs/MODELS.md` §2.6. Tanpa PII di artefak.
 
+Visualisasi lintas-model terbaru (biaya riil A/B/C + klasifier sintetis v2.4/v3):
+![Ringkasan performa portofolio model terkini](figures/model_performance_portfolio.png)
+
 ## 1. Desain eksperimen
 
 - **Populasi:** FKRTL 2023-07-15 … 2024-12-31, subset wajar `FKL47 == FKL48` & `> 0` → 1.697.588 klaim (99,90% dari 1.699.219).

@@ -2,6 +2,8 @@
 
 **Status:** hasil ukur • **Dibuat:** 2026-10-26 • **Seed:** 42 (pasang tunggal, pra-gate) • **Artefak:** `backend/models_trained/synthetic_v2_v3/` + dataset `data/synthetic_v2_calibrated/` (keduanya gitignored)
 
+![Ringkasan performa portofolio model terkini](figures/model_performance_portfolio.png)
+
 ## 1. Apa yang dikalibrasi (Langkah 10)
 
 Jalur opsi `--calibrated` pada generator (default **v2.4 murni tidak berubah** — kontrak & dataset lama tetap):
