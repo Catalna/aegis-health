@@ -200,8 +200,8 @@ Latest verification: **334 passed / 2 skipped** (after tier-band recalibration);
 - Portofolio pra-gate siap untuk gate A3 (per-strata, `MODELS.md §2.6`): biaya-C + klasifier v2.4 + klasifier v3. Runtime/demo/skoring tidak disentuh; freeze 1-Nov tetap utuh.
 - Komit: `c3a1cf6` (L10), `02f1595` (L12), `173f323` (L11). Penutup gelombang: suite backend 331 passed / 2 skipped / **3 failed** — ketiganya `test_frontend_contract` (berkas frontend terakhir disentuh `c3b4201` 2026-10-23, sebelum gelombang; tidak ada artefak gelombang yang menyentuhnya). Tes lingkup gelombang (generator/fitur/trainer/multiseed) **29 passed penuh**.
 
-## 2026-10-26 — Visualisasi portofolio model terbaru
+## 2026-10-26 — Penyegaran set delapan visual performa model
 
-- Menghapus 9 PNG lama di `docs/figures/` (8 visual v2.4 historis + benchmark biaya terpisah) dan menggantinya dengan `docs/figures/model_performance_portfolio.png`.
-- Visual baru merangkum benchmark biaya A/B/C pada test riil BPJS, klasifier v2.4/v3 sintetis dengan CI bootstrap, dan precision/recall pada anggaran alert 5%; domain tiap model dinyatakan jelas.
-- Generator: `scripts/plot_model_portfolio.py`; laporan evaluasi, retraining BPJS, kalibrasi sintetis, dan roadmap menunjuk visual baru. Tidak ada runtime/model/threshold yang diubah.
+- Menghapus visual lama dan gambar ringkasan tunggal setelah klarifikasi bahwa set delapan gambar perlu dipertahankan.
+- Menghasilkan delapan PNG baru: 2 plot benchmark biaya riil, lalu perbandingan AP, importance, slice anomali, alert budgets, confusion matrix, dan calibration plot klasifier. Domain real/synthetic diberi label terpisah.
+- Generator: `scripts/plot_model_portfolio.py`; kedua entrypoint plot lama kini mengarah ke generator ini; laporan evaluasi, retraining BPJS, kalibrasi sintetis, dan roadmap diperbarui. Tidak ada runtime/model/threshold yang diubah.

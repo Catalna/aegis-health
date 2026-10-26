@@ -4,8 +4,11 @@
 **Artefak (ter-ignasi, `backend/app/data/analysis/`):** `retrain_results.json`, `base_rate_trainonly.csv`, `models/xgboost_cost_real_{legacy_b,v2_c}.json` (+ `*_features.json`)
 **Disiplin:** OFFLINE ONLY — tidak menyentuh skoring runtime (freeze sampai 1 Nov); promosi hanya melalui gate A3 sesuai `docs/MODELS.md` §2.6. Tanpa PII di artefak.
 
-Visualisasi lintas-model terbaru (biaya riil A/B/C + klasifier sintetis v2.4/v3):
-![Ringkasan performa portofolio model terkini](figures/model_performance_portfolio.png)
+### Visualisasi performa model biaya
+
+![MAPE A/B/C pada holdout BPJS riil](figures/cost_benchmark_mape.png)
+
+![Performa model C per stratum dan periode](figures/cost_model_strata.png)
 
 ## 1. Desain eksperimen
 

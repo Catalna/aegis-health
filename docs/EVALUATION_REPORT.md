@@ -114,13 +114,28 @@ praktis buta (~0.009) dan kini tertangkap lewat kedua fitur grouper.
 
 ## Current model portfolio visualization
 
-The former seed-42 v2.4-only figures have been retired. The replacement below
-shows the current cost-regression comparisons on real BPJS FKRTL test data and
-classifier candidate comparisons on synthetic test data. These domains are
-separate; no classifier performance on BPJS is implied and no candidate is
-promoted to runtime.
+The former seed-42 v2.4-only figures have been retired and replaced with
+current classifier-candidate views. These are synthetic-only results; no
+classifier performance on BPJS is implied and no candidate is promoted to
+runtime. Cost-regression views are in `BPJS_RETRAINING_REPORT.md`.
 
-![Current ML model portfolio: cost benchmark and classifier candidates](figures/model_performance_portfolio.png)
+### Candidate comparison
+
+![v2.4 and v3 AP with group-bootstrap intervals](figures/classifier_ap_comparison.png)
+
+### Per-anomaly performance
+
+![Average precision by anomaly family](figures/classifier_anomaly_slices.png)
+
+### v3 model diagnostics
+
+![Feature importance](figures/classifier_feature_importance.png)
+
+![Alert-budget precision and recall](figures/classifier_alert_budgets.png)
+
+![Test confusion matrix](figures/classifier_confusion_v3.png)
+
+![Probability calibration](figures/classifier_calibration_v3.png)
 
 
 ## Limitations

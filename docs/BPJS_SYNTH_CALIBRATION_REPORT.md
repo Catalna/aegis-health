@@ -2,7 +2,17 @@
 
 **Status:** hasil ukur • **Dibuat:** 2026-10-26 • **Seed:** 42 (pasang tunggal, pra-gate) • **Artefak:** `backend/models_trained/synthetic_v2_v3/` + dataset `data/synthetic_v2_calibrated/` (keduanya gitignored)
 
-![Ringkasan performa portofolio model terkini](figures/model_performance_portfolio.png)
+![Perbandingan AP v2.4 dan v3](figures/classifier_ap_comparison.png)
+
+![AP per keluarga anomali](figures/classifier_anomaly_slices.png)
+
+![Feature importance kandidat v3](figures/classifier_feature_importance.png)
+
+![Precision dan recall pada fixed alert budget](figures/classifier_alert_budgets.png)
+
+![Confusion matrix kandidat v3](figures/classifier_confusion_v3.png)
+
+![Kalibrasi probabilitas kandidat v3](figures/classifier_calibration_v3.png)
 
 ## 1. Apa yang dikalibrasi (Langkah 10)
 
