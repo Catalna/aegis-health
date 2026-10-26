@@ -96,3 +96,16 @@ Urutan dalam Fase 2: A1 → A2 → A3 (gerbang tidak bisa jalan sebelum data kon
 ## 7. Larangan sementara (sampai video 1 Nov)
 
 Menyunting `risk_engine.py`, `financial_engine.py`, `demo_seed.py`/`demo_reset.py`, angka tier/skor, atau halaman PAGE demo; mengganti model/apar; menambah dependensi baru tanpa alasan P0.
+
+## 8. Status eksekusi rencana eksploitasi data BPJS (log)
+
+| Langkah | Status | Keluaran | Komit |
+|---|---|---|---|
+| 1. Profiling paket Reguler | ✅ selesai 2026-10-26 | `docs/BPJS_SAMPLE_PROFILING.md` + artefak `backend/app/data/analysis/profile_reguler.json` (ter-ignasi); skrip `scripts/bpjs/profile_reguler.py` | komit ini |
+| 2. Peer baseline per (prov × tipe faskes × INACBG × severitas) | terjadwal | — | — |
+| 3. Spesifikasi A1/A2: tabel atribut (atribut \| sumber \| siapa mengisi) | terjadwal | — | — |
+| 4. Retraining benchmark biaya pada subset wajar (`FKL47 = FKL48`) | terjadwal | — | — |
+| 5. Gate promosi + ablation (offline; promosi biaya tetap pasca-1-Nov) | terjadwal | — | — |
+| 6. Aturan pakai data riil di `DECISIONS.md` | terjadwal | — | — |
+
+Catatan eksekusi Langkah 1: parser tanggal Stata adalah `datetime64[ns]` langsung (run pertama salah menafsir); komponen `FKL33/35/41/44` berisi literal `"NONE"` sehingga kehadiran dihitung non-NONE. Temuan utama: **99,9% tagih == verifikasi** (mayoritas diterima penuh → dasar subset wajar), **899 kode INACBG dengan dominasi hemodialisis `Q-5-44-0` 47,1%** (baseline wajib condition on kode), **SA 0% → ICU resmi jadi gap terdeklarasi**, LOS p50 = 0 hari (dominan day-care).
