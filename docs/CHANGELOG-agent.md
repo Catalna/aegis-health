@@ -169,8 +169,8 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - `23b5cbe` — hapus setup penerapan Docker (6 berkas).
 
 Latest verification: **334 passed / 2 skipped** (after tier-band recalibration); live demo cycle 2026-10-24 — reset → seed 220/220 → drain `failed=0` → per-scenario snapshot **220/220** (tier high 4 / medium 86 / low 130). Full smoke E2E on the live stack passed earlier (see the E2E section above). Frontend build passed earlier with the chunk-size warning above. Docs/config verification 2026-10-25 (README rewrite + Docker removal): README link check green, active Docker refs zero, frontend build green (same chunk warning), `/api/health` not re-run (stack offline). Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
-- b486135 � catatan changelog pekerjaan README/Docker (2026-10-25).
-- 4b7dbae � README restyle mengikuti layout wumpus (badge/daftar isi/mermaid/tabel skor/dokumentasi/batasan); isi setup tetap akurat.
+- b486135 � catatan changelog pekerjaan README/Docker (2026-10-25).
+- 4b7dbae � README restyle mengikuti layout wumpus (badge/daftar isi/mermaid/tabel skor/dokumentasi/batasan); isi setup tetap akurat.
 
 ## 2026-10-26 — Gelombang data riil BPJS (Langkah 1-6, post-model roadmap)
 
@@ -182,3 +182,11 @@ Latest verification: **334 passed / 2 skipped** (after tier-band recalibration);
 - L5 visual final: docs/figures/bpjs_real_benchmark_eval.png (2x2: MAPE/MAE log, R2, medAPE stratum) dari scripts/bpjs/plot_retraining_results.py; thdp artefak gate: ackend/app/data/analysis/{retrain_results.json, base_rate_trainonly.csv, models/xgboost_cost_real_*}.
 - L6 aturan data riil: docs/DECISIONS.md + entri 2026-10-26 (no-PII in git, subset wajar + split subjek + konstanta gap eksplisit, force LLM_PROVIDER=ollama untuk LLM yang menyentuh data riil, freeze gate A3).
 - Log status semua langkah: docs/specs/2026-10-25-post-model-roadmap-design.md paragraf 8.
+
+## 2026-10-26 — Gelombang data riil BPJS lanjutan (Langkah 7-9, disetujui user)
+
+- L7 cek kelayakan per-faskes: `scripts/bpjs/dump_labels.py` + `docs/BPJS_FASKES_ID_CHECK.md` (verdict: FKTP & FKRTL TIDAK menyimpan ID faskes/dokter → profil per-RS (C1) tertunda ke jalur A1 payload; analisis tetap stratum-level).
+- L8 profil perilaku: `scripts/bpjs/profile_behavioral.py` + `docs/BPJS_BEHAVIORAL_PROFILING.md` + artefak `profile_behavioral.json` (FKRTL gap p50=8 d, FKTP p50=24 d, dialisis p50=20 d dengan share band 12-16 d hanya 13,84% → asumsi dwi-mingguan 14 d tidak valid langsung; rujukan FKP02 ada di 58,96% FKRTL dan 100% ter-match ke FKTP; hari-sama FKTP→FKRTL 7,65%; switch stratum FKTP 8,71%) → threshold relasional era-sintetis (repeat window 46-60 d) harus dikalibrasi per-stratum di gate A3.
+- L9 pra-gate scan sinyal: `scripts/bpjs/scan_peer_signal.py` + `docs/BPJS_PEER_SIGNAL_SCAN.md` + artefak `peer_signal_scan.json` (1.697.588 klaim wajar; **92,00% dalam band r 0,9-1,1**; dialisis 99,3% = terkunci-tarif → komponen deviasi harus di-nol-kan untuk stratum terkunci; threshold naik 1,25 → 32.714 klaim = 1,93% = titik operasional antrean; flag berkonsentrasi di sel sev-2 bedah/kel-I). Framing tegas: karakteristik operasi sinyal, BUKAN validasi fraud (tanpa label).
+- Artefak JSON di `backend/app/data/analysis/` (tetap gitignored); runtime/demo/skoring tidak disentuh (freeze 1-Nov utuh); log eksekusi: `docs/specs/2026-10-25-post-model-roadmap-design.md` §8 baris 7-9.
+- Komit: `fcf5edd` (L7), `36bc3a4` (L8), `49474b8` (L9).
