@@ -1,5 +1,5 @@
 """
-J-ARI Synthetic Claim Generator
+AEGIS-Health Synthetic Claim Generator
 Generates JKN-aligned synthetic claim data for training and testing.
 All data is entirely synthetic — no real patient data.
 

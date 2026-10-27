@@ -1,11 +1,11 @@
-# Post-model development roadmap — J-ARI
+# Post-model development roadmap — AEGIS-Health
 
 > **Synthetic demonstrator only — not BPJS performance validation.**
 > Semua angka di dokumen ini dikutip dari laporan repo yang ada; semua rencana berstatus **target**, bukan hasil (disiplin §10 Strategic Alignment).
 
 Tanggal: 2026-10-25
 Status: spesifikasi arahan pengembangan pasca-model (belum ada implementasi).
-Dokumen acuan: `docs/plans/J-ARI-Strategic-Alignment-Healthkathon-2026.md` (Fase 4, §8, §9, §10, §13), `docs/MODELS.md`, `docs/RUNTIME_EVALUATION.md`, `docs/TIER_CALIBRATION.md`, `docs/DECISIONS.md`.
+Dokumen acuan: `docs/plans/AEGIS-Health-Strategic-Alignment-Healthkathon-2026.md` (Fase 4, §8, §9, §10, §13), `docs/MODELS.md`, `docs/RUNTIME_EVALUATION.md`, `docs/TIER_CALIBRATION.md`, `docs/DECISIONS.md`.
 
 ---
 
@@ -115,6 +115,7 @@ Menyunting `risk_engine.py`, `financial_engine.py`, `demo_seed.py`/`demo_reset.p
 | 12. Scan cadence per-strata FKRTL (baseline pilar relasional) | ✅ selesai 2026-10-26 | `docs/BPJS_CADENCE_SIGNAL_SCAN.md` + artefak `cadence_signal_scan.json` (ter-ignasi); skrip `scripts/bpjs/scan_cadence_signal.py`; temuan: non-dialisis repeat p50 6 h (44,6% ≤7 h), dialisis p50 21 h + 25% gap >60 h → jendela absolut tidak boleh jadi sinyal; kalibrasi relatif per-strata untuk gate A3 | komit ini |
 | 13. Visualisasi per-model 8×2 (tanpa pembanding) | ✅ selesai 2026-10-27 | Set pembanding + `scripts/plot_model_portfolio.py` dihapus. Klasifier v3: 8 PNG via `scripts/plot_classifier_v3_report.py` (replay: confusion test identik report); model C: parity eval `scripts/bpjs/eval_cost_candidate_c.py` (paritas penuh) + 8 PNG via `scripts/plot_cost_c_report.py`. Semua judul berlabel model; set disematkan di `docs/MODEL1_BIAYA_C_REPORT.md` & `docs/MODEL2_KLASIFIER_V3_REPORT.md`; `docs/EVALUATION_REPORT.md` jadi indeks + arsip v2.4 | komit ini |
 | 14. Desain arsitektur agent + riset LLM pelapor lokal | ✅ selesai 2026-10-27 | Benchmark A/B Ollama (3 envelope sumber asli × 2 mode × 6 panggilan terukur): `deepseek-r1:7b` dipilih — 15–25 dtk vs qwen3.5:9b 128–213 dtk per laporan, JSON 6/6 keduanya, gaya r1 narasi manajerial vs qwen dump key-value; dugaan awal pro-qwen salah oleh data. Design doc `docs/specs/2026-10-27-agent-hierarchy-design.md`: koordinator deterministik + LLM pelapor (bukan juri) + checker anti-halusinasi (terima konversi satuan, tolak angka buatan); skrip `scripts/agent/llm_bench.py`. Implementasi pasca-1-Nov | komit ini |
+| 15. Rebranding proyek + rename database lokal | ✅ selesai 2026-10-27 | Nama resmi AEGIS-Health (Agentic Risk Engine & Intelligent Surveillance for Healthcare, tim E-JAK); 37 artefak terlacak diganti + rename file plan; DB lokal `ALTER DATABASE` → `aegis_health_db` (data demo utuh) + .env/.env.example/default code diseragamkan; test identitas DB lulus; didorong ke origin | komit ini |
 
 Catatan eksekusi Langkah 1: parser tanggal Stata adalah `datetime64[ns]` langsung (run pertama salah menafsir); komponen `FKL33/35/41/44` berisi literal `"NONE"` sehingga kehadiran dihitung non-NONE. Temuan utama: **99,9% tagih == verifikasi** (mayoritas diterima penuh → dasar subset wajar), **899 kode INACBG dengan dominasi hemodialisis `Q-5-44-0` 47,1%** (baseline wajib condition on kode), **SA 0% → ICU resmi jadi gap terdeklarasi**, LOS p50 = 0 hari (dominan day-care).
 

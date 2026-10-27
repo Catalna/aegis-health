@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a reproducible offline evaluator that measures J-ARI end-to-end risk ranking on held-out synthetic claims without UI, LLM, database, or external-service dependencies.
+**Goal:** Build a reproducible offline evaluator that measures AEGIS-Health end-to-end risk ranking on held-out synthetic claims without UI, LLM, database, or external-service dependencies.
 
 **Architecture:** Generate independent reference and held-out datasets with explicit relationship groups, adapt claims into deterministic clinical, financial, and in-memory relational assessments, then calculate ranked metrics and versioned JSON artifacts. The evaluator never calls the orchestrator and never writes application database rows.
 
-**Tech Stack:** Python 3.10, Pydantic, NumPy, scikit-learn, pytest, existing J-ARI synthetic generator and model artifacts.
+**Tech Stack:** Python 3.10, Pydantic, NumPy, scikit-learn, pytest, existing AEGIS-Health synthetic generator and model artifacts.
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development (recommended) or executing-plans to implement this plan task-by-task.
 
-**Goal:** Merapikan seluruh UI J-ARI agar lebih jelas, konsisten, responsif, dan tetap dekat dengan DNA visual saat ini.
+**Goal:** Merapikan seluruh UI AEGIS-Health agar lebih jelas, konsisten, responsif, dan tetap dekat dengan DNA visual saat ini.
 
 **Architecture:** Pertahankan React Router, Recharts, API, dan struktur halaman yang ada. Perkuat fondasi melalui token CSS, komponen visual bersama, serta copy yang berorientasi verifier tanpa istilah teknis.
 

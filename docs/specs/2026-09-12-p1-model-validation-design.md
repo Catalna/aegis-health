@@ -1,12 +1,12 @@
 # P1 Model Validation & Evaluation Design
 
-> **J-ARI: JKN Agentic Risk Intelligence**
+> **AEGIS-Health: Agentic Risk Engine & Intelligent Surveillance for Healthcare**
 > Status: Proposed
 > Scope: Offline backend evaluation only; UI evaluation is explicitly deferred.
 
 ## 1. Goal
 
-Membuktikan apakah risk score J-ARI dapat meranking klaim anomali di posisi teratas secara reproducible, tanpa leakage, dan tanpa ketergantungan pada output LLM.
+Membuktikan apakah risk score AEGIS-Health dapat meranking klaim anomali di posisi teratas secara reproducible, tanpa leakage, dan tanpa ketergantungan pada output LLM.
 
 P1 tidak mengubah formula P0 secara diam-diam. Semua perubahan bobot atau threshold diperlakukan sebagai kandidat konfigurasi yang dibandingkan melalui evaluasi dan diberi versi.
 

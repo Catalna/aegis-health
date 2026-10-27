@@ -1,4 +1,4 @@
-"""Generate a versioned synthetic-only J-ARI dataset."""
+"""Generate a versioned synthetic-only AEGIS-Health dataset."""
 
 import argparse
 import sys

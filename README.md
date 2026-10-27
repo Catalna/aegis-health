@@ -1,4 +1,7 @@
-# J-ARI — Pusat Pemeriksaan Klaim (AEGIS)
+# AEGIS-Health — Pusat Pemeriksaan Klaim
+
+> **AEGIS-Health** — Agentic Risk Engine & Intelligent Surveillance for Healthcare — dibuat oleh **tim E-JAK**.
+> Antarmuka pengguna membawa nama **AEGIS**.
 
 Sistem pemeriksaan klaim JKN berbasis **pipeline multi-agent**: klaim masuk antrean
 FIFO, diproses berurutan oleh agent, lalu die-ranking sehingga verifier dapat menangani
@@ -65,13 +68,13 @@ copy .env.example .env
 Isi `DATABASE_URL` pada `.env`:
 
 ```
-DATABASE_URL=postgresql+asyncpg://postgres:<password-lokal>@localhost:5432/jari_db
+DATABASE_URL=postgresql+asyncpg://postgres:<password-lokal>@localhost:5432/aegis_health_db
 ```
 
 ### 2) Buat database
 
 ```bat
-psql -U postgres -c "CREATE DATABASE jari_db;"
+psql -U postgres -c "CREATE DATABASE aegis_health_db;"
 ```
 
 Skema tabel dibuat otomatis saat backend pertama kali berjalan.

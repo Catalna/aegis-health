@@ -1,5 +1,5 @@
 """
-J-ARI Feature Engineering
+AEGIS-Health Feature Engineering
 Extracts structured numerical features from raw claim dicts.
 Used by XGBoost classifier, Isolation Forest, and financial engine.
 

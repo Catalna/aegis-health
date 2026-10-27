@@ -1,4 +1,4 @@
-# Indeks Report Model — J-ARI Post-Model
+# Indeks Report Model — AEGIS-Health Post-Model
 
 Portofolio ML terdiri atas **tepat 2 model** (+1 model legacy yang masih menjalankan skoring runtime). Masing-masing punya dokumen per-model dengan set 8 figur yang setiap judulnya berlabel model:
 

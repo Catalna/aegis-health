@@ -1,6 +1,6 @@
-# Architecture.md � J-ARI System Architecture
+# Architecture.md � AEGIS-Health System Architecture
 
-> **J-ARI: JKN Agentic Risk Intelligence**
+> **AEGIS-Health: Agentic Risk Engine & Intelligent Surveillance for Healthcare**
 > Nama Frontend: **AEGIS � Pusat Pemeriksaan Klaim**
 > Healthkathon 2026 BPJS Kesehatan
 > Versi Dokumen: 3.0

@@ -130,7 +130,7 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 ## Windows setup README + Docker removal (2026-10-25)
 
 - README rewritten as the canonical end-to-end local Windows guide (clone →
-  PostgreSQL `CREATE DATABASE jari_db` → `.env` from a credential-free template →
+  PostgreSQL `CREATE DATABASE aegis_health_db` → `.env` from a credential-free template →
   venv + requirements → `npm ci` → runtime models → `start.bat` → health check →
   optional synthetic seed/reset → stop; troubleshooting table included).
 - `start.bat` made repository-location independent (`%~dp0`, direct
@@ -199,6 +199,13 @@ Latest verification: **334 passed / 2 skipped** (after tier-band recalibration);
 - L12 scan cadence per-strata: `docs/BPJS_CADENCE_SIGNAL_SCAN.md` (non-dialisis repeat p50 6 h; dialisis p50 21 h, 25% >60 h; hari-sama <0,7%) → kandidat kalibrasi pilar relasional: baseline relatif per-strata + prioritas identitas kode×faskes×tanggal di atas jendela absolut.
 - Portofolio pra-gate siap untuk gate A3 (per-strata, `MODELS.md §2.6`): biaya-C + klasifier v2.4 + klasifier v3. Runtime/demo/skoring tidak disentuh; freeze 1-Nov tetap utuh.
 - Komit: `c3a1cf6` (L10), `02f1595` (L12), `173f323` (L11). Penutup gelombang: suite backend 331 passed / 2 skipped / **3 failed** — ketiganya `test_frontend_contract` (berkas frontend terakhir disentuh `c3b4201` 2026-10-23, sebelum gelombang; tidak ada artefak gelombang yang menyentuhnya). Tes lingkup gelombang (generator/fitur/trainer/multiseed) **29 passed penuh**.
+
+## 2026-10-27 — Rebranding proyek: nama resmi AEGIS-Health (tim E-JAK)
+
+- Keputusan pemilik proyek: nama resmi **AEGIS-Health — Agentic Risk Engine & Intelligent Surveillance for Healthcare**, dibuat oleh **tim E-JAK**; antarmuka pengguna tetap memakai nama **AEGIS**.
+- Penggantian menyeluruh 37 artefak terlacak: prose & header dokumen (ekspansi nama baru), docstring/judul kode, judul FastAPI (`AEGIS-Health API`), paket frontend (`aegis-health-frontend`), string test database, `start.bat`, plus rename `docs/plans/AEGIS-Health-Strategic-Alignment-Healthkathon-2026.md`. Seluruh grep pola lama bersih.
+- Database lokal direname AMAN via `ALTER DATABASE` (operasi metadata; data demo 220 klaim utuh) menjadi `aegis_health_db`; ikut diseragamkan: `.env` live, `.env.example`, `README`, default `backend/app/models/database.py` (password dev default diganti netral). Test identitas database lulus (1 passed) setelah rename.
+- Tidak ada logika runtime/skoring yang berubah; laporan roadmap baris 15 ditambahkan.
 
 ## 2026-10-27 — Riset LLM pelapor lokal + desain arsitektur agent
 

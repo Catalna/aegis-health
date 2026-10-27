@@ -1,6 +1,6 @@
 # AgentWorkflow.md — Multi-Agent Pipeline & Investigation Workflow
 
-> **J-ARI: JKN Agentic Risk Intelligence**  
+> **AEGIS-Health: Agentic Risk Engine & Intelligent Surveillance for Healthcare**  
 > Nama Frontend: **AEGIS — Pusat Pemeriksaan Klaim**  
 > Healthkathon 2026 BPJS Kesehatan  
 > Versi Dokumen: 3.0  
@@ -10,7 +10,7 @@
 
 ## 1. Overview Pipeline Multi-Agent
 
-Pipeline analisis J-ARI/AEGIS (`orchestrator.py`) mengimplementasikan arsitektur **hybrid multi-stage agent pipeline** yang menggabungkan validasi integritas deterministik, eksekusi agent spesialis paralel, sintesis lintas-sinyal berbasis LLM, skoring risiko matematis deterministik, serta penjabaran narasi investigasi dalam Bahasa Indonesia baku.
+Pipeline analisis AEGIS-Health (`orchestrator.py`) mengimplementasikan arsitektur **hybrid multi-stage agent pipeline** yang menggabungkan validasi integritas deterministik, eksekusi agent spesialis paralel, sintesis lintas-sinyal berbasis LLM, skoring risiko matematis deterministik, serta penjabaran narasi investigasi dalam Bahasa Indonesia baku.
 
 Arsitektur ini dirancang secara khusus untuk memenuhi standar keandalan tinggi operasional BPJS Kesehatan: **tidak pernah gagal total (zero unhandled exceptions)**, **sepenuhnya dapat diaudit (fully auditable)**, dan **skor risiko tidak dapat dihalusinasi oleh AI**.
 
@@ -154,7 +154,7 @@ Setelah Phase 1 selesai, seluruh temuan dikompilasi dan diserahkan ke **Review A
 ---
 
 ### Phase 3: Deterministic Risk Score Engine (`core/risk_engine.py`)
-> **PRINSIP KRITIS**: Skor risiko J-ARI dihitung **100% secara matematis dan deterministik**. LLM **DILARANG KERAS** menetapkan atau memodifikasi angka skor risiko. Hal ini menjamin auditabilitas hukum dan mencegah inkonsistensi penilaian.
+> **PRINSIP KRITIS**: Skor risiko AEGIS-Health dihitung **100% secara matematis dan deterministik**. LLM **DILARANG KERAS** menetapkan atau memodifikasi angka skor risiko. Hal ini menjamin auditabilitas hukum dan mencegah inkonsistensi penilaian.
 
 - **Rentang Skor**: `0.0` sampai `100.0`.
 - **Komposisi Bobot**:
@@ -282,7 +282,7 @@ Selain pipeline verifikasi otomatis, sistem menyertakan agen percakapan interakt
 
 ## 7. Referensi Dokumen Terkait
 
-- [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md): Definisi kebutuhan produk J-ARI / AEGIS.
+- [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md): Definisi kebutuhan produk AEGIS-Health.
 - [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md): Arsitektur teknis dan diagram infrastruktur sistem.
 - [MODELS.md](file:///c:/Users/Radith/E-Jak/docs/MODELS.md): Spesifikasi lengkap model ML, SHAP, Vector LanceDB, dan LLM.
 - [BusinessCore.md](file:///c:/Users/Radith/E-Jak/docs/BusinessCore.md): Logika domain perasuransian JKN dan INA-CBG.

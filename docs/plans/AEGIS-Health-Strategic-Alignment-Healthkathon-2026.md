@@ -1,20 +1,20 @@
-# J-ARI — Strategic Alignment & Project Goals
+# AEGIS-Health — Strategic Alignment & Project Goals
 
-**JKN Agentic Risk Intelligence**  
+**Agentic Risk Engine & Intelligent Surveillance for Healthcare**  
 Dokumen arah produk untuk Healthkathon BPJS Kesehatan 2026  
 Tanggal: 12 September 2026
 
 ## 1. Tujuan dokumen
 
-Dokumen ini menyatukan arah bisnis, produk, teknis, evaluasi, dan tata kelola J-ARI agar seluruh bagian project bergerak menuju tujuan yang sama. Dokumen ini menjadi acuan untuk proposal, prototype, demo, evaluasi model, dan pengembangan setelah kompetisi.
+Dokumen ini menyatukan arah bisnis, produk, teknis, evaluasi, dan tata kelola AEGIS-Health agar seluruh bagian project bergerak menuju tujuan yang sama. Dokumen ini menjadi acuan untuk proposal, prototype, demo, evaluasi model, dan pengembangan setelah kompetisi.
 
-J-ARI diposisikan sebagai **lapisan screening dan risk intelligence untuk membantu verifier BPJS memprioritaskan klaim yang perlu diperiksa lebih dahulu**. J-ARI tidak menggantikan sistem klaim BPJS, tidak menggantikan verifier, dan tidak menetapkan bahwa suatu klaim adalah fraud.
+AEGIS-Health diposisikan sebagai **lapisan screening dan risk intelligence untuk membantu verifier BPJS memprioritaskan klaim yang perlu diperiksa lebih dahulu**. AEGIS-Health tidak menggantikan sistem klaim BPJS, tidak menggantikan verifier, dan tidak menetapkan bahwa suatu klaim adalah fraud.
 
 ## 2. Dasar alignment eksternal
 
 Healthkathon 2026 menggunakan tema **“Detect Smarter, Protect JKN — Smarter Protection for a Stronger JKN: Efisiensi Risiko Program JKN.”** Tantangannya mendorong solusi digital yang dapat mengidentifikasi, mendeteksi, dan memitigasi risiko JKN dengan AI, machine learning, data analytics, atau teknologi relevan lainnya.
 
-J-ARI masuk ke kategori **Efisiensi Risiko pada Fasilitas Kesehatan**. Fokus utamanya adalah risiko pada klaim dan episode pelayanan, terutama:
+AEGIS-Health masuk ke kategori **Efisiensi Risiko pada Fasilitas Kesehatan**. Fokus utamanya adalah risiko pada klaim dan episode pelayanan, terutama:
 
 - manipulasi diagnosis atau tindakan (*upcoding*);
 - cloning atau penjiplakan klaim;
@@ -26,13 +26,13 @@ J-ARI masuk ke kategori **Efisiensi Risiko pada Fasilitas Kesehatan**. Fokus uta
 - readmisi dan klaim berulang;
 - klaim obat, alat kesehatan, atau tindakan yang tidak didukung evidence.
 
-J-ARI sebaiknya memilih **upcoding dan unbundling sebagai fokus utama**, dengan cloning, repeat billing, dan financial anomaly sebagai sinyal pendukung. Scope ini cukup tajam untuk dinilai, tetapi tetap mencerminkan kemampuan multi-sinyal sistem.
+AEGIS-Health sebaiknya memilih **upcoding dan unbundling sebagai fokus utama**, dengan cloning, repeat billing, dan financial anomaly sebagai sinyal pendukung. Scope ini cukup tajam untuk dinilai, tetapi tetap mencerminkan kemampuan multi-sinyal sistem.
 
 BPJS menekankan bahwa Healthkathon diharapkan menghasilkan solusi yang relevan, aman, bertanggung jawab, dan berpotensi dikembangkan menjadi solusi nyata bagi JKN. Pemanfaatan AI diarahkan untuk mendukung analisis dan deteksi dini, sedangkan pemeriksaan dan keputusan akhir tetap memerlukan pertimbangan manusia. [BPJS/Healthkathon 2026 melalui pemberitaan resmi peluncuran](https://healthkathon.bpjs-kesehatan.go.id/landing-page.html) · [ringkasan tujuan dan arahan Healthkathon 2026](https://www.idntimes.com/news/indonesia/bpjs-kesehatan-gelar-healthkathon-2026-02-hs754-6165c3)
 
 Kemenkes sedang memperkuat ekosistem kesehatan digital yang terintegrasi, interoperabel, aman, dan berbasis data. SATUSEHAT berfungsi sebagai platform penghubung ekosistem, bukan pengganti seluruh aplikasi yang sudah ada. Partner system diharapkan memperhatikan standardisasi proses bisnis, pertukaran data berbasis HL7 FHIR dan HTTPS REST API, autentikasi, serta enkripsi. [SATUSEHAT Platform](https://satusehat.kemkes.go.id/faq/platform/50c0fb80-1c3b-4bd2-bff1-119b51b96afe/apa-itu-satusehat-platform)
 
-Kemenkes juga menekankan bahwa integrasi RME dan SATUSEHAT dapat memperkuat efisiensi klaim, transparansi, jejak audit, dan pencegahan penyimpangan. Arah ini membuat J-ARI relevan sebagai lapisan analitik di atas data klaim dan clinical context yang terstruktur. [Kemenkes: tata kelola klaim JKN dan integrasi RME-SATUSEHAT](https://setjen.kemkes.go.id/news/kemenkes-perkuat-tata-kelola-klaim-jkn-melalui-integrasi-rekam-medis-elektronik-dengan-satusehat)
+Kemenkes juga menekankan bahwa integrasi RME dan SATUSEHAT dapat memperkuat efisiensi klaim, transparansi, jejak audit, dan pencegahan penyimpangan. Arah ini membuat AEGIS-Health relevan sebagai lapisan analitik di atas data klaim dan clinical context yang terstruktur. [Kemenkes: tata kelola klaim JKN dan integrasi RME-SATUSEHAT](https://setjen.kemkes.go.id/news/kemenkes-perkuat-tata-kelola-klaim-jkn-melalui-integrasi-rekam-medis-elektronik-dengan-satusehat)
 
 Untuk AI kesehatan, Kemenkes menyoroti kualitas data, keamanan, privasi, bias, manajemen risiko, dan kejelasan tanggung jawab sepanjang siklus hidup AI. [Kemenkes: tata kelola AI untuk transformasi kesehatan](https://setjen.kemkes.go.id/news/kementerian-kesehatan-perkuat-tata-kelola-ai-untuk-mendukung-transformasi-kesehatan)
 
@@ -40,13 +40,13 @@ Untuk AI kesehatan, Kemenkes menyoroti kualitas data, keamanan, privasi, bias, m
 
 Verifier menghadapi volume klaim yang besar, waktu terbatas, dan pola risiko yang tidak selalu terlihat dari satu klaim. Pemeriksaan manual dengan kedalaman yang sama untuk semua klaim dapat membuat klaim berisiko tinggi terlambat ditangani, sementara klaim valid dapat menghabiskan waktu review yang sama.
 
-Masalah inti J-ARI adalah:
+Masalah inti AEGIS-Health adalah:
 
 > **Bagaimana membantu verifier BPJS menemukan klaim yang paling layak diperiksa lebih dahulu dan memahami alasan prioritasnya dari evidence yang dapat ditelusuri?**
 
-J-ARI tidak berusaha membuktikan niat fraud secara otomatis. Sistem mencari **indikator risiko**, menggabungkan evidence, lalu membantu manusia menentukan langkah berikutnya.
+AEGIS-Health tidak berusaha membuktikan niat fraud secara otomatis. Sistem mencari **indikator risiko**, menggabungkan evidence, lalu membantu manusia menentukan langkah berikutnya.
 
-## 4. Tujuan utama J-ARI
+## 4. Tujuan utama AEGIS-Health
 
 ### Tujuan produk
 
@@ -92,7 +92,7 @@ Menjadi lapisan analitik yang dapat terhubung dengan ekosistem data kesehatan na
 
 ### Sumber data
 
-Faskes atau E-Klaim diperlakukan sebagai **sumber data**, bukan user utama J-ARI pada MVP. Demo Data Loader hanya mensimulasikan klaim yang masuk dari upstream. Produk utama dimulai dari halaman **Incoming Claims**.
+Faskes atau E-Klaim diperlakukan sebagai **sumber data**, bukan user utama AEGIS-Health pada MVP. Demo Data Loader hanya mensimulasikan klaim yang masuk dari upstream. Produk utama dimulai dari halaman **Incoming Claims**.
 
 ### Pengguna utama
 
@@ -208,7 +208,7 @@ Metrik utama bukan accuracy keseluruhan, karena kasus berisiko diperkirakan mino
 - latency per claim;
 - pipeline completion rate dan fallback rate;
 - data-quality coverage;
-- waktu review sebelum dan sesudah bantuan J-ARI pada simulasi pengguna.
+- waktu review sebelum dan sesudah bantuan AEGIS-Health pada simulasi pengguna.
 
 Tambahkan ablation table:
 
@@ -224,7 +224,7 @@ Semua angka yang belum diuji harus diberi label **target**, bukan hasil.
 
 ## 11. KPI dampak yang aman diklaim
 
-J-ARI boleh mengklaim tujuan berikut:
+AEGIS-Health boleh mengklaim tujuan berikut:
 
 - mempercepat triage awal;
 - membantu verifier memusatkan perhatian pada klaim berprioritas tinggi;
@@ -232,7 +232,7 @@ J-ARI boleh mengklaim tujuan berikut:
 - mengurangi waktu pencarian evidence;
 - membantu mendeteksi potensi financial exposure lebih awal.
 
-J-ARI belum boleh mengklaim:
+AEGIS-Health belum boleh mengklaim:
 
 - telah membuktikan fraud;
 - pasti menghemat nominal tertentu;
@@ -248,7 +248,7 @@ Alur demo:
 
 1. Demo Data Loader memuat synthetic claim batch dari simulated Faskes/E-Klaim.
 2. Incoming Claims menampilkan klaim yang telah diterima.
-3. J-ARI menjalankan screening.
+3. AEGIS-Health menjalankan screening.
 4. Priority Review menampilkan ranking risiko.
 5. Verifier membuka satu klaim prioritas tinggi.
 6. Investigation menampilkan timeline dan status agent.
@@ -326,7 +326,7 @@ Semua keputusan desain harus menjawab lima tujuan berikut:
 
 ### Satu kalimat
 
-> **J-ARI membantu verifier BPJS memprioritaskan klaim JKN yang paling perlu diperiksa dengan menggabungkan sinyal clinical, reimbursement, dan pola historis ke dalam risk score yang transparan serta evidence yang dapat ditelusuri.**
+> **AEGIS-Health membantu verifier BPJS memprioritaskan klaim JKN yang paling perlu diperiksa dengan menggabungkan sinyal clinical, reimbursement, dan pola historis ke dalam risk score yang transparan serta evidence yang dapat ditelusuri.**
 
 ### Tagline
 
@@ -334,11 +334,11 @@ Semua keputusan desain harus menjawab lima tujuan berikut:
 
 ### Pernyataan batasan
 
-> **J-ARI tidak menentukan fraud dan tidak menggantikan verifier. J-ARI membantu menentukan klaim mana yang perlu diperiksa lebih dahulu dan mengapa.**
+> **AEGIS-Health tidak menentukan fraud dan tidak menggantikan verifier. AEGIS-Health membantu menentukan klaim mana yang perlu diperiksa lebih dahulu dan mengapa.**
 
 ## 17. Definition of done untuk Healthkathon
 
-J-ARI siap dipresentasikan apabila:
+AEGIS-Health siap dipresentasikan apabila:
 
 - fokus kategori dan anomaly type sudah jelas;
 - workflow dimulai dari incoming claim, bukan input manual verifier;
@@ -354,11 +354,11 @@ J-ARI siap dipresentasikan apabila:
 
 ## 18. Kesimpulan
 
-J-ARI paling kuat ketika diposisikan sebagai sistem **risk prioritization dan evidence intelligence** untuk membantu proses verifikasi klaim JKN. Kesesuaian dengan Healthkathon 2026 kuat karena project berhubungan langsung dengan efisiensi risiko Faskes dan penggunaan AI untuk deteksi dini.
+AEGIS-Health paling kuat ketika diposisikan sebagai sistem **risk prioritization dan evidence intelligence** untuk membantu proses verifikasi klaim JKN. Kesesuaian dengan Healthkathon 2026 kuat karena project berhubungan langsung dengan efisiensi risiko Faskes dan penggunaan AI untuk deteksi dini.
 
 Kunci keberhasilan project bukan menambah lebih banyak agent, model, atau framework. Kunci utamanya adalah memperkuat validitas domain, menjaga skor tetap deterministik, menguji ranking secara jujur, mengurangi scope, dan menunjukkan bahwa verifier dapat bekerja lebih cepat dengan evidence yang lebih jelas.
 
-Dengan arah ini, J-ARI dapat menjawab target kompetisi, mendukung agenda BPJS untuk deteksi risiko berbasis data, dan selaras dengan arah Kemenkes mengenai interoperabilitas, efisiensi klaim, keamanan data, serta responsible AI.
+Dengan arah ini, AEGIS-Health dapat menjawab target kompetisi, mendukung agenda BPJS untuk deteksi risiko berbasis data, dan selaras dengan arah Kemenkes mengenai interoperabilitas, efisiensi klaim, keamanan data, serta responsible AI.
 
 ## Referensi utama
 

@@ -1,6 +1,6 @@
-# PRD.md � Product Requirement Document (J-ARI / AEGIS)
+# PRD.md � Product Requirement Document (AEGIS-Health)
 
-> **J-ARI: JKN Agentic Risk Intelligence**
+> **AEGIS-Health: Agentic Risk Engine & Intelligent Surveillance for Healthcare**
 > Nama Frontend: **AEGIS � Pusat Pemeriksaan Klaim**
 > Healthkathon 2026 BPJS Kesehatan
 > Versi Dokumen: 3.0
@@ -10,7 +10,7 @@
 
 ## 1. Executive Summary
 
-**J-ARI (JKN Agentic Risk Intelligence)**, yang ditampilkan kepada pengguna sebagai **AEGIS**, adalah sistem *risk prioritization & evidence intelligence* multi-agent berbasis AI dan ML yang dirancang untuk membantu verifier BPJS Kesehatan memprioritaskan klaim JKN yang paling perlu diperiksa lebih dahulu.
+**AEGIS-Health (Agentic Risk Engine & Intelligent Surveillance for Healthcare)**, yang ditampilkan kepada pengguna sebagai **AEGIS**, adalah sistem *risk prioritization & evidence intelligence* multi-agent berbasis AI dan ML yang dirancang untuk membantu verifier BPJS Kesehatan memprioritaskan klaim JKN yang paling perlu diperiksa lebih dahulu.
 
 Sistem ini **tidak menggantikan verifier manusia** dan **tidak menyatakan sebuah klaim adalah fraud**. AEGIS berfungsi sebagai **lapisan screening deterministik** yang mengintegrasikan:
 
@@ -41,7 +41,7 @@ Keputusan akhir selalu berada di tangan **verifier manusia**, dicatat dengan aud
 
 ### 2.2 Batasan Produk (Non-Negotiable)
 
-AEGIS/J-ARI:
+AEGIS-Health:
 - **Tidak** menentukan status fraud secara definitif.
 - **Tidak** menolak klaim secara otomatis.
 - **Tidak** menggantikan sistem E-Klaim BPJS.

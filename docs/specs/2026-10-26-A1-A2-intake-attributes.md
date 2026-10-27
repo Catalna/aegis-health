@@ -4,10 +4,10 @@
 
 ## 1. Prinsip (terkunci dari arahan pemilik produk)
 
-1. **J-ARI bukan sistem input.** RS tetap memasukkan klaim lewat E-Klaim sebagaimana adanya — TIDAK ada formulir/isian baru untuk RS.
+1. **AEGIS-Health bukan sistem input.** RS tetap memasukkan klaim lewat E-Klaim sebagaimana adanya — TIDAK ada formulir/isian baru untuk RS.
 2. E-Jak bekerja sebagai lapisan **baca + perkaya**: memperkaya klaim yang masuk dengan atribut konteks via tiga jalur:
    - **J1 — Payload**: diambil langsung dari isi klaim E-Klaim (file export / record) yang sudah ada.
-   - **J2 — Lookup**: master data yang J-ARI ambil/pegang (identitas faskes, tarif regional, segmen peserta via API BPJS bila tersedia).
+   - **J2 — Lookup**: master data yang AEGIS-Health ambil/pegang (identitas faskes, tarif regional, segmen peserta via API BPJS bila tersedia).
    - **J3 — Derivation**: diturunkan secara deterministik dari kolom payload lain (umur dari tanggal lahir, LOS dari tanggal masuk/keluar, severitas dari digit-4 INACBG, ratio vs peer baseline).
 3. Format export E-Klaim yang riil **belum pernah kami lihat** — daftar kolom lengkapnya masih belum dikonfirmasi. Karena itu A2 dirancang tipis (mapping adapter), dan pemetaan final **dikunci begitu satu file export E-Klaim riil diperoleh**; sampai saat itu semua nama kolom payload pada tabel ini adalah ekspektasi, bukan kesepakatan.
 
@@ -18,7 +18,7 @@ Sebuah atribut boleh masuk ke skema *context* jika & hanya jika memenuhi MINIMUM
 | # | Kriteria | Ambang |
 |---|---|---|
 | AD1 | Sumber konkret dari J1/J2/J3 terdokumentasi | wajib |
-| AD2 | Siapa mengisinya jelas (RS via payload, atau J-ARI otomatis) | wajib — J-ARI TIDAK pernah meminta isi manual dari RS |
+| AD2 | Siapa mengisinya jelas (RS via payload, atau AEGIS-Health otomatis) | wajib — AEGIS-Health TIDAK pernah meminta isi manual dari RS |
 | AD3 | Cakupan ≥ 90% pada sampel riil batch pertama (atribut inti) / ≥ 70% (atribut opsional, berpasangan dengan indikator tersedia) | terukur |
 
 Atribut yang hanya memenuhi sebagian = **gap terdeklarasi** (dicatat di sini + di `MODELS.md`/`DECISIONS.md`), tidak boleh tiba-tiba diisikan di skoring.
@@ -28,17 +28,17 @@ Atribut yang hanya memenuhi sebagian = **gap terdeklarasi** (dicatat di sini + d
 | Atribut | Jalur | Siapa mengisi | Ekspektasi cakupan | Status |
 |---|---|---|---|---|
 | `inacbg_code` + digit severitas (digit-4) | J1 payload | RS (melalui E-Klaim); severitas dari derivation digit-4 | ~100% (klaim final selalu ber-kode DRG) | siap desain; cakupan dicek saat file riil |
-| `hospital_region` (prov / grup tarif regional 1–5) | J2 lookup (master faskes; kode grup 1–5 juga bisa dari tabel tarif) | J-ARI otomatis | ~100% (identitas faskes selalu ada di export) | siap desain |
-| `facility_type` (tipe faskes) | J2 lookup master faskes | J-ARI otomatis | ~100% | siap desain |
-| `class_of_care` (kelas rawat 1/2/3) | J1 payload (klaim mulai kolom kelas) atau J2 (kelas faskes sebagai dekat) | RS via payload / J-ARI fallback | tinggi; persisnya diukur dari file riil | siap desain |
-| `age_years` | J3 derivation dari tanggal lahir (payload) − tanggal layanan | J-ARI otomatis | ~100% bila tgl lahir terisi (biasanya di berkas SEP/klaim) | siap desain |
+| `hospital_region` (prov / grup tarif regional 1–5) | J2 lookup (master faskes; kode grup 1–5 juga bisa dari tabel tarif) | AEGIS-Health otomatis | ~100% (identitas faskes selalu ada di export) | siap desain |
+| `facility_type` (tipe faskes) | J2 lookup master faskes | AEGIS-Health otomatis | ~100% | siap desain |
+| `class_of_care` (kelas rawat 1/2/3) | J1 payload (klaim mulai kolom kelas) atau J2 (kelas faskes sebagai dekat) | RS via payload / AEGIS-Health fallback | tinggi; persisnya diukur dari file riil | siap desain |
+| `age_years` | J3 derivation dari tanggal lahir (payload) − tanggal layanan | AEGIS-Health otomatis | ~100% bila tgl lahir terisi (biasanya di berkas SEP/klaim) | siap desain |
 | `sex` | J1 payload | RS via payload | tinggi (didukung di kepesertaan BPJS) | siap desain |
-| `los_days` | J3 derivation tanggal masuk−keluar | J-ARI otomatis | ~100% untuk rawat inap; 0 untuk day-care | siap desain |
+| `los_days` | J3 derivation tanggal masuk−keluar | AEGIS-Health otomatis | ~100% untuk rawat inap; 0 untuk day-care | siap desain |
 | `n_diagnosis`, `n_procedures`, daftar ICD | J1 payload | RS via payload | tinggi | siap desain |
-| `regional_tariff_group` (1–5, konteks, bukan rupiah) | J2 lookup | J-ARI otomatis | ~100% | siap desain |
+| `regional_tariff_group` (1–5, konteks, bukan rupiah) | J2 lookup | AEGIS-Health otomatis | ~100% | siap desain |
 | `icu_ventilator_days` / biaya icu | J1 payload | RS via payload E-Klaim (bidang icu/vent. pada klaim INACBG) | **tidak diketahui** — TIDAK dijamin ada di export | **gap; diukur dari file riil pertama**, jangan diandalkan |
-| `segment` peserta (PBI dll) & kelas kepesertaan | J2 lookup API BPJS (VClaim peserta) | J-ARI otomatis | bergantung ketersediaan API di jaringan RS; offline demo → tidak | opsi, tidak dijamin |
-| `peer_ratio` (tagih vs median peer real) | J3 derivation vs tabel `peer_baseline_reguler*` | J-ARI otomatis | ~100% (fallback nasional n≥30 menutup 99,8%) | siap desain (penerapan pasca-gate) |
+| `segment` peserta (PBI dll) & kelas kepesertaan | J2 lookup API BPJS (VClaim peserta) | AEGIS-Health otomatis | bergantung ketersediaan API di jaringan RS; offline demo → tidak | opsi, tidak dijamin |
+| `peer_ratio` (tagih vs median peer real) | J3 derivation vs tabel `peer_baseline_reguler*` | AEGIS-Health otomatis | ~100% (fallback nasional n≥30 menutup 99,8%) | siap desain (penerapan pasca-gate) |
 
 Cakupan dan ramping dijalankan di batch riil pertama: laporan cakupan aktual per atribut (≥90% inti; else status tetap "gap").
 

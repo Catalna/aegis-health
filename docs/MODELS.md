@@ -1,6 +1,6 @@
 # MODELS.md — Machine Learning, Vector Store, Graph & LLM Models Specification
 
-> **J-ARI: JKN Agentic Risk Intelligence**  
+> **AEGIS-Health: Agentic Risk Engine & Intelligent Surveillance for Healthcare**  
 > Nama Frontend: **AEGIS — Pusat Pemeriksaan Klaim**  
 > Healthkathon 2026 BPJS Kesehatan  
 > Versi Dokumen: 3.0  
@@ -10,7 +10,7 @@
 
 ## 1. Overview Ekosistem Model
 
-J-ARI/AEGIS menerapkan arsitektur **Multi-Model Intelligence** terpadu. Pendekatan ini menggabungkan machine learning terawasi (supervised), pembelajaran tanpa pengawasan (unsupervised), pencarian kesamaan vektor semantik (vector similarity), analitik jaringan graf (graph metrics), heuristik domain perasuransian INA-CBG, serta Large Language Models (LLM) dengan pembagian tugas yang terisolasi secara ketat.
+AEGIS-Health menerapkan arsitektur **Multi-Model Intelligence** terpadu. Pendekatan ini menggabungkan machine learning terawasi (supervised), pembelajaran tanpa pengawasan (unsupervised), pencarian kesamaan vektor semantik (vector similarity), analitik jaringan graf (graph metrics), heuristik domain perasuransian INA-CBG, serta Large Language Models (LLM) dengan pembagian tugas yang terisolasi secara ketat.
 
 ```
                       +----------------------------------+
@@ -227,7 +227,7 @@ Urutan diimplementasikan sebagai cascade di `structured_completion` (`llm_client
 
 ## 7. Referensi Dokumen Terkait
 
-- [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md): Dokumen Kebutuhan Produk J-ARI / AEGIS.
+- [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md): Dokumen Kebutuhan Produk AEGIS-Health.
 - [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md): Arsitektur Teknis dan Alur Data.
 - [AgentWorkflow.md](file:///c:/Users/Radith/E-Jak/docs/AgentWorkflow.md): Alur Investigasi Multi-Agent dan SSE Protocol.
 - [BusinessCore.md](file:///c:/Users/Radith/E-Jak/docs/BusinessCore.md): Logika Bisnis Domain Perasuransian JKN.

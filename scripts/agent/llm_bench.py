@@ -24,7 +24,7 @@ OUT = AN / "llm_bench_results.json"
 MODELS = ["qwen3.5:9b", "deepseek-r1:7b"]
 OLLAMA = "http://localhost:11434"
 
-SYSTEM = ("Kamu adalah 'LLM Pelapor' sistem J-ARI: menyusun laporan dari JSON divisi. "
+SYSTEM = ("Kamu adalah 'LLM Pelapor' sistem AEGIS-Health: menyusun laporan dari JSON divisi. "
           "ATURAN MUTLAK: (1) gunakan HANYA angka yang ada di JSON — dilarang menambah, "
           "mengubah, atau menghitung angka; (2) Bahasa Indonesia; (3) maksimal 120 kata; "
           "(4) sebut divisi sumber untuk tiap poin.")
