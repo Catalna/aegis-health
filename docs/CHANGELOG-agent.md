@@ -200,6 +200,12 @@ Latest verification: **334 passed / 2 skipped** (after tier-band recalibration);
 - Portofolio pra-gate siap untuk gate A3 (per-strata, `MODELS.md §2.6`): biaya-C + klasifier v2.4 + klasifier v3. Runtime/demo/skoring tidak disentuh; freeze 1-Nov tetap utuh.
 - Komit: `c3a1cf6` (L10), `02f1595` (L12), `173f323` (L11). Penutup gelombang: suite backend 331 passed / 2 skipped / **3 failed** — ketiganya `test_frontend_contract` (berkas frontend terakhir disentuh `c3b4201` 2026-10-23, sebelum gelombang; tidak ada artefak gelombang yang menyentuhnya). Tes lingkup gelombang (generator/fitur/trainer/multiseed) **29 passed penuh**.
 
+## 2026-10-27 — Riset LLM pelapor lokal + desain arsitektur agent
+
+- Benchmark A/B Ollama lokal oleh `scripts/agent/llm_bench.py` (3 fixture envelope dari artefak sumber × 2 mode × 6 panggilan terukur): `deepseek-r1:7b` dipilih sebagai LLM Pelapor tunggal — 15–25 dtk/laporan vs qwen3.5:9b 128–213 dtk (berpikir 4,5–7 rb token per panggilan), JSON valid 6/6 keduanya, gaya r1 menyusun narasi vs qwen menyalin key-value. Dugaan awal pro-qwen terbukti salah oleh data.
+- Design doc `docs/specs/2026-10-27-agent-hierarchy-design.md`: koordinator deterministik di atas, LLM pelapor di daun (bukan juri), kontrak envelope JSON antar divisi, checker anti-halusinasi (menerima konversi satuan ×100×10⁶, menolak angka buatan/laporan dibuang ulang).
+- Milestone roadmap baris 14. Tidak menyentuh runtime/demo (freeze utuh); implementasi ditahapkan pasca-1-Nov setelah gate A3 + payload A1. Hasil mentah benchmark gitignored di analysis.
+
 ## 2026-10-27 — Visualisasi per-model: 8 figur × 2 model (set pembanding dipensiunkan)
 
 - Keputusan user: report visual kelola per-model tanpa grafik pembanding — 8 figur × 2 model (klasifier kandidat v3 + model biaya kandidat C) = 16 PNG di `docs/figures/`.
