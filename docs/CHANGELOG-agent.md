@@ -200,8 +200,10 @@ Latest verification: **334 passed / 2 skipped** (after tier-band recalibration);
 - Portofolio pra-gate siap untuk gate A3 (per-strata, `MODELS.md §2.6`): biaya-C + klasifier v2.4 + klasifier v3. Runtime/demo/skoring tidak disentuh; freeze 1-Nov tetap utuh.
 - Komit: `c3a1cf6` (L10), `02f1595` (L12), `173f323` (L11). Penutup gelombang: suite backend 331 passed / 2 skipped / **3 failed** — ketiganya `test_frontend_contract` (berkas frontend terakhir disentuh `c3b4201` 2026-10-23, sebelum gelombang; tidak ada artefak gelombang yang menyentuhnya). Tes lingkup gelombang (generator/fitur/trainer/multiseed) **29 passed penuh**.
 
-## 2026-10-26 — Penyegaran set delapan visual performa model
+## 2026-10-27 — Visualisasi per-model: 8 figur × 2 model (set pembanding dipensiunkan)
 
-- Menghapus visual lama dan gambar ringkasan tunggal setelah klarifikasi bahwa set delapan gambar perlu dipertahankan.
-- Menghasilkan delapan PNG baru: 2 plot benchmark biaya riil, lalu perbandingan AP, importance, slice anomali, alert budgets, confusion matrix, dan calibration plot klasifier. Domain real/synthetic diberi label terpisah.
-- Generator: `scripts/plot_model_portfolio.py`; kedua entrypoint plot lama kini mengarah ke generator ini; laporan evaluasi, retraining BPJS, kalibrasi sintetis, dan roadmap diperbarui. Tidak ada runtime/model/threshold yang diubah.
+- Keputusan user: report visual kelola per-model tanpa grafik pembanding — 8 figur × 2 model (klasifier kandidat v3 + model biaya kandidat C) = 16 PNG di `docs/figures/`.
+- Klasifier v3: `scripts/plot_classifier_v3_report.py` menghitung ulang skor dari model final + dataset training yang sama (threshold 0.3475 validation-selected dipakai seragam). Replay terverifikasi: confusion test identik operasi point report (TP 976/FP 366/FN 524/TN 48.134). Set: feature importance, label distribution, confusion train/val/test, PR, ROC, validation logloss. `docs/EVALUATION_REPORT.md` ditulis ulang jadi report per-model klasifier v3.
+- Model biaya C: `scripts/bpjs/eval_cost_candidate_c.py` membangkitkan ulang prediksi test dari pipeline retrain (parity check LOLOS: MAPE 8.59% / medAPE 3.42% / R² 0.8184, keempat view identik `retrain_results.json`) → artefak `eval_cost_c_test.parquet` (tanpa PII) + `eval_cost_c_parity.json`. `scripts/plot_cost_c_report.py` merender 8 figur: pred-vs-aktual, distribusi APE, coverage curve, stratum metrics, sebaran APE stratum, medAPE per INACBG, feature importance, bias per desil.
+- `docs/BPJS_RETRAINING_REPORT.md` kini memuat set 8 model C; `docs/BPJS_SYNTH_CALIBRATION_REPORT.md` menunjuk report klasifier. Skrip pembanding `scripts/plot_model_portfolio.py` dihapus; wrapper `visualize_evaluation.py`/`bpjs/plot_retraining_results.py` diarahkan ke generator per-model yang sesuai.
+- Tidak ada runtime/model/threshold yang diubah; freeze 1-Nov utuh; kandidat tetap menunggu gate A3.
