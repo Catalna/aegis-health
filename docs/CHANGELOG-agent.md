@@ -200,6 +200,12 @@ Latest verification: **334 passed / 2 skipped** (after tier-band recalibration);
 - Portofolio pra-gate siap untuk gate A3 (per-strata, `MODELS.md §2.6`): biaya-C + klasifier v2.4 + klasifier v3. Runtime/demo/skoring tidak disentuh; freeze 1-Nov tetap utuh.
 - Komit: `c3a1cf6` (L10), `02f1595` (L12), `173f323` (L11). Penutup gelombang: suite backend 331 passed / 2 skipped / **3 failed** — ketiganya `test_frontend_contract` (berkas frontend terakhir disentuh `c3b4201` 2026-10-23, sebelum gelombang; tidak ada artefak gelombang yang menyentuhnya). Tes lingkup gelombang (generator/fitur/trainer/multiseed) **29 passed penuh**.
 
+## 2026-10-27 - Kebijakan LLM lokal-first didokumentasikan (flip runtime ditangguhkan)
+
+- Keputusan: rantai produksi resmi = **Ollama lokal (`deepseek-r1:7b` LLM Pelapor) -> Gemini -> template deterministik**; Gemini diturunkan jadi backup + opsi pengembang (data sintetis). Alasan: privasi data kesehatan peserta (UU PDP No. 27/2022), cost/keberlanjutan (LLM di luar jalur penilaian; worst case template = Rp0 per klaim), keandalan offline faskes, audit/repro.
+- Implementasi docs-only: blok komentar `.env.example`, README (Batasan), `docs/DECISIONS.md` (2026-10-27), roadmap baris 16. Nilai `LLM_PROVIDER` pada `.env` live/template TIDAK diubah - flip default runtime menjadi bagian integrasi Pelapor post-1-Nov dengan benchmark ulang wajib (3x2x6).
+- Tidak ada kode/konfigurasi runtime yang disentuh (aman freeze).
+
 ## 2026-10-27 — Rebranding proyek: nama resmi AEGIS-Health (tim E-JAK)
 
 - Keputusan pemilik proyek: nama resmi **AEGIS-Health — Agentic Risk Engine & Intelligent Surveillance for Healthcare**, dibuat oleh **tim E-JAK**; antarmuka pengguna tetap memakai nama **AEGIS**.
