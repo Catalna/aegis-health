@@ -200,6 +200,12 @@ Latest verification: **334 passed / 2 skipped** (after tier-band recalibration);
 - Portofolio pra-gate siap untuk gate A3 (per-strata, `MODELS.md §2.6`): biaya-C + klasifier v2.4 + klasifier v3. Runtime/demo/skoring tidak disentuh; freeze 1-Nov tetap utuh.
 - Komit: `c3a1cf6` (L10), `02f1595` (L12), `173f323` (L11). Penutup gelombang: suite backend 331 passed / 2 skipped / **3 failed** — ketiganya `test_frontend_contract` (berkas frontend terakhir disentuh `c3b4201` 2026-10-23, sebelum gelombang; tidak ada artefak gelombang yang menyentuhnya). Tes lingkup gelombang (generator/fitur/trainer/multiseed) **29 passed penuh**.
 
+## 2026-10-28 - Spec maksimisasi flow agentic (kontrak envelope terpadu + checker generik + observability)
+
+- Keputusan pemilik: hasil review flow `orchestrator.py` (Phase 0-4, provenance, fallback, generation-lock) dituangkan ke spec baru `docs/specs/2026-10-28-flow-maximization-design.md` (docs-only, aman freeze). Kesimpulan: tulang punggung kokoh, tidak ditukar; lever = **kontrak + checker + observability**, bukan lebih banyak agent.
+- Isi inti: F1 kontrak envelope terpadu untuk 3 titik LLM runtime + Pelapor; F2 checker anti-halusinasi generik (whitelist konversi satuan, guard nama fiktif); F3 benchmark per-slot peran (slot `.env` kini warisan tak terukur); F4 koordinator portofolio deterministik (lintas-klaim, prioritas skor x dampak); F5 flow health digest dari data `agent_runs`; F6 prefix-cache Ollama (opsional, ambang manfaat >=10%). Anti-sasaran eksplisit: tanpa debate/self-critique loop, tanpa PII, angka turunan data riil menunggu gate A3.
+- Jadwal masuk di sela ordo roadmap (A3 -> payload A1/C1 -> integrasi Pelapor) tanpa membalik urutan; roadmap baris 18 ditambahkan.
+
 ## 2026-10-28 — Narasi "otak utama = LLM Lokal" diparalelkan ke dokumen laporan
 
 - Keputusan pemilik: laporan menulis eksplisit bahwa otak utama inteligensi (pemahaman sinyal, sintesis lintas-agent, penulisan laporan) menggunakan **LLM Lokal** — menghindari isu privasi dan menyajikan perhitungan biaya/efisiensi/kinerja secara sengaja.
