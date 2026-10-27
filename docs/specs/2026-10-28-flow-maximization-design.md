@@ -1,6 +1,6 @@
 # Desain Maksimisasi Flow Agentic — Kontrak Envelope Terpadu + Checker Generik + Observability
 
-**Status:** design (belum implementasi) • **Dibuat:** 2026-10-28
+**Status:** F1–F3 ter-eksekusi di main (modul murni + test + baseline per-slot); F5 + wiring runtime ter-flag dieksekusi di cabang `flow-max` (default-OFF, merge pasca-1-Nov) • **Dibuat:** 2026-10-28
 **Sumber penilaian:** review flow sungguhan `backend/app/agents/orchestrator.py` (Phase 0–4, provenance, fallback, generation-lock) + lapisan desain terkunci `2026-10-27-agent-hierarchy-design.md`
 **Disiplin:** docs-only saat ini (freeze sampai 1 Nov — tidak menyentuh skoring/demo/runtime). Seluruh implementasi bermula pasca-1-Nov dan **masuk di sela ordo roadmap (A3 → payload A1/C1 → integrasi Pelapor) tanpa mengganti urutannya**.
 
