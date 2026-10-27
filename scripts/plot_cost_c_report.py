@@ -36,6 +36,7 @@ OUT_DIR = REPO / "docs" / "figures"
 INK, MUTED, GRID, PAPER = "#18252F", "#62717A", "#DEE5E7", "#F7F8F5"
 TEAL, GOLD, GRAY, RED = "#087E83", "#D18A35", "#9AA7AA", "#B85B4B"
 FIG_KW = dict(figsize=(9.6, 6.8), dpi=160)
+MODEL_TAG = "Model 1 · Biaya (kandidat C) — "
 
 VIEW_LABELS = {"test_semua": "Test semua", "test_terbaru": "Test terbaru",
                "test_dialisis": "Hemodialisis", "test_non_dialisis": "Non-dialisis"}
@@ -44,7 +45,8 @@ VIEW_LABELS = {"test_semua": "Test semua", "test_terbaru": "Test terbaru",
 def _ax(title: str, ylabel: str = ""):
     fig, ax = plt.subplots(**FIG_KW)
     ax.set_facecolor(PAPER)
-    ax.set_title(title, loc="left", color=INK, fontsize=15, fontweight="bold", pad=14)
+    fig.suptitle(f"{MODEL_TAG}{title}", x=0.02, ha="left", color=INK,
+                 fontsize=13.5, fontweight="bold")
     if ylabel:
         ax.set_ylabel(ylabel, color=MUTED, fontsize=10)
     ax.tick_params(colors=MUTED, labelsize=9, length=0)
@@ -77,7 +79,7 @@ def main() -> None:
     print(f"test n={n_total:,}; medAPE {np.median(ape) * 100:.2f}%")
 
     # 1) Prediksi vs aktual (scatter sub-sampel, log-log)
-    fig, ax = _ax("Predicted vs Actual — model biaya C, test BPJS riil",
+    fig, ax = _ax("Prediksi vs Aktual (test riil BPJS)",
                   "aktual Rp (log)")
     lim = (1e5, max(a.max(), p.max()) * 1.5)
     rng = np.random.default_rng(42)
@@ -95,7 +97,7 @@ def main() -> None:
          "80,000 dari 340,518 test claims (seed 42) · subject split · band dialysis rapat di garis identitas")
 
     # 2) Distribusi APE
-    fig, ax = _ax("Absolute Percentage Error — model biaya C, test", "klaim")
+    fig, ax = _ax("Distribusi APE (test)", "klaim")
     clip = np.clip(ape, 0, 1.5)
     ax.hist(clip, bins=60, color=TEAL, edgecolor=PAPER, linewidth=0.3)
     for q, c in ((0.5, INK), (0.9, GOLD), (0.99, RED)):
@@ -110,7 +112,7 @@ def main() -> None:
     # 3) Coverage curve
     xs = np.arange(1, 51)
     cov = np.asarray([(ape <= x / 100).mean() * 100 for x in xs])
-    fig, ax = _ax("Klaim dalam banding error ±x% — model biaya C", "klaim (%)")
+    fig, ax = _ax("Klaim dalam banding error ±x% (coverage)", "klaim (%)")
     ax.plot(xs, cov, color=TEAL, lw=2.2)
     for x_validate, c in ((5, GOLD), (10, RED)):
         v = float(cov[x_validate - 1])
@@ -126,7 +128,7 @@ def main() -> None:
     # 4) MAPE per view (metrik satu model, view bukan pembanding model)
     views = ("test_semua", "test_terbaru", "test_dialisis", "test_non_dialisis")
     vals = [results[v]["mape_pct"] for v in views]
-    fig, ax = _ax("Performa per stratum & periode — model biaya C", "MAPE (%)")
+    fig, ax = _ax("Performa per stratum & periode", "MAPE (%)")
     colors = [TEAL, GOLD, GRAY, GRAY]
     bars = ax.bar(range(4), vals, color=colors, width=0.6)
     for i, (bar, v, key) in enumerate(zip(bars, vals, views)):
@@ -140,7 +142,7 @@ def main() -> None:
          "R² dialysis rendah karena tarif terkunci-hampir-konstan (varians aktual kecil) — MAPE tetap 8.17%")
 
     # 5) Kuantil APE per view
-    fig, ax = _ax("Sebaran APE per stratum — model biaya C", "APE (%)")
+    fig, ax = _ax("Sebaran APE per stratum", "APE (%)")
     stats_p, positions = [], []
     for i, key in enumerate(("test_dialisis", "test_non_dialisis", "test_terbaru")):
         if key == "test_dialisis":
@@ -167,7 +169,7 @@ def main() -> None:
     grp = (df.assign(ape_pct=ape * 100).groupby("inacbg")
              .agg(n=("ape_pct", "size"), med=("ape_pct", "median"))
              .sort_values("n", ascending=False).head(8))
-    fig, ax = _ax("medAPE 8 grup INACBG terbesar — model biaya C", "medAPE (%)")
+    fig, ax = _ax("medAPE 8 grup INACBG terbesar", "medAPE (%)")
     bars = ax.barh(range(len(grp)), grp["med"], color=TEAL, height=0.62)
     ax.set_yticks(range(len(grp)), list(grp.index), fontsize=8.5)
     ax.invert_yaxis()
@@ -185,7 +187,7 @@ def main() -> None:
     names_x = list(gains)
     raw = np.asarray([gains[k] for k in names_x], dtype=float)
     share = raw / raw.sum()
-    fig, ax = _ax("Feature importance — model biaya C (gain share, top 10)")
+    fig, ax = _ax("Feature importance (gain share, top 10)")
     bars = ax.barh(names_x, share, color=GOLD, height=0.62)
     ax.set_xlabel("porsi total gain 10 teratas", color=MUTED, fontsize=10)
     for bar, v in zip(bars, share):
@@ -202,7 +204,7 @@ def main() -> None:
     dec = pd.qcut(a, 10, labels=False, duplicates="drop")
     dec_med = pd.Series(ape * 100).groupby(dec).median()
     x_line = pd.Series(a).groupby(dec).median()
-    fig, ax = _ax("Bias per desil biaya aktual — model biaya C", "medAPE (%)")
+    fig, ax = _ax("Bias per desil biaya aktual", "medAPE (%)")
     ax.bar(range(len(dec_med)), dec_med.values, color=TEAL, width=0.7)
     ax.set_xticks(range(len(dec_med)),
                   [f"{v / 1e6:.1f} jt" for v in x_line], fontsize=8)

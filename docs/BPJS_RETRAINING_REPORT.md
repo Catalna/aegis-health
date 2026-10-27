@@ -4,28 +4,12 @@
 **Artefak (ter-ignasi, `backend/app/data/analysis/`):** `retrain_results.json`, `base_rate_trainonly.csv`, `models/xgboost_cost_real_{legacy_b,v2_c}.json` (+ `*_features.json`)
 **Disiplin:** OFFLINE ONLY — tidak menyentuh skoring runtime (freeze sampai 1 Nov); promosi hanya melalui gate A3 sesuai `docs/MODELS.md` §2.6. Tanpa PII di artefak.
 
-### Visualisasi per-model kandidat C (8 figur, tanpa pembanding)
+### Visualisasi performa model kandidat C
 
-Perbandingan A/B/C tetap tersedia sebagai tabel teks pada §2–§4. Delapan figur
-di bawah memuat **satu model saja** (kandidat C, v2+context) — dibuat dari
-`eval_cost_candidate_c.py` (paritas penuh vs `retrain_results.json`) oleh
-`scripts/plot_cost_c_report.py`.
-
-![Prediksi vs aktual (test riil 340.518 klaim)](figures/cost_c_pred_vs_actual.png)
-
-![Distribusi APE dengan p50/p90/p99](figures/cost_c_ape_distribution.png)
-
-![Kurva coverage dalam ±x%](figures/cost_c_coverage_curve.png)
-
-![MAPE/medAPE/R² per stratum & periode](figures/cost_c_stratum_metrics.png)
-
-![Sebaran APE (p25–p95) per stratum](figures/cost_c_ape_by_stratum.png)
-
-![medAPE 8 grup INACBG terbesar](figures/cost_c_ape_by_inacbg.png)
-
-![Feature importance (gain share top 10)](figures/cost_c_feature_importance.png)
-
-![medAPE per desil biaya aktual](figures/cost_c_bias_by_decile.png)
+Set 8 figur per-model kandidat C — setiap judul berlabel **"Model 1 · Biaya (kandidat C)"** —
+terkonsolidasi di [`MODEL1_BIAYA_C_REPORT.md`](MODEL1_BIAYA_C_REPORT.md), dibuat oleh
+`scripts/plot_cost_c_report.py` dari artefak parity `scripts/bpjs/eval_cost_candidate_c.py`.
+Tabel eksperimen A/B/C tetap pada §2–§4 di bawah; dokumen ini adalah rekor eksperimen, bukan report model.
 
 ## 1. Desain eksperimen
 

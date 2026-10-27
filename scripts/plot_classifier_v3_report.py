@@ -47,6 +47,7 @@ OUT_DIR = REPO / "docs" / "figures"
 INK, MUTED, GRID, PAPER = "#18252F", "#62717A", "#DEE5E7", "#F7F8F5"
 TEAL, GOLD, RED, GREEN = "#087E83", "#D18A35", "#B85B4B", "#3E8E5A"
 FIG_KW = dict(figsize=(9.6, 6.8), dpi=160)
+MODEL_TAG = "Model 2 · Klasifier anomali (kandidat v3) — "
 
 
 def _img(figure: plt.Figure, name: str, note: str = "") -> None:
@@ -61,7 +62,8 @@ def _img(figure: plt.Figure, name: str, note: str = "") -> None:
 def _ax(title: str, ylabel: str = "") -> tuple[plt.Figure, plt.axes.Axes]:
     fig, ax = plt.subplots(**FIG_KW)
     ax.set_facecolor(PAPER)
-    ax.set_title(title, loc="left", color=INK, fontsize=15, fontweight="bold", pad=14)
+    fig.suptitle(f"{MODEL_TAG}{title}", x=0.02, ha="left", color=INK,
+                 fontsize=13.5, fontweight="bold")
     if ylabel:
         ax.set_ylabel(ylabel, color=MUTED, fontsize=10)
     ax.tick_params(colors=MUTED, labelsize=9, length=0)
@@ -90,7 +92,8 @@ def _plot_confusion(matrix: np.ndarray, title: str, name: str, threshold: float)
     im = ax.imshow(matrix, cmap=mpl_blues(), norm=LogNorm(vmin=1, vmax=matrix.max()))
     ax.set_xticks([0, 1], ["Predicted normal", "Predicted anomaly"], fontsize=9, color=MUTED)
     ax.set_yticks([0, 1], ["Actual normal", "Actual anomaly"], fontsize=9, color=MUTED)
-    ax.set_title(title, loc="left", color=INK, fontsize=15, fontweight="bold", pad=14)
+    fig.suptitle(f"{MODEL_TAG}{title}", x=0.02, ha="left", color=INK,
+                 fontsize=13.5, fontweight="bold")
     log_mid = 0.5 * (np.log10(matrix.max()) + np.log10(max(matrix.min(), 1)))
     for i in range(2):
         for j in range(2):
@@ -147,7 +150,7 @@ def main() -> None:
     labels_x = [k for k, _ in gain]
     share = np.asarray([v for _, v in gain], dtype=float)
     share = share / share.sum()
-    fig, ax = _ax("Feature Importance — classifier v3 (gain share)",
+    fig, ax = _ax("Feature Importance (gain share)",
                   "share of total gain · synthetic training")
     bars = ax.barh(labels_x, share, color=[TEAL if "copy" in k else GOLD for k in labels_x], height=0.68)
     ax.invert_yaxis()
@@ -169,7 +172,7 @@ def main() -> None:
     order = ["none"] + sorted(k for k in counts if k != "none")
     values = [counts[k] for k in order]
     names = ["Normal" if k == "none" else k for k in order]
-    fig, ax = _ax("Label Outcome Distribution — calibrated dataset",
+    fig, ax = _ax("Label Outcome Distribution (dataset terkalibrasi)",
                   f"rows · total {sum(values):,}")
     colors = [GREEN] + [RED] * (len(order) - 1)
     bars = ax.bar(np.arange(len(order)), values, color=colors)
@@ -180,9 +183,9 @@ def main() -> None:
          "train + validation + test combined · calibrated generator (v2.4.0-calibrated, seed 42)")
 
     # 3-5) Confusion matrices, satu ambang seragam
-    for split, title in (("train", "Training Confusion Matrix"),
-                         ("validation", "Validation Confusion Matrix"),
-                         ("test", "Testing Confusion Matrix")):
+    for split, title in (("train", "Confusion Matrix — Training"),
+                         ("validation", "Confusion Matrix — Validation"),
+                         ("test", "Confusion Matrix — Testing")):
         y, scores = splits[split]
         _plot_confusion(_confmat(y, scores, threshold), title, f"clf_v3_confusion_{split}.png", threshold)
 
@@ -190,7 +193,7 @@ def main() -> None:
     y_test, s_test = splits["test"]
     prec, rec, _ = precision_recall_curve(y_test, s_test)
     ap = average_precision_score(y_test, s_test)
-    fig, ax = _ax("Precision-Recall Curve — classifier v3, test",
+    fig, ax = _ax("Precision-Recall Curve (test)",
                   "precision")
     ax.plot(rec, prec, color=TEAL, lw=2.2, label=f"AP = {ap:.4f} (report {ap_report:.4f})")
     ax.axhline(0.03, color=GOLD, ls=(0, (3, 3)), lw=1.2)
@@ -205,7 +208,7 @@ def main() -> None:
     # 7) ROC curve (test)
     fpr, tpr, _ = roc_curve(y_test, s_test)
     auc = roc_auc_score(y_test, s_test)
-    fig, ax = _ax("ROC Curve — classifier v3, test", "true positive rate")
+    fig, ax = _ax("ROC Curve (test)", "true positive rate")
     ax.plot(fpr, tpr, color=TEAL, lw=2.2, label=f"ROC-AUC = {auc:.4f} (report {auc_report:.4f})")
     ax.plot([0, 1], [0, 1], "--", color="#9AA7AA", lw=1.1)
     ax.set_xlabel("False positive rate", color=MUTED, fontsize=10)
@@ -223,7 +226,7 @@ def main() -> None:
         rounds.append(best_iteration)
     losses = [float(log_loss(y_val, classifier.predict(d_val, iteration_range=(0, k)), labels=[0, 1]))
               for k in rounds]
-    fig, ax = _ax("Validation Log Loss per Boosting Round — classifier v3",
+    fig, ax = _ax("Validation Log Loss per Boosting Round",
                   "log loss")
     ax.plot(rounds, losses, color=TEAL, lw=2)
     ax.scatter([best_iteration], [losses[-1]], color=RED, zorder=4, s=36)

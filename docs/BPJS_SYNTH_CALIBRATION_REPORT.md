@@ -2,11 +2,9 @@
 
 **Status:** hasil ukur • **Dibuat:** 2026-10-26 • **Seed:** 42 (pasang tunggal, pra-gate) • **Artefak:** `backend/models_trained/synthetic_v2_v3/` + dataset `data/synthetic_v2_calibrated/` (keduanya gitignored)
 
-![Feature importance kandidat v3](figures/clf_v3_feature_importance.png)
-
-![Confusion matrix test kandidat v3 (replay identik report)](figures/clf_v3_confusion_test.png)
-
-Set 8 figur lengkap per-model v3 ada di [`EVALUATION_REPORT.md`](EVALUATION_REPORT.md) (dibuat oleh `scripts/plot_classifier_v3_report.py`; satu model per figur, tanpa grafik pembanding).
+Set 8 figur per-model klasifier v3 — setiap judul berlabel **"Model 2 · Klasifier anomali (kandidat v3)"** —
+ada di [`MODEL2_KLASIFIER_V3_REPORT.md`](MODEL2_KLASIFIER_V3_REPORT.md), dibuat oleh
+`scripts/plot_classifier_v3_report.py` (replay deterministik model final + dataset training).
 
 ## 1. Apa yang dikalibrasi (Langkah 10)
 
