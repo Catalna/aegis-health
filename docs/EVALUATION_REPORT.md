@@ -20,3 +20,15 @@ Portofolio ML terdiri atas **tepat 2 model** (+1 model legacy yang masih menjala
 - Evaluasi v2.4 seed-42: dataset `synthetic-v2.4.0-demonstrator` (config SHA `f088e5ff474c88ebdd1a8cbc1f012ac59dae2c38e5d09072ad0abebb1a9d04df`), AP test klasifier 0.7259 (CI95 0.7037–0.7464); benchmark biaya sintetis test MAPE 12.83%.
 - Rekor lengkap tersimpan di `backend/models_trained/synthetic_v2/synthetic_v2_training_report.json` + riwayat git dokumen ini.
 - Set figur v2.4 lama sudah dipensiunkan agar tidak tertukar dengan kandidat kini — semua figur aktif berlabel model eksplisit.
+
+
+## Lapis inteligensi di luar portfolio — LLM Lokal (otak pemahaman & pelaporan)
+
+Portfolio di atas adalah mesin risiko (scoring 100% deterministik). Di luar keduanya, **otak utama pemahaman & pelaporan** sistem adalah LLM yang dioperasikan **tersemat di local (self-hosted)** — model Pelapor terkunci `deepseek-r1:7b`. Kebijakan local-first dipilih eksplisit atas empat pertimbangan:
+
+- **Privasi**: data kesehatan peserta JKN tidak pernah dikirim ke layanan cloud eksternal (UU PDP No. 27/2022; aturan privasi `docs/DECISIONS.md`).
+- **Biaya & keberlanjutan**: tidak ada biaya per-token dan tidak bergantung rate-limit vendor; LLM tidak berada di jalur penilaian — worst case rantai jatuh ke template deterministik (biaya marginal Rp0 per klaim).
+- **Efisiensi & keandalan offline**: faskes/internet tidak selalu stabil; pipeline tetap beroperasi penuh secara lokal.
+- **Auditabilitas**: model disematkan + seed 42 + temperature 0.2 sehingga narasi reprodusibel (alias model cloud bergerak bisa berganti versi diam-diam).
+
+Bukti kinerja (benchmark internal terukur, `backend/app/data/analysis/llm_bench_results.json`): 15–25 detik per laporan, JSON valid 6/6 panggilan terukur. Status jujur: komponen ini belum menjadi bagian runtime hingga integrasi pasca-1-Nov; rantai runtime saat ini memakai gemini hanya untuk kenyamanan pengembangan dengan data sintetis. Detail arsitektur: `docs/specs/2026-10-27-agent-hierarchy-design.md`.

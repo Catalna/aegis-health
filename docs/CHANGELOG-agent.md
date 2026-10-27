@@ -200,6 +200,12 @@ Latest verification: **334 passed / 2 skipped** (after tier-band recalibration);
 - Portofolio pra-gate siap untuk gate A3 (per-strata, `MODELS.md §2.6`): biaya-C + klasifier v2.4 + klasifier v3. Runtime/demo/skoring tidak disentuh; freeze 1-Nov tetap utuh.
 - Komit: `c3a1cf6` (L10), `02f1595` (L12), `173f323` (L11). Penutup gelombang: suite backend 331 passed / 2 skipped / **3 failed** — ketiganya `test_frontend_contract` (berkas frontend terakhir disentuh `c3b4201` 2026-10-23, sebelum gelombang; tidak ada artefak gelombang yang menyentuhnya). Tes lingkup gelombang (generator/fitur/trainer/multiseed) **29 passed penuh**.
 
+## 2026-10-28 — Narasi "otak utama = LLM Lokal" diparalelkan ke dokumen laporan
+
+- Keputusan pemilik: laporan menulis eksplisit bahwa otak utama inteligensi (pemahaman sinyal, sintesis lintas-agent, penulisan laporan) menggunakan **LLM Lokal** — menghindari isu privasi dan menyajikan perhitungan biaya/efisiensi/kinerja secara sengaja.
+- Implementasi docs-only: `docs/AgentWorkflow.md` (LLM Backbone diganti kebijakan local-first), `docs/Architecture.md` (catatan rantai produksi resmi + status runtime yang jujur), `docs/EVALUATION_REPORT.md` (bagian baru "Lapis inteligensi di luar portfolio — LLM Lokal"). Angka yang disebut identik dengan bukti terukur internal (15–25 detik/laporan, JSON 6/6) tanpa klaim baru.
+- Tidak ada kode/konfigurasi runtime yang disentuh; `docs/DECISIONS.md` sudah memuat keputusan 2026-10-27, tidak diulang.
+
 ## 2026-10-27 - Kebijakan LLM lokal-first didokumentasikan (flip runtime ditangguhkan)
 
 - Keputusan: rantai produksi resmi = **Ollama lokal (`deepseek-r1:7b` LLM Pelapor) -> Gemini -> template deterministik**; Gemini diturunkan jadi backup + opsi pengembang (data sintetis). Alasan: privasi data kesehatan peserta (UU PDP No. 27/2022), cost/keberlanjutan (LLM di luar jalur penilaian; worst case template = Rp0 per klaim), keandalan offline faskes, audit/repro.

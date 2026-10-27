@@ -149,7 +149,7 @@ Setelah Phase 1 selesai, seluruh temuan dikompilasi dan diserahkan ke **Review A
     - `MODERATE`: Satu sinyal mencurigakan tanpa anomali pendukung lain.
     - `WEAK`: Deviasi statistik minor dalam batas variansi normal.
   - Menyusun narasi sintesis investigasi (*reasoning narrative*) yang runtut dan obyektif.
-- **LLM Backbone**: Utama `gemini-2.0-flash` via Google AI Studio; cascade otomatis ke model lokal Ollama (`qwen2.5:3b`, fallback `llama3.2:3b`) bila cloud gagal/tanpa key.
+- **LLM Backbone — otak utama inteligensi, KEBIJAKAN LOKAL-FIRST**: pemahaman sinyal (Lapis 2), sintesis lintas-agent, dan penulisan laporan dijalankan LLM yang berjalan **tersemat di local (self-hosted)** — model Pelapor terkunci `deepseek-r1:7b` (benchmark internal terukur: 15–25 detik/laporan, JSON valid 6/6). Rantai produksi resmi: **Ollama lokal → Gemini API (backup) → template deterministik**. Alasan eksplisit: (1) **privasi** — data kesehatan peserta tidak pernah keluar mesin (UU PDP No. 27/2022); (2) **biaya** — tanpa biaya per-token; LLM di luar jalur penilaian, worst case jatuh ke template deterministik (Rp0 per klaim); (3) **efisiensi/keandalan offline** — faskes tidak selalu online, rate-limit cloud tidak menghambat; (4) **auditabilitas** — model disematkan + seed 42 + temp 0.2. Status jujur: runtime saat ini masih gemini-primary (kenyamanan pengembang, data sintetis saja); flip default ke rantai lokal terjadi pada wave integrasi post-1-Nov (`docs/DECISIONS.md`, 2026-10-27). LLM tidak pernah mengubah skor/tier/bukti.
 
 ---
 
