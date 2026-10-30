@@ -33,6 +33,12 @@ def _style(ax, title, xlabel, ylabel):
     ax.spines[['left', 'bottom']].set_color('#C9D4DC')
 
 
+def _numeric_feature_values(series):
+    if isinstance(series.dtype, pd.CategoricalDtype) or not pd.api.types.is_numeric_dtype(series):
+        return series.astype('category').cat.codes.to_numpy(dtype=float)
+    return pd.to_numeric(series, errors='coerce').to_numpy(dtype=float)
+
+
 def write_plots(output_dir, actual, predicted, history, features, shap_values):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -91,17 +97,20 @@ def write_plots(output_dir, actual, predicted, history, features, shap_values):
     rng = np.random.default_rng(42)
     norm = plt.Normalize(0, 1)
     for row, column in enumerate(order):
-        vals = features.iloc[:, column].to_numpy(dtype=float)
+        feature = features.iloc[:, column]
+        categorical = isinstance(feature.dtype, pd.CategoricalDtype) or not pd.api.types.is_numeric_dtype(feature)
+        vals = _numeric_feature_values(feature)
         lo, hi = np.nanmin(vals), np.nanmax(vals)
         scaled = (vals - lo) / (hi - lo) if hi > lo else np.full(len(vals), .5)
         jitter = rng.uniform(-.28, .28, len(vals))
-        ax.scatter(values[:, column], row + jitter, c=plt.cm.coolwarm(norm(scaled)),
+        colors = '#8996A3' if categorical else plt.cm.coolwarm(norm(scaled))
+        ax.scatter(values[:, column], row + jitter, c=colors,
                    s=10, alpha=.55, edgecolors='none', rasterized=True)
     ax.set_yticks(np.arange(len(order)), [features.columns[i] for i in order])
     ax.invert_yaxis()
     ax.axvline(0, color=MUTED, linewidth=1)
-    ax.set_title('SHAP Summary · Temporal audit model', loc='left', color=NAVY, fontsize=15, fontweight='bold', pad=14)
-    ax.set_xlabel('Dampak fitur terhadap prediksi biaya (Rp)')
+    ax.set_title('SHAP Summary · Log-XGBoost kandidat biaya', loc='left', color=NAVY, fontsize=15, fontweight='bold', pad=14)
+    ax.set_xlabel('Dampak fitur pada prediksi log(1 + biaya)')
     ax.set_ylabel('Fitur · diurutkan menurut rata-rata |SHAP|')
     ax.grid(axis='x', color='#DCE5EA', linewidth=.7, alpha=.8)
     ax.spines[['top', 'right', 'left']].set_visible(False)
@@ -110,31 +119,30 @@ def write_plots(output_dir, actual, predicted, history, features, shap_values):
     ax.text(.99, .02, 'Rentang sumbu menampilkan 99% kontribusi; ekor tidak dipotong dari perhitungan.',
             transform=ax.transAxes, ha='right', va='bottom', color=MUTED, fontsize=8)
     sm = plt.cm.ScalarMappable(norm=norm, cmap='coolwarm')
-    fig.colorbar(sm, ax=ax, pad=.02, label='Nilai fitur relatif: rendah → tinggi')
+    fig.colorbar(sm, ax=ax, pad=.02, label='Nilai fitur numerik: rendah → tinggi')
     fig.tight_layout(rect=(0, .055, 1, 1))
-    fig.text(.01, .01, 'TreeSHAP menjelaskan prediksi biaya model, bukan bukti fraud atau kebutuhan medis.', fontsize=8, color=MUTED)
+    fig.text(.01, .01, 'Fitur kategori ditampilkan abu-abu; TreeSHAP aditif pada skala log target, bukan bukti fraud/kebutuhan medis.', fontsize=8, color=MUTED)
     fig.savefig(output_dir / PLOT_FILENAMES['shap_summary'], dpi=180); plt.close(fig)
     return list(PLOT_FILENAMES.values())
 
 
 def main():
-    from scripts.bpjs.cost_temporal_audit import CUTOFF, OUT, fit_context, load_data, make_features
-    from scripts.bpjs.cost_audit_utils import split_masks
+    from scripts.bpjs.cost_improvement_experiment import OUT, load_cohorts, model_matrix, inverse_target
+    from scripts.bpjs.cost_improvement_utils import tariff_tables, lookup_tariff
     import json
     import xgboost as xgb
 
-    df = load_data()
-    fit_mask, _, test_mask = split_masks(df, CUTOFF)
-    fit, test = df.loc[fit_mask].reset_index(drop=True), df.loc[test_mask].reset_index(drop=True)
-    ctx = fit_context(fit)
-    # Five-fold subject cross-fit for training rows is not used by test-time SHAP; test uses the complete fit table.
-    xtest, _ = make_features(test, ctx)
-    model = xgb.Booster(); model.load_model(OUT / 'xgb_with_base.json')
-    predictions = model.predict(xgb.DMatrix(xtest))
+    fit, _, test = load_cohorts()
+    tariff = tariff_tables(fit, min_count=20)
+    test_tariff = lookup_tariff(test, tariff)
+    _, xtest = model_matrix(fit, test, np.zeros(len(fit), dtype='float32'), test_tariff)
+    model = xgb.Booster(); model.load_model(OUT / 'log_xgb.json')
+    matrix = xgb.DMatrix(xtest, enable_categorical=True)
+    predictions = inverse_target(model.predict(matrix))
     results = json.loads((OUT / 'results.json').read_text(encoding='utf-8'))
     history = results['learning_curve']
     sample = xtest.sample(n=min(1200, len(xtest)), random_state=42)
-    sample_matrix = xgb.DMatrix(sample, feature_names=list(sample.columns))
+    sample_matrix = xgb.DMatrix(sample, enable_categorical=True)
     contribution_values = model.predict(sample_matrix, pred_contribs=True)
     values = contribution_values[:, :-1]
     prediction_from_contributions = contribution_values.sum(axis=1)
@@ -144,6 +152,9 @@ def main():
     figure_dir = ROOT / 'docs' / 'figures' / 'cost_temporal'
     filenames = write_plots(figure_dir, test.cost.to_numpy(), predictions, history, sample, values)
     print('generated', ', '.join(filenames))
+    print('model=log_xgb; test_n=%d; MAE=Rp %.0f; MAPE=%.2f%%; SHAP additivity verified in log-target space' %
+          (len(test), np.abs(predictions-test.cost.to_numpy()).mean(),
+           (np.abs(predictions-test.cost.to_numpy())/test.cost.to_numpy()).mean()*100))
 
 
 if __name__ == '__main__':

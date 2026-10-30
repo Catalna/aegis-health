@@ -2,6 +2,8 @@
 
 Status portofolio: model biaya legacy masih menjalankan skoring runtime; kandidat biaya BPJS terbaru dievaluasi offline. Kandidat classifier sintetis tetap eksperimen historis tanpa validasi fraud BPJS. Visual aktif terbaru:
 
+**Eksperimen kandidat biaya post-grouper terbaru (tanpa promosi runtime):** [`BPJS_COST_IMPROVEMENT_REPORT.md`](BPJS_COST_IMPROVEMENT_REPORT.md). Visual empat panel sudah diperbarui untuk kandidat log-XGBoost; penjelasan: [`BPJS_COST_TEMPORAL_VISUAL_REPORT.md`](BPJS_COST_TEMPORAL_VISUAL_REPORT.md).
+
 [`BPJS_COST_TEMPORAL_VISUAL_REPORT.md`](BPJS_COST_TEMPORAL_VISUAL_REPORT.md) — Actual vs Predicted, Learning Curve, Residual Plot, dan TreeSHAP.
 
 | Model | Fungsi | Dokumen per-model | Generator figur |
