@@ -4,7 +4,7 @@
 
 ## Goal
 
-Make J-ARI's risk result deterministic, domain-consistent, traceable, and safe to explain to a BPJS verifier without changing the broader security, database, or data-generation architecture.
+Make AEGIS-Health's risk result deterministic, domain-consistent, traceable, and safe to explain to a BPJS verifier without changing the broader security, database, or data-generation architecture.
 
 ## Scope
 

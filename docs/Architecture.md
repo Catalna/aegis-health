@@ -1,6 +1,6 @@
-# Architecture.md � J-ARI System Architecture
+# Architecture.md � AEGIS-Health System Architecture
 
-> **J-ARI: JKN Agentic Risk Intelligence**
+> **AEGIS-Health: Agentic Risk Engine & Intelligent Surveillance for Healthcare**
 > Nama Frontend: **AEGIS � Pusat Pemeriksaan Klaim**
 > Healthkathon 2026 BPJS Kesehatan
 > Versi Dokumen: 3.0
@@ -43,7 +43,8 @@
 | GeminiClient (utama — Google AI Studio) | `gemini-2.0-flash` (dari .env) | Ollama lokal di bawah | Semua peran narasi/sintesis: Clinical Lapis 2, Review, Explanation, QA Panel |
 | OllamaClient (backup lokal) | `qwen2.5:3b` (dkl. per agent, dari .env) | `llama3.2:3b` | Dijalankan cascade bila Gemini gagal / tanpa key / tanpa internet / data peserta riil |
 
-> Catatan: cascade di `structured_completion` mencoba provider utama lalu backup; provider yang benar-benar menjawab dicatat untuk `model_used`. Provider dapat dipaksa via `LLM_PROVIDER=gemini|ollama` (default kode: Gemini; environment riil-switch ke Ollama). Model lokal default kode `mistral:7b`/`deepseek-r1:7b`/`qwen2.5:7b`, file `.env` aktual memakai `qwen2.5:3b` dan `llama3.2:3b`.
+> **Kebijakan lokal-first (terkunci 2026-10-27, `docs/DECISIONS.md`)**: otak utama inteligensi — Lapis 2 klinis, sintesis Review, penulisan laporan — adalah **LLM tersemat di local (self-hosted), bukan layanan cloud**. Rantai produksi resmi: **Ollama lokal (`deepseek-r1:7b` sebagai LLM Pelapor) → Gemini API (backup) → template deterministik**. Alasan: privasi — data kesehatan tidak keluar mesin (UU PDP No. 27/2022); biaya — LLM di luar jalur penilaian, worst case template Rp0 per klaim; efisiensi/offline — faskes tidak selalu online; performa — benchmark internal terukur 15–25 detik/laporan, JSON valid 6/6; auditabilitas — model disematkan + seed 42 + temp 0.2. Tabel di atas menggambarkan kondisi runtime **saat ini** (gemini primary untuk kenyamanan pengembang, data sintetis saja); flip default ke rantai lokal terjadi pada wave integrasi post-1-Nov dengan benchmark ulang wajib (3×2×6, `scripts/agent/llm_bench.py`).
+> Catatan cascade: `structured_completion` mencoba provider utama lalu backup; provider yang benar-benar menjawab dicatat untuk `model_used`; dapat dipaksa via `LLM_PROVIDER=gemini|ollama`. Model lokal default kode `mistral:7b`/`deepseek-r1:7b`/`qwen2.5:7b`; file `.env` aktual memakai `qwen2.5:3b` dan `llama3.2:3b`.
 
 *Hardware Target Specification*: Intel Core 5 215H, 16GB RAM, RTX 5050 8GB VRAM. Model max 7B (Q4_K_M ~4.5-5GB VRAM + KV cache).
 

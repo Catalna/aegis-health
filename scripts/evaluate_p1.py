@@ -12,7 +12,7 @@ from backend.app.core.errors import ANALYSIS_RETRYABLE_MESSAGE  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate J-ARI risk ranking on synthetic held-out claims.")
+    parser = argparse.ArgumentParser(description="Evaluate AEGIS-Health risk ranking on synthetic held-out claims.")
     parser.add_argument("--output", type=Path, default=ROOT / "backend/models_trained/p1_evaluation_results.json")
     parser.add_argument("--train-seed", type=int, default=42)
     parser.add_argument("--holdout-seed", type=int, default=2026)

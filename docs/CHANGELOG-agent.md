@@ -130,7 +130,7 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 ## Windows setup README + Docker removal (2026-10-25)
 
 - README rewritten as the canonical end-to-end local Windows guide (clone →
-  PostgreSQL `CREATE DATABASE jari_db` → `.env` from a credential-free template →
+  PostgreSQL `CREATE DATABASE aegis_health_db` → `.env` from a credential-free template →
   venv + requirements → `npm ci` → runtime models → `start.bat` → health check →
   optional synthetic seed/reset → stop; troubleshooting table included).
 - `start.bat` made repository-location independent (`%~dp0`, direct
@@ -169,5 +169,85 @@ Scope requested: execute through ML training. Phases after training (BPJS sample
 - `23b5cbe` — hapus setup penerapan Docker (6 berkas).
 
 Latest verification: **334 passed / 2 skipped** (after tier-band recalibration); live demo cycle 2026-10-24 — reset → seed 220/220 → drain `failed=0` → per-scenario snapshot **220/220** (tier high 4 / medium 86 / low 130). Full smoke E2E on the live stack passed earlier (see the E2E section above). Frontend build passed earlier with the chunk-size warning above. Docs/config verification 2026-10-25 (README rewrite + Docker removal): README link check green, active Docker refs zero, frontend build green (same chunk warning), `/api/health` not re-run (stack offline). Phases 4–7 and the remaining Fase 0–3 acceptance items are not claimed complete.
-- b486135 � catatan changelog pekerjaan README/Docker (2026-10-25).
-- 4b7dbae � README restyle mengikuti layout wumpus (badge/daftar isi/mermaid/tabel skor/dokumentasi/batasan); isi setup tetap akurat.
+- b486135 � catatan changelog pekerjaan README/Docker (2026-10-25).
+- 4b7dbae � README restyle mengikuti layout wumpus (badge/daftar isi/mermaid/tabel skor/dokumentasi/batasan); isi setup tetap akurat.
+
+## 2026-10-26 — Gelombang data riil BPJS (Langkah 1-6, post-model roadmap)
+
+- Eksekusi enam langkah eksploitasi sampel BPJS Reguler 2025 (ackend/app/data/2025/, gitignored) tanpa menyentuh skoring runtime (freeze 1-Nov tetap utuh); promosi hanya lewat gate A3.
+- L1 profiling: scripts/bpjs/profile_reguler.py + docs/BPJS_SAMPLE_PROFILING.md (5 file, 10,5 jt baris; temuan: 99,9% tagih==verifikasi, 899 kode INACBG dgn dominasi hemodialisis 47,1%, SA 0% = gap ICU, LOS p50=0).
+- L2 peer baseline real: scripts/bpjs/extract_peer_baseline.py + docs/BPJS_PEER_BASELINE.md (main/fallback/kelas; fallback nasional menutup 100% baris; sel dense = tabel tarif implisit).
+- L3 spesifikasi A1/A2: docs/specs/2026-10-26-A1-A2-intake-attributes.md (no-new-input, jalur J1/J2/J3, admisi AD1-AD3, adapter tipis dikunci saat file E-Klaim riil pertama).
+- L4 retraining benchmark: scripts/bpjs/retrain_cost_benchmark.py + docs/BPJS_RETRAINING_REPORT.md (split subjek crc32; A runtime legacy MAPE 1285% R2 -0.61; B kontrak legacy retrain 51,5% R2 0.43; C kontrak v2+konteks **MAPE 8,59% R2 0.8184, within-10% 80,1%**; strata dialysis medAPE 1,58% R2 0,10; 7/9 input hilang kini riil; ICU+ventilator gap konstanta 0).
+- L5 visual final (arsip, digantikan 2026-10-26): visual benchmark biaya A/B/C; artefak sumber tetap di `backend/app/data/analysis/` (gitignored).
+- L6 aturan data riil: docs/DECISIONS.md + entri 2026-10-26 (no-PII in git, subset wajar + split subjek + konstanta gap eksplisit, force LLM_PROVIDER=ollama untuk LLM yang menyentuh data riil, freeze gate A3).
+- Log status semua langkah: docs/specs/2026-10-25-post-model-roadmap-design.md paragraf 8.
+
+## 2026-10-26 — Gelombang data riil BPJS lanjutan (Langkah 7-9, disetujui user)
+
+- L7 cek kelayakan per-faskes: `scripts/bpjs/dump_labels.py` + `docs/BPJS_FASKES_ID_CHECK.md` (verdict: FKTP & FKRTL TIDAK menyimpan ID faskes/dokter → profil per-RS (C1) tertunda ke jalur A1 payload; analisis tetap stratum-level).
+- L8 profil perilaku: `scripts/bpjs/profile_behavioral.py` + `docs/BPJS_BEHAVIORAL_PROFILING.md` + artefak `profile_behavioral.json` (FKRTL gap p50=8 d, FKTP p50=24 d, dialisis p50=20 d dengan share band 12-16 d hanya 13,84% → asumsi dwi-mingguan 14 d tidak valid langsung; rujukan FKP02 ada di 58,96% FKRTL dan 100% ter-match ke FKTP; hari-sama FKTP→FKRTL 7,65%; switch stratum FKTP 8,71%) → threshold relasional era-sintetis (repeat window 46-60 d) harus dikalibrasi per-stratum di gate A3.
+- L9 pra-gate scan sinyal: `scripts/bpjs/scan_peer_signal.py` + `docs/BPJS_PEER_SIGNAL_SCAN.md` + artefak `peer_signal_scan.json` (1.697.588 klaim wajar; **92,00% dalam band r 0,9-1,1**; dialisis 99,3% = terkunci-tarif → komponen deviasi harus di-nol-kan untuk stratum terkunci; threshold naik 1,25 → 32.714 klaim = 1,93% = titik operasional antrean; flag berkonsentrasi di sel sev-2 bedah/kel-I). Framing tegas: karakteristik operasi sinyal, BUKAN validasi fraud (tanpa label).
+- Artefak JSON di `backend/app/data/analysis/` (tetap gitignored); runtime/demo/skoring tidak disentuh (freeze 1-Nov utuh); log eksekusi: `docs/specs/2026-10-25-post-model-roadmap-design.md` §8 baris 7-9.
+- Komit: `fcf5edd` (L7), `36bc3a4` (L8), `49474b8` (L9).
+
+## 2026-10-26 — Gelombang pengembangan model (Langkah 10-12, closing ML-development)
+
+- Pernyataan user dikonfirmasi: masih di tahap develop ML; dilanjutkan sampai selesai. Keputusan arsitektur Q&A: **2 model + pilar rule-based sudah cukup** — bottleneck-nya data (ICU/vent, ID faskes, label), bukan jumlah model; "model ke-3 ML" ditolak (cadence = rule + baseline per-strata, bukan ML).
+- L10 kalibrasi generator: `backend/app/data/synthetic_v2/generator.py` tambah jalur opsi `calibration` (default v2.4 murni): bucket repeat L8, cadence hard-negative dialisis L8, derau biaya = campuran terkunci-tarif 47% + invers-CDF kuantil L9; dataset kandidat v3 `data/synthetic_v2_calibrated` 257.100 klaim valid (`--calibrated`; gitignored, `data/` masuk .gitignore).
+- L11 retrain kandidat v3: kontrak 28 fitur identik, seed 42 — test AP **0.6609** (CI95 grup [0.635-0.683]) vs v2.4 0.7259; ~0.73→0.66 dibaca sebagai dunia-latihan yang lebih real (44,6% pasangan ≤7 h legit; inti derau rapat), bukan degradasi; kandidat tetap ≥4× baseline aturan (0.15); fitur identitas tetap dominan (`exact_copy_group_size`). Laporan: `docs/BPJS_SYNTH_CALIBRATION_REPORT.md`; artefak `backend/models_trained/synthetic_v2_v3/`.
+- L12 scan cadence per-strata: `docs/BPJS_CADENCE_SIGNAL_SCAN.md` (non-dialisis repeat p50 6 h; dialisis p50 21 h, 25% >60 h; hari-sama <0,7%) → kandidat kalibrasi pilar relasional: baseline relatif per-strata + prioritas identitas kode×faskes×tanggal di atas jendela absolut.
+- Portofolio pra-gate siap untuk gate A3 (per-strata, `MODELS.md §2.6`): biaya-C + klasifier v2.4 + klasifier v3. Runtime/demo/skoring tidak disentuh; freeze 1-Nov tetap utuh.
+- Komit: `c3a1cf6` (L10), `02f1595` (L12), `173f323` (L11). Penutup gelombang: suite backend 331 passed / 2 skipped / **3 failed** — ketiganya `test_frontend_contract` (berkas frontend terakhir disentuh `c3b4201` 2026-10-23, sebelum gelombang; tidak ada artefak gelombang yang menyentuhnya). Tes lingkup gelombang (generator/fitur/trainer/multiseed) **29 passed penuh**.
+
+## 2026-10-28 - Spec maksimisasi flow agentic (kontrak envelope terpadu + checker generik + observability)
+
+- Keputusan pemilik: hasil review flow `orchestrator.py` (Phase 0-4, provenance, fallback, generation-lock) dituangkan ke spec baru `docs/specs/2026-10-28-flow-maximization-design.md` (docs-only, aman freeze). Kesimpulan: tulang punggung kokoh, tidak ditukar; lever = **kontrak + checker + observability**, bukan lebih banyak agent.
+- Isi inti: F1 kontrak envelope terpadu untuk 3 titik LLM runtime + Pelapor; F2 checker anti-halusinasi generik (whitelist konversi satuan, guard nama fiktif); F3 benchmark per-slot peran (slot `.env` kini warisan tak terukur); F4 koordinator portofolio deterministik (lintas-klaim, prioritas skor x dampak); F5 flow health digest dari data `agent_runs`; F6 prefix-cache Ollama (opsional, ambang manfaat >=10%). Anti-sasaran eksplisit: tanpa debate/self-critique loop, tanpa PII, angka turunan data riil menunggu gate A3.
+- Jadwal masuk di sela ordo roadmap (A3 -> payload A1/C1 -> integrasi Pelapor) tanpa membalik urutan; roadmap baris 18 ditambahkan.
+
+## 2026-10-28 — Narasi "otak utama = LLM Lokal" diparalelkan ke dokumen laporan
+
+- Keputusan pemilik: laporan menulis eksplisit bahwa otak utama inteligensi (pemahaman sinyal, sintesis lintas-agent, penulisan laporan) menggunakan **LLM Lokal** — menghindari isu privasi dan menyajikan perhitungan biaya/efisiensi/kinerja secara sengaja.
+- Implementasi docs-only: `docs/AgentWorkflow.md` (LLM Backbone diganti kebijakan local-first), `docs/Architecture.md` (catatan rantai produksi resmi + status runtime yang jujur), `docs/EVALUATION_REPORT.md` (bagian baru "Lapis inteligensi di luar portfolio — LLM Lokal"). Angka yang disebut identik dengan bukti terukur internal (15–25 detik/laporan, JSON 6/6) tanpa klaim baru.
+- Tidak ada kode/konfigurasi runtime yang disentuh; `docs/DECISIONS.md` sudah memuat keputusan 2026-10-27, tidak diulang.
+
+## 2026-10-27 - Kebijakan LLM lokal-first didokumentasikan (flip runtime ditangguhkan)
+
+- Keputusan: rantai produksi resmi = **Ollama lokal (`deepseek-r1:7b` LLM Pelapor) -> Gemini -> template deterministik**; Gemini diturunkan jadi backup + opsi pengembang (data sintetis). Alasan: privasi data kesehatan peserta (UU PDP No. 27/2022), cost/keberlanjutan (LLM di luar jalur penilaian; worst case template = Rp0 per klaim), keandalan offline faskes, audit/repro.
+- Implementasi docs-only: blok komentar `.env.example`, README (Batasan), `docs/DECISIONS.md` (2026-10-27), roadmap baris 16. Nilai `LLM_PROVIDER` pada `.env` live/template TIDAK diubah - flip default runtime menjadi bagian integrasi Pelapor post-1-Nov dengan benchmark ulang wajib (3x2x6).
+- Tidak ada kode/konfigurasi runtime yang disentuh (aman freeze).
+
+## 2026-10-27 — Rebranding proyek: nama resmi AEGIS-Health (tim E-JAK)
+
+- Keputusan pemilik proyek: nama resmi **AEGIS-Health — Agentic Risk Engine & Intelligent Surveillance for Healthcare**, dibuat oleh **tim E-JAK**; antarmuka pengguna tetap memakai nama **AEGIS**.
+- Penggantian menyeluruh 37 artefak terlacak: prose & header dokumen (ekspansi nama baru), docstring/judul kode, judul FastAPI (`AEGIS-Health API`), paket frontend (`aegis-health-frontend`), string test database, `start.bat`, plus rename `docs/plans/AEGIS-Health-Strategic-Alignment-Healthkathon-2026.md`. Seluruh grep pola lama bersih.
+- Database lokal direname AMAN via `ALTER DATABASE` (operasi metadata; data demo 220 klaim utuh) menjadi `aegis_health_db`; ikut diseragamkan: `.env` live, `.env.example`, `README`, default `backend/app/models/database.py` (password dev default diganti netral). Test identitas database lulus (1 passed) setelah rename.
+- Tidak ada logika runtime/skoring yang berubah; laporan roadmap baris 15 ditambahkan.
+
+## 2026-10-27 — Riset LLM pelapor lokal + desain arsitektur agent
+
+- Benchmark A/B Ollama lokal oleh `scripts/agent/llm_bench.py` (3 fixture envelope dari artefak sumber × 2 mode × 6 panggilan terukur): `deepseek-r1:7b` dipilih sebagai LLM Pelapor tunggal — 15–25 dtk/laporan vs qwen3.5:9b 128–213 dtk (berpikir 4,5–7 rb token per panggilan), JSON valid 6/6 keduanya, gaya r1 menyusun narasi vs qwen menyalin key-value. Dugaan awal pro-qwen terbukti salah oleh data.
+- Design doc `docs/specs/2026-10-27-agent-hierarchy-design.md`: koordinator deterministik di atas, LLM pelapor di daun (bukan juri), kontrak envelope JSON antar divisi, checker anti-halusinasi (menerima konversi satuan ×100×10⁶, menolak angka buatan/laporan dibuang ulang).
+- Milestone roadmap baris 14. Tidak menyentuh runtime/demo (freeze utuh); implementasi ditahapkan pasca-1-Nov setelah gate A3 + payload A1. Hasil mentah benchmark gitignored di analysis.
+
+## 2026-10-27 — Visualisasi per-model: 8 figur × 2 model (set pembanding dipensiunkan)
+
+- Keputusan user: report visual kelola per-model tanpa grafik pembanding — 8 figur × 2 model (klasifier kandidat v3 + model biaya kandidat C) = 16 PNG di `docs/figures/`.
+- Klasifier v3: `scripts/plot_classifier_v3_report.py` menghitung ulang skor dari model final + dataset training yang sama (threshold 0.3475 validation-selected dipakai seragam). Replay terverifikasi: confusion test identik operasi point report (TP 976/FP 366/FN 524/TN 48.134). Set: feature importance, label distribution, confusion train/val/test, PR, ROC, validation logloss. Dokumen per-model model 2: `docs/MODEL2_KLASIFIER_V3_REPORT.md`.
+- Model biaya C: `scripts/bpjs/eval_cost_candidate_c.py` membangkitkan ulang prediksi test dari pipeline retrain (parity check LOLOS: MAPE 8.59% / medAPE 3.42% / R² 0.8184, keempat view identik `retrain_results.json`) → artefak `eval_cost_c_test.parquet` (tanpa PII) + `eval_cost_c_parity.json`. `scripts/plot_cost_c_report.py` merender 8 figur: pred-vs-aktual, distribusi APE, coverage curve, stratum metrics, sebaran APE stratum, medAPE per INACBG, feature importance, bias per desil.
+- Dokumen per-model model 1: `docs/MODEL1_BIAYA_C_REPORT.md` (ringkasan test + strata + provenance fitur + 8 figur). Dokumen eksperimen/kalibrasi kini menunjuk dokumen per-model. Skrip pembanding `scripts/plot_model_portfolio.py` dihapus; wrapper `visualize_evaluation.py`/`bpjs/plot_retraining_results.py` diarahkan ke generator per-model yang sesuai.
+- Revisi umpan balik user: setiap judul 16 gambar diberi awalan label model ('Model 1 · Biaya (kandidat C)' / 'Model 2 · Klasifier anomali (kandidat v3)'); judul panjang dipindah ke figure-level agar tidak terpotong. `docs/EVALUATION_REPORT.md` diubah jadi indeks portofolio (2 model + status runtime + arsip v2.4) — tidak ada model ke-3: pilar aturan itu rule-based.
+- Tidak ada runtime/model/threshold yang diubah; freeze 1-Nov utuh; kandidat tetap menunggu gate A3.
+
+## 2026-10-28 — Gelombang maksimisasi flow (F1–F5): offline di main + wiring terflag di cabang
+
+- Keputusan eksekusi (user): takut bug krusial → penguatan **End-to-End menyeluruh** sebelum sentuh main. Struktur: main hanya menerima bagian nol-perilaku (F1–F3); seluruh wiring runtime dieksekusi tuntas di worktree cabang `flow-max` (merge pasca-1-Nov). Empat lapis proteksi: isolasi cabang, flag default-OFF (`AEGIS_FLOW_GUARD`), parity skor via suite OFF/ON, dan re-run suite penuh di kedua status flag.
+- **F1 kontrak envelope** `backend/app/core/envelope.py` + 26 unit test (commit `b66fb29`): `to_envelope/is_envelope/canonical_json/envelope_digest` — fail-fast "angka harus angka", nol PII di kunci kedalaman manapun, kunci privat `_` ditolak, digest kanonik idempoten.
+- **F2 checker anti-halusinasi** `backend/app/core/llm_guard.py` + 27 unit test (commit `3ec75b7`): parsing angka Indonesia deterministik (ribuan/koma-desimal/pemisah campuran), harvest target (nilai + token teks), padanan mentah atau konversi ×100/÷100/×10⁶/÷10⁶ dengan toleransi dua-desimal (0,5% rel; 0,06 abs), guard sapaan fiktif ("Enyi") + mode strict tervocab, `guard_report` (strict|numbers).
+- **F3 baseline per-slot** `scripts/agent/role_bench.py`: slot warisan (REVIEW/EXPLANATION dari .env = qwen2.5:3b, fallback llama3.2:3b) vs kandidat deepseek-r1:7b, 2 peran (review_sintesis, explanation), lapis2_klinis sengaja ditunda (fixture klinis menunggu payload A1 — anti-fabrikasi). Hasil terukur (seed 42, gitignored): qwen2.5:3b melanggar angka **1×** pada peran explanation (tertangkap checker), llama3.2:3b bersih & tercepat (4,2–4,7 s), r1:7b bersih (13–20 s). Keputusan slot formal tetap pasca-gate A3.
+- **Wiring di cabang `flow-max`** (tidak menyentuh main): envelope + guard generik aditif di 3 titik LLM — `review_agent` (narasi sintesis), `explanation_agent` (lapis kedua di atas validasi warisan `_validate_narrative`), `clinical_agent` Lapis-2 (evidence; kunci kode medis diizinkan via `code_keys`). Gagal checker → jalur fallback deterministik yang sudah ada (rule_fallback/template_fallback/no_data) — LLM tidak pernah "memperbaiki keluaran sendiri".
+- **Bug kontrak tertangkap langsung saat wiring #1**: `env_version: 1` ternyata jadi target angka (1→×100=100) sehingga angka fiktif dekat 100 lolos checker — `harvest_numbers` kini mengecualikan kunci metadata (`env_version`, `satuan`); test regresi ditambat. Envelope versi cabang juga menerima `code_keys` untuk kode medis sah ("36.10").
+- **Penyelarasan checker saat wiring #2**: validasi warisan menerima tampilan bulat ("77" untuk 77.4) sedangkan checker baru lebih ketat → `check_numbers` kini menerima kandidat display pembulatan bilangan bulat, sehingga narasi "dari 100" tetap diwajibkan dari `skala_maks` di envelope (konstanta sistem yang jujur).
+- **F5 endpoint** `/api/system/agent-health` (cabang): agregat baca-saja `agent_runs` (total/fallback/error, p50/p95 durasi, distribusi model) — logika agregasi fungsi murni `core/agent_health.py` yang diuji unit tanpa DB.
+- Test wiring `backend/tests/test_flow_wiring.py` (12 test): flag ON menolak angka fiktif pada ketiga titik (99.9 / LOS 99 / "1,23 juta") → fallback; flag OFF perilaku identik pre-wiring; agregator F5 murni. **Sertifikasi suite penuh dua kali di cabang: flag OFF 398 lulus / 3 gagalan lama pre-existing (test_frontend_contract) / 2 skip — IDENTIK dengan flag ON 398 / 3 / 2** → parity skor terbukti nol-regresi. Runtime main tidak berubah; rencana aktivasi: merge pasca-1-Nov + flip flag (komit `2911f70` di cabang `flow-max`).

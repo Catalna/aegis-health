@@ -1,4 +1,4 @@
-# J-ARI Demo Runbook (Fase 6)
+# AEGIS-Health Demo Runbook (Fase 6)
 
 > **Synthetic demonstrator only.** Seluruh database demo adalah data sintetis terkurasi
 > (`scripts/demo_seed.py`, 220 klaim). Bukan validasi kinerja BPJS. Jangan pernah memuat

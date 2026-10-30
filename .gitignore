@@ -22,6 +22,10 @@ backend/app/lancedb_data/
 models_trained/
 ground_truth_anomalies.json
 
+# Data riil BPJS jarang masuk repositori (aturan README/DECISIONS - data peserta asli dilarang)
+backend/app/data/
+__MACOSX/
+
 # IDE / Editor
 .vscode/
 .idea/
@@ -29,3 +33,4 @@ ground_truth_anomalies.json
 
 # Tooling
 .playwright-mcp/
+data/

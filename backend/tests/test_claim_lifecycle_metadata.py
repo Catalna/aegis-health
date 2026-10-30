@@ -140,18 +140,18 @@ def _database_target_identity(url_string: str):
 
 
 def test_database_identity_normalizes_postgres_defaults_and_schema():
-    base = "postgresql+asyncpg://POSTGRES@localhost/jari"
-    explicit_defaults = "postgresql+asyncpg://postgres@127.0.0.1:5432/jari?schema=public"
+    base = "postgresql+asyncpg://POSTGRES@localhost/aegis_health"
+    explicit_defaults = "postgresql+asyncpg://postgres@127.0.0.1:5432/aegis_health?schema=public"
 
     assert _database_identity(base) == _database_identity(explicit_defaults)
     assert _database_target_identity(base) == _database_target_identity(
-        "postgresql+asyncpg://other_user@127.0.0.1:5432/jari?schema=public"
+        "postgresql+asyncpg://other_user@127.0.0.1:5432/aegis_health?schema=public"
     )
     assert _database_identity(base) != _database_identity(
         "postgresql+asyncpg://postgres@db.example:5432/other"
     )
     assert _database_identity(base) != _database_identity(
-        "postgresql+asyncpg://postgres@db.example:5432/jari?schema=test"
+        "postgresql+asyncpg://postgres@db.example:5432/aegis_health?schema=test"
     )
 
 

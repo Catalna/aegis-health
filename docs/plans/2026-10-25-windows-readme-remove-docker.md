@@ -28,7 +28,7 @@ Not in scope: application code, frontend pages, scoring/endpoints/schema, histor
 Facts verified in repo (used verbatim below):
 - `backend/requirements.txt` exists with pinned deps (fastapi, uvicorn[standard], sqlalchemy[asyncio], asyncpg, xgboost, shap, scikit-learn, numpy, pandas, pyarrow, matplotlib, opencv-python-headless, joblib, sentence-transformers, httpx, python-dotenv, lancedb, sse-starlette, pytest, pytest-asyncio).
 - `.env` is loaded via `python-dotenv` (`load_dotenv()`) in `backend/app/models/database.py`, `backend/app/core/llm_client.py`, `backend/app/ml/similarity.py`.
-- Local defaults in code: `DATABASE_URL` default `postgresql+asyncpg://postgres:jari_bpjs2026@localhost/jari_db` (existing dev default inside `backend/app/models/database.py`; do NOT copy this password into tracked templates), `OLLAMA_BASE_URL` default `http://localhost:11434`, `LLM_PROVIDER` default `gemini`, allowed origins default `http://localhost:5173,http://127.0.0.1:5173`.
+- Local defaults in code: `DATABASE_URL` default `postgresql+asyncpg://postgres:aegis_2026@localhost/aegis_health_db` (existing dev default inside `backend/app/models/database.py`; do NOT copy this password into tracked templates), `OLLAMA_BASE_URL` default `http://localhost:11434`, `LLM_PROVIDER` default `gemini`, allowed origins default `http://localhost:5173,http://127.0.0.1:5173`.
 - Runtime model artifacts: `backend/models_trained/xgboost_regressor.json` + `isolation_forest.pkl` (gitignored; recovery via `scripts/train_all.py`).
 - Schema creation is automatic at startup (`Base.metadata.create_all` in `backend/app/models/database.py`).
 - Health endpoint: `http://localhost:8000/api/health`; frontend dev URL: `http://localhost:5173`.
@@ -84,11 +84,11 @@ git commit -m "docs: drop docker compose entry from architecture tree"
 Full new content (verbatim):
 
 ```text
-# Konfigurasi lokal Windows J-ARI.
+# Konfigurasi lokal Windows AEGIS-Health.
 # Salin berkas ini ke .env lalu sesuaikan. Jangan commit .env (sudah gitignored).
 
-# PostgreSQL lokal (wajib). Buat database jari_db terlebih dahulu (lihat README).
-DATABASE_URL=postgresql+asyncpg://postgres:<password-lokal>@localhost:5432/jari_db
+# PostgreSQL lokal (wajib). Buat database aegis_health_db terlebih dahulu (lihat README).
+DATABASE_URL=postgresql+asyncpg://postgres:<password-lokal>@localhost:5432/aegis_health_db
 
 # LLM narasi: gemini (Google AI Studio) dengan cascade Ollama lokal -> template.
 # Tanpa GEMINI_API_KEY atau tanpa internet, narasi otomatis turun ke Ollama lalu
@@ -114,7 +114,7 @@ HF_TOKEN=
 
 - [x] **Step 2: Safety check**
 
-Run: `git grep -n "jari_bpjs2026\|host.docker.internal" -- .env.example`
+Run: `git grep -n "aegis_2026\|host.docker.internal" -- .env.example`
 Expected: no output. Also confirm it contains `<password-lokal>` placeholder exactly once.
 
 - [x] **Step 3: Commit**
@@ -141,13 +141,13 @@ rem Portable launcher: works from any directory the repo is placed in.
 setlocal
 cd /d "%~dp0"
 
-echo Starting J-ARI Backend...
+echo Starting AEGIS-Health Backend...
 start cmd /k "cd /d %~dp0 && venv\Scripts\python.exe -m uvicorn backend.app.api.main:app --reload --port 8000 --loop backend.app.core.windows_loop:selector_event_loop"
 
-echo Starting J-ARI Frontend...
+echo Starting AEGIS-Health Frontend...
 start cmd /k "cd /d %~dp0frontend && npm run dev"
 
-echo J-ARI System started!
+echo AEGIS-Health System started!
 ```
 
 - [x] **Step 2: Static verification**
@@ -174,7 +174,7 @@ git commit -m "fix: make start.bat portable to any repo location"
 Replace the whole file with:
 
 ````markdown
-# J-ARI — Pusat Pemeriksaan Klaim (AEGIS)
+# AEGIS-Health — Pusat Pemeriksaan Klaim (AEGIS)
 
 Sistem penyaring dan prioritisasi klaim berbasis **pipeline multi-agent** untuk membantu
 verifikator menentukan klaim mana yang perlu diperiksa lebih dahulu.
@@ -228,13 +228,13 @@ copy .env.example .env
 Buka `.env` dan isi `DATABASE_URL`:
 
 ```
-DATABASE_URL=postgresql+asyncpg://postgres:<password-lokal>@localhost:5432/jari_db
+DATABASE_URL=postgresql+asyncpg://postgres:<password-lokal>@localhost:5432/aegis_health_db
 ```
 
 ### 2) Buat database
 
 ```bat
-psql -U postgres -c "CREATE DATABASE jari_db;"
+psql -U postgres -c "CREATE DATABASE aegis_health_db;"
 ```
 
 Skema tabel dibuat otomatis saat backend pertama kali berjalan.
@@ -436,7 +436,7 @@ Add to `docs/CHANGELOG-agent.md` before the report tail:
 ## Windows setup README + Docker removal (2026-10-25)
 
 - README rewritten as the canonical end-to-end local Windows guide (clone →
-  PostgreSQL `CREATE DATABASE jari_db` → `.env` from a credential-free template →
+  PostgreSQL `CREATE DATABASE aegis_health_db` → `.env` from a credential-free template →
   venv + requirements → `npm ci` → runtime models → `start.bat` → health check →
   optional synthetic seed/reset → stop; troubleshooting table included).
 - `start.bat` made repository-location independent (`%~dp0`, direct
@@ -474,7 +474,7 @@ Per spec: commit locally; push only if the user separately asks for it.
 
 - [x] Every spec bullet maps to a task above (README flow, verified baseline, privacy note, models recovery note, seed scoping, portable start.bat, local `.env.example`, six Docker deletions, Architecture.md entry, no runtime changes).
 - [x] No placeholders — all commands and file contents are verbatimRunnable.
-- [x] No real credential anywhere in tracked content (`jari_bpjs2026` only appears in the code-default mention inside this plan header, never in README/.env.example).
+- [x] No real credential anywhere in tracked content (`aegis_2026` only appears in the code-default mention inside this plan header, never in README/.env.example).
 - [x] Task numbering and anchors match the actual file states.
 
 

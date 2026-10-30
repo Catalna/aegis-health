@@ -1,12 +1,12 @@
-# BusinessCore.md — Logika Bisnis Inti J-ARI
+# BusinessCore.md — Logika Bisnis Inti AEGIS-Health
 
-> **J-ARI: JKN Agentic Risk Intelligence**  
+> **AEGIS-Health: Agentic Risk Engine & Intelligent Surveillance for Healthcare**  
 > Nama Frontend: **AEGIS — Pusat Pemeriksaan Klaim**  
 > Healthkathon 2026 BPJS Kesehatan  
 > Versi Dokumen: 3.0  
 > Status: Aktual — Disinkronkan dengan domain operasional JKN dan implementasi sistem (Oktober 2026)
 
-Dokumen ini menjelaskan logika bisnis inti yang mengikat seluruh keputusan teknis, arsitektur data, dan pengalaman pengguna J-ARI/AEGIS. Berbeda dari [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md) (apa yang dibangun) dan [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md) (bagaimana dibangun secara teknis), BusinessCore.md menjawab: **mengapa setiap keputusan arsitektur, desain, dan data dibuat demikian — dari perspektif domain perasuransian sosial JKN dan keberlanjutan Dana Jaminan Sosial (DJS) BPJS Kesehatan**.
+Dokumen ini menjelaskan logika bisnis inti yang mengikat seluruh keputusan teknis, arsitektur data, dan pengalaman pengguna AEGIS-Health. Berbeda dari [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md) (apa yang dibangun) dan [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md) (bagaimana dibangun secara teknis), BusinessCore.md menjawab: **mengapa setiap keputusan arsitektur, desain, dan data dibuat demikian — dari perspektif domain perasuransian sosial JKN dan keberlanjutan Dana Jaminan Sosial (DJS) BPJS Kesehatan**.
 
 ---
 
@@ -26,7 +26,7 @@ Klaim Masuk ke Pipeline BPJS Kesehatan
                      |
                      v
 +---------------------------------------------------+
-|               [ J-ARI / AEGIS ]                   |
+|               [ AEGIS-Health ]                   |
 |       Screening & Prioritisasi Risiko Cerdas      |
 |    Multi-Agent • Multi-Model • Zero-Hallucination |
 +---------------------------------------------------+
@@ -44,7 +44,7 @@ Verifier BPJS Menerima Daftar Klaim Berdasarkan Prioritas
      Keputusan: Klarifikasi / Penolakan                  Persetujuan Bayar
 ```
 
-**J-ARI tidak menggantikan sistem inti BPJS yang telah ada** — melainkan beroperasi sebagai lapisan inteligensi penapisan (*Screening & Risk Intelligence Layer*) di atas data klaim yang masuk. Sistem ini membantu verifikator mengalokasikan waktu kerja mereka pada kelompok klaim dengan potensi anomali finansial atau klinis paling signifikan.
+**AEGIS-Health tidak menggantikan sistem inti BPJS yang telah ada** — melainkan beroperasi sebagai lapisan inteligensi penapisan (*Screening & Risk Intelligence Layer*) di atas data klaim yang masuk. Sistem ini membantu verifikator mengalokasikan waktu kerja mereka pada kelompok klaim dengan potensi anomali finansial atau klinis paling signifikan.
 
 ### 1.2 Skala Tantangan Operasional
 Volume klaim bulanan JKN mencapai puluhan juta episode pelayanan di ribuan fasilitas kesehatan mitra di seluruh Indonesia:
@@ -71,21 +71,21 @@ Variabel Input Grouper INA-CBG:
 Tarif Paket Tetap yang Disepakati (Reimbursement Amount)
 ```
 
-### 2.2 Mengapa Pemahaman INA-CBG Sangat Kritis bagi J-ARI
+### 2.2 Mengapa Pemahaman INA-CBG Sangat Kritis bagi AEGIS-Health
 Sistem INA-CBG mengubah struktur insentif finansial di fasilitas kesehatan:
 1. **Risiko Efisiensi Rumah Sakit**: Jika biaya perawatan aktual lebih rendah dari tarif paket, RS memperoleh surplus efisiensi; jika lebih tinggi, RS menanggung defisit.
 2. **Insentif Upcoding**: Terdapat godaan struktural untuk menambahkan diagnosis sekunder artifisial atau menaikkan severity level agar klaim masuk ke kelompok tarif paket yang jauh lebih tinggi tanpa dasar klinis memadai.
 3. **Insentif Unbundling**: Memecah satu episode perawatan menyeluruh menjadi beberapa klaim terpisah (misal rawat jalan berturut-turut) untuk menagih beberapa paket sekaligus.
 
-Oleh karena itu, aturan logika domain J-ARI dibangun di sekitar matriks verifikasi aturan tarif INA-CBG, bukan sekadar detektor anomali statistik umum.
+Oleh karena itu, aturan logika domain AEGIS-Health dibangun di sekitar matriks verifikasi aturan tarif INA-CBG, bukan sekadar detektor anomali statistik umum.
 
 ---
 
 ## 3. Tujuh Tipologi Anomali dalam JKN yang Ditargetkan
 
-J-ARI secara khusus memodelkan dan mendeteksi 7 bentuk anomali klaim perasuransian kesehatan:
+AEGIS-Health secara khusus memodelkan dan mendeteksi 7 bentuk anomali klaim perasuransian kesehatan:
 
-| No | Jenis Anomali | Mekanisme & Karakteristik | Deteksi dalam J-ARI | Implikasi Bisnis bagi BPJS |
+| No | Jenis Anomali | Mekanisme & Karakteristik | Deteksi dalam AEGIS-Health | Implikasi Bisnis bagi BPJS |
 |---|---|---|---|---|
 | 1 | **Upcoding** | Penggelembungan derajat keparahan (severity level) atau pemilihan kode ICD-10 dengan tarif paket lebih tinggi tanpa dukungan rekam medis. | Aturan Heuristik INA-CBG (`clinical_agent.py`) + SHAP driver analysis | Pembayaran berlebih (*overpayment*) sistematis pada episode perawatan standar. |
 | 2 | **Phantom Billing** | Penagihan biaya atas prosedur medis, pemeriksaan laboratorium, atau obat-obatan yang secara faktual tidak pernah diberikan kepada pasien. | Validasi Konsistensi Tanggal/LOS + Vector Search anomali deskripsi klinis | Kerugian langsung 100% pada item fiktif yang dibayarkan. |
@@ -102,18 +102,18 @@ J-ARI secara khusus memodelkan dan mendeteksi 7 bentuk anomali klaim perasuransi
 ### 4.1 Mengapa Sistem Tidak Menyatakan "Fraud"
 Dalam ranah hukum dan administrasi negara, istilah **Fraud (Kecurangan)** mensyaratkan adanya unsur niat sengaja (*intent*) dan pembuktian hukum formal yang hanya dapat ditetapkan oleh audit investigasi bersertifikat atau otoritas pengadilan.
 
-Oleh sebab itu, J-ARI/AEGIS menganut doktrin: **Rekomendasi Penapisan Risiko, Bukan Vonis Hukum**:
+Oleh sebab itu, AEGIS-Health menganut doktrin: **Rekomendasi Penapisan Risiko, Bukan Vonis Hukum**:
 1. Sistem memberi label **"Potential Risk / Anomaly Suspect"**, bukan "Fraudster".
 2. Menghindari polarisasi hubungan kemitraan antara BPJS Kesehatan dan fasilitas kesehatan mitra. Anomali administratif sering kali disebabkan oleh kesalahan input kode petugas koding (*coding clerical errors*), bukan niat kriminal terorganisir.
 3. Menjamin perlindungan hukum bagi verifikator BPJS yang menggunakan sistem, karena keputusan formal verifikasi tetap diambil dan ditandatangani oleh petugas manusia dengan audit trail yang jelas.
 
 ---
 
-## 5. Nilai Bisnis J-ARI bagi BPJS Kesehatan
+## 5. Nilai Bisnis AEGIS-Health bagi BPJS Kesehatan
 
 ### 5.1 Efisiensi Alokasi Sumber Daya Verifikasi (Prinsip 80/20)
 - **Tantangan Lama**: Seluruh klaim masuk ke antrean verifikasi acak dengan perhatian yang terbagi rata.
-- **Dengan J-ARI**:
+- **Dengan AEGIS-Health**:
   - **70–80% Klaim Risiko Rendah (Low Risk)**: Dapat disaring cepat (*fast-track review*) atau diproses otomatis dengan audit berkala.
   - **15–20% Klaim Risiko Tinggi (High Risk)**: Disajikan kepada verifikator senior lengkap dengan ringkasan temuan bukti, grafik deviasi biaya, dan saran tindak lanjut spesifik.
   - Verifikator menghemat hingga **65% waktu review berkas** per klaim berisiko tinggi karena tidak perlu membaca rekam medis mentah dari awal.
@@ -121,7 +121,7 @@ Oleh sebab itu, J-ARI/AEGIS menganut doktrin: **Rekomendasi Penapisan Risiko, Bu
 ### 5.2 Deteksi Multi-Sinyal Terpadu (Anti False Positive)
 Model anomali tunggal (misal hanya melihat rasio biaya) sering kali menghasilkan peringatan palsu (*false positive*) pada kasus-kasus medis komplikasi berat yang memang membutuhkan biaya mahal secara sah.
 
-J-ARI mengatasi ini dengan **Konvergensi Tiga Lapis**:
+AEGIS-Health mengatasi ini dengan **Konvergensi Tiga Lapis**:
 1. Klinis (apakah diagnosis masuk akal?)
 2. Finansial (apakah deviasi biaya didukung tingkat keparahan?)
 3. Relasional/Fraud (apakah ada pola pengulangan atau pencucian klaim?)
@@ -131,7 +131,7 @@ Skor risiko tinggi hanya diberikan jika terdapat bukti konvergen, menjaga tingka
 ### 5.3 Explainability sebagai Kebutuhan Operasional
 Verifier BPJS tidak dapat menolak klaim atau meminta klarifikasi ke rumah sakit hanya dengan alasan *"algoritma AI menandai skor klaim Anda 85"*.
 
-Rumah sakit berhak menerima penjelasan teknis yang berdasar. Melalui **SHAP TreeExplainer** dan **Indonesian Explanation Agent**, J-ARI menyediakan argumen substantif berbasis fakta:
+Rumah sakit berhak menerima penjelasan teknis yang berdasar. Melalui **SHAP TreeExplainer** dan **Indonesian Explanation Agent**, AEGIS-Health menyediakan argumen substantif berbasis fakta:
 > *"Klaim ditandai berisiko karena biaya rawat mencapai Rp 12.500.000 (deviasi +85% dari estimasi wajar Rp 6.750.000 untuk kasus Appendicitis Akut Severity 1), sementara tidak tercatat adanya diagnosis komorbiditas mayor atau penggunaan ruang ICU yang membenarkan perbedaan biaya tersebut."*
 
 ### 5.4 Estimasi Paparan Finansial (Potential Financial Exposure)
@@ -170,7 +170,7 @@ Setiap keputusan wajib menyertakan catatan verifikator (`verifier_notes`) dan di
 ## 7. Strategi Data dan Kepatuhan Etika
 
 ### 7.1 Penggunaan Data Sintetis Realistis
-J-ARI dikembangkan menggunakan dataset sintetis yang dimodelkan secara ketat mengikuti distribusi epidemiologi, struktur kode tarif INA-CBG, dan pola klaim historis JKN:
+AEGIS-Health dikembangkan menggunakan dataset sintetis yang dimodelkan secara ketat mengikuti distribusi epidemiologi, struktur kode tarif INA-CBG, dan pola klaim historis JKN:
 - **Kepatuhan Privasi (UU PDP No. 27/2022 & Standar HIPAA)**: Nol risiko kebocoran data rekam medis pribadi pasien (*Personally Identifiable Information - PII*).
 - **Injeksi Skenario Terkontrol**: Memungkinkan pengujian menyeluruh terhadap pola anomali langka yang jarang ditemui dalam sampel data audit kecil.
 
@@ -181,7 +181,7 @@ Model prediktif XGBoost dan aturan heuristik dievaluasi pada dataset independen 
 
 ## 8. Referensi Dokumen Terkait
 
-- [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md): Dokumen Kebutuhan Produk J-ARI / AEGIS.
+- [PRD.md](file:///c:/Users/Radith/E-Jak/docs/PRD.md): Dokumen Kebutuhan Produk AEGIS-Health.
 - [Architecture.md](file:///c:/Users/Radith/E-Jak/docs/Architecture.md): Arsitektur Teknis dan Desain Database.
 - [AgentWorkflow.md](file:///c:/Users/Radith/E-Jak/docs/AgentWorkflow.md): Alur Investigasi Multi-Agent dan Protokol SSE.
 - [MODELS.md](file:///c:/Users/Radith/E-Jak/docs/MODELS.md): Spesifikasi Teknis Model ML, SHAP, LanceDB, dan LLM.

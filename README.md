@@ -1,4 +1,7 @@
-# J-ARI — Pusat Pemeriksaan Klaim (AEGIS)
+# AEGIS-Health — Pusat Pemeriksaan Klaim
+
+> **AEGIS-Health** — Agentic Risk Engine & Intelligent Surveillance for Healthcare — dibuat oleh **tim E-JAK**.
+> Antarmuka pengguna membawa nama **AEGIS**.
 
 Sistem pemeriksaan klaim JKN berbasis **pipeline multi-agent**: klaim masuk antrean
 FIFO, diproses berurutan oleh agent, lalu die-ranking sehingga verifier dapat menangani
@@ -65,13 +68,13 @@ copy .env.example .env
 Isi `DATABASE_URL` pada `.env`:
 
 ```
-DATABASE_URL=postgresql+asyncpg://postgres:<password-lokal>@localhost:5432/jari_db
+DATABASE_URL=postgresql+asyncpg://postgres:<password-lokal>@localhost:5432/aegis_health_db
 ```
 
 ### 2) Buat database
 
 ```bat
-psql -U postgres -c "CREATE DATABASE jari_db;"
+psql -U postgres -c "CREATE DATABASE aegis_health_db;"
 ```
 
 Skema tabel dibuat otomatis saat backend pertama kali berjalan.
@@ -275,8 +278,16 @@ dan rencana implementasi ada di `docs/specs/` dan `docs/plans/`.
 ## Batasan
 
 - **Synthetic demonstrator only**: tidak memuat atau memvalidasi data peserta JKN asli.
-- LLM hanya menyusun narasi; tidak pernah mengubah skor, tier, atau bukti.
-- Aturan privasi: bila memproses data di luar seed sintetis, set `LLM_PROVIDER=ollama`.
+- LLM hanya menyusun narasi; tidak pernah mengubah skor, tier, atau bukti; worst case
+  rantai jatuh ke template deterministik - biaya marginal Rp0 per klaim.
+- **Kebijakan LLM lokal-first (2026-10-27):** rantai produksi = Ollama lokal
+  (`deepseek-r1:7b` sebagai LLM Pelapor) -> Gemini API (backup) -> template
+  deterministik. Data kesehatan peserta JKN riil wajib diproses lokal
+  (`LLM_PROVIDER=ollama`) - data tidak keluar mesin (UU PDP No. 27/2022). Template
+  `.env` saat ini masih default gemini untuk keringanan setup pengembang; default
+  runtime pindah ke lokal pada integrasi post-1-Nov. Benchmark ulang (3x2x6,
+  `scripts/agent/llm_bench.py`) wajib setiap ganti model/provider. Latar lengkap:
+  [`DECISIONS.md`](docs/DECISIONS.md) + `docs/specs/2026-10-27-agent-hierarchy-design.md`.
 - Model runtime harus dilatih lokal (`models_trained/` tidak ikut repositori).
 - Database demo bersifat presentational; ground truth evaluasi tetap laporan di `docs/`.
 - Worker antrean tunggal berjalan sekuensial per klaim; belum ada pengaturan skala.

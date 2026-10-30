@@ -1,6 +1,6 @@
 # API.md — REST API & SSE Streaming Protocol Specification
 
-> **J-ARI: JKN Agentic Risk Intelligence**  
+> **AEGIS-Health: Agentic Risk Engine & Intelligent Surveillance for Healthcare**  
 > Nama Frontend: **AEGIS — Pusat Pemeriksaan Klaim**  
 > Healthkathon 2026 BPJS Kesehatan  
 > Versi Dokumen: 3.0  
@@ -10,7 +10,7 @@
 
 ## 1. Overview & Konvensi Umum
 
-Backend J-ARI/AEGIS mengekspos antarmuka antarmuka terpadu berbasis **FastAPI** dengan format pertukaran data standar **JSON** serta **Server-Sent Events (SSE)** untuk pembaruan timeline investigasi multi-agent secara real-time.
+Backend AEGIS-Health mengekspos antarmuka antarmuka terpadu berbasis **FastAPI** dengan format pertukaran data standar **JSON** serta **Server-Sent Events (SSE)** untuk pembaruan timeline investigasi multi-agent secara real-time.
 
 - **Base URL**: `http://localhost:8000` (atau host API produksi).
 - **Prefix Endpoint**: `/api`

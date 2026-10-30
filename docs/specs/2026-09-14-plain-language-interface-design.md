@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make J-ARI understandable to BPJS claim officers who are not developers. The
+Make AEGIS-Health understandable to BPJS claim officers who are not developers. The
 interface and analysis output should explain what was found, why it matters,
 and what the officer should do next, without exposing implementation details.
 

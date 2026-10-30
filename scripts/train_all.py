@@ -9,7 +9,7 @@ from backend.app.ml.train_isolation_forest import train_isolation_forest
 
 if __name__ == "__main__":
     print("========================================")
-    print(" Starting J-ARI ML Pipeline Training")
+    print(" Starting AEGIS-Health ML Pipeline Training")
     print("========================================\n")
 
     print("1. Training Isolation Forest Anomaly Detector...")

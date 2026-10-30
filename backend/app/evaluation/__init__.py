@@ -1,1 +1,1 @@
-"""Offline evaluation utilities for J-ARI model validation."""
+"""Offline evaluation utilities for AEGIS-Health model validation."""

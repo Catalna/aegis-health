@@ -1,1 +1,1 @@
-# J-ARI App Package
+# AEGIS-Health App Package

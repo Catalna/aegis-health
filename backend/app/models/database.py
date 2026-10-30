@@ -12,7 +12,7 @@ load_dotenv()
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://postgres:jari_bpjs2026@localhost/jari_db"
+    "postgresql+asyncpg://postgres:aegis_2026@localhost/aegis_health_db"
 )
 
 engine = create_async_engine(DATABASE_URL, echo=False)

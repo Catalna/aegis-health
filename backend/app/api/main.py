@@ -107,7 +107,7 @@ async def lifespan(app: FastAPI):
     print("[shutdown] Claim queue worker stopped.")
 
 
-app = FastAPI(title="J-ARI Agentic Risk Intelligence API", lifespan=lifespan)
+app = FastAPI(title="AEGIS-Health API", lifespan=lifespan)
 logger = logging.getLogger(__name__)
 
 # CORS — origin eksplisit dari env (bukan wildcard + credentials)

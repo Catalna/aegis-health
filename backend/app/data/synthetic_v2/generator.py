@@ -67,6 +67,60 @@ _BASE_RATES = {"A": 2_000_000, "B": 3_000_000, "C": 8_000_000, "D": 4_000_000,
                "E": 3_500_000, "F": 4_500_000, "G": 5_000_000, "I": 12_000_000,
                "J": 5_500_000, "K": 6_500_000, "M": 9_000_000, "N": 7_000_000, "S": 10_000_000}
 
+# --- Kalibrasi marginals data riil (gelombang L8/L9, 2026-10-26) ---
+# Konstanta terukur dari `backend/app/data/analysis/profile_behavioral.json`
+# dan `peer_signal_scan.json`; aktif HANYA saat calibration=True (jalur default
+# tetap v2.4 murni sehingga kontrak lama tidak berubah). Yang dikalibrasi adal
+# BENTUK distribusi (bucket gap, rasio biaya-vs-tarif), bukan kode INACBG —
+# universe kode sintetis ≠ universe riil.
+_REPEAT_GAP_BUCKETS = (  # FKRTL: gap antar-kunjungan (kondisional ≤60 hari, L8)
+    (("days_1_3", 1, 3), 0.2016),
+    (("days_4_14", 4, 14), 0.4566),
+    (("days_15_30", 15, 30), 0.1539),
+    (("days_31_60", 31, 60), 0.1338),
+)
+_DIALYSIS_GAP_BUCKETS = (  # cadence hemodialisis (kondisional ≤60 hari, L8)
+    ((1, 3), 0.0694), ((4, 14), 0.3664), ((15, 30), 0.2733), ((31, 60), 0.2907),
+)
+_RATIO_KNOTS = (  # kuantil rasio klaim-vs-median non-dialisis (L9: p50/p90/p99)
+    (0.002, 0.50), (0.0625, 0.90), (0.50, 1.00), (0.90, 1.05),
+    (0.99, 1.468), (0.9963, 2.00), (1.0, 2.40),
+)
+_TARIFF_LOCK_SHARE = 0.47  # share FKRTL terkunci-tarif (dialisis) dari L9
+_REPEAT_LEGACY_RANGES = {"days_1_30": (1, 30), "days_31_45": (31, 45), "days_46_60": (46, 60)}
+
+
+def _sample_claim_multiplier(rng: np.random.Generator, size: int) -> np.ndarray:
+    """Pengali biaya pasien normal: campuran terkunci-tarif + ekor terukur L9.
+
+    47% klaim "terkunci-tarif" (±0,3%); sisanya via invers-CDF dari knot
+    kuantil L9 (non-dialisis: p50=1.00, p90=1.05, p99=1.468, + ekor low band).
+    """
+    locked = rng.random(size) < _TARIFF_LOCK_SHARE
+    multipliers = np.empty(size, dtype=float)
+    n_locked = int(locked.sum())
+    if n_locked:
+        multipliers[locked] = rng.uniform(0.997, 1.003, size=n_locked)
+    free_idx = np.flatnonzero(~locked)
+    if free_idx.size:
+        u = rng.random(free_idx.size)
+        knots_f = np.asarray([k[0] for k in _RATIO_KNOTS])
+        knots_r = np.asarray([k[1] for k in _RATIO_KNOTS])
+        multipliers[free_idx] = np.interp(u, knots_f, knots_r)
+    return multipliers
+
+
+def _sample_measured_gap(rng: np.random.Generator, buckets: tuple) -> int:
+    """Gap hari dari bucket diamati (campuran diskret lewat CDF inverse)."""
+    u = rng.random()
+    cum = 0.0
+    for (lo, hi), w in buckets:
+        cum += w
+        if u < cum:
+            return int(rng.integers(lo, hi + 1))
+    lo, hi = buckets[-1][0]
+    return int(rng.integers(lo, hi + 1))
+
 
 def _split_month_bounds(split: str) -> tuple[int, int]:
     return {"train": (0, 18), "validation": (18, 21), "test": (21, 24),
@@ -87,7 +141,8 @@ def _balanced_sample(population: int, size: int, rng: np.random.Generator, weigh
 
 
 def _generate_split(
-    profile: str, split: str, count: int, seed: int, positive_fraction: float = 0.03
+    profile: str, split: str, count: int, seed: int, positive_fraction: float = 0.03,
+    calibration: bool = False,
 ) -> dict[str, list[dict[str, Any]]]:
     cfg = PROFILES[profile]
     split_seed = seed + {"train": 0, "validation": 1_000_003, "test": 2_000_033,
@@ -138,7 +193,10 @@ def _generate_split(
     severity_factor = np.choose(severity - 1, [0.82, 1.0, 1.27, 1.55])
     regional_factor = np.asarray([region_rate[regions[idx]] for idx in facility_idx])
     claimed = base_rate * severity_factor * regional_factor * facility_rate[facility_idx]
-    claimed *= rng.lognormal(mean=0, sigma=0.12, size=count)
+    if calibration:
+        claimed = claimed * _sample_claim_multiplier(rng, count)
+    else:
+        claimed *= rng.lognormal(mean=0, sigma=0.12, size=count)
     ina_severity = np.where(outpatient, "0", np.choose(np.minimum(severity, 3) - 1, ["I", "II", "III"]))
     secondary_count = rng.choice([0, 1, 2, 3], size=count, p=[0.44, 0.36, 0.16, 0.04])
     procedure_count = rng.choice([0, 1, 2, 3], size=count, p=[0.38, 0.39, 0.18, 0.05])
@@ -214,9 +272,14 @@ def _generate_split(
     for ordinal, idx in enumerate(positive_idxs):
         anomaly_type = _ANOMALY_TYPES[ordinal % len(_ANOMALY_TYPES)]
         mechanisms = _MECHANISMS[anomaly_type]
-        # Validation/test contain a mechanism deliberately absent from train.
-        mechanism_idx = 0 if split == "train" else 1 + ((ordinal + split_seed) % (len(mechanisms) - 1))
-        mechanism = mechanisms[mechanism_idx]
+        if calibration and anomaly_type == "repeat_billing":
+            gap_choices = [name for (name, _lo, _hi), _w in _REPEAT_GAP_BUCKETS]
+            mechanism_idx = 0 if split == "train" else 1 + ((ordinal + split_seed) % (len(gap_choices) - 1))
+            mechanism = gap_choices[mechanism_idx]
+        else:
+            # Validation/test contain a mechanism deliberately absent from train.
+            mechanism_idx = 0 if split == "train" else 1 + ((ordinal + split_seed) % (len(mechanisms) - 1))
+            mechanism = mechanisms[mechanism_idx]
         claim = claims[int(idx)]
         label = labels[int(idx)]
         label.update({
@@ -281,12 +344,10 @@ def _generate_split(
                     "patient_id", "provider_id", "doctor_id", "diagnosis_primary", "diagnosis_secondary",
                     "procedure_codes", "length_of_stay", "severity_level", "cost_claimed",
                 )})
-                gap_ranges = {
-                    "days_1_30": (1, 30),
-                    "days_31_45": (31, 45),
-                    "days_46_60": (46, 60),
-                }
-                gap_min, gap_max = gap_ranges[mechanism]
+                repeat_ranges = dict(_REPEAT_LEGACY_RANGES)
+                if calibration:
+                    repeat_ranges.update({name: (lo, hi) for (name, lo, hi), _ in _REPEAT_GAP_BUCKETS})
+                gap_min, gap_max = repeat_ranges[mechanism]
                 gap = int(rng.integers(gap_min, gap_max + 1))
                 new_admit = date.fromisoformat(source["admission_date"]) + timedelta(days=gap)
                 claim["admission_date"] = new_admit.isoformat()
@@ -333,7 +394,12 @@ def _generate_split(
             labels[source_idx]["scenario_family"] = f"hard_negative_{hard_case}"
             labels[source_idx]["group_id"] = group_id
             labels[source_idx]["label_confidence"] = 0.95
-            gap = int(rng.integers(30, 61)) if hard_case == "readmission" else 30
+            if hard_case == "readmission":
+                gap = int(rng.integers(30, 61))
+            elif calibration:
+                gap = _sample_measured_gap(rng, _DIALYSIS_GAP_BUCKETS)
+            else:
+                gap = 30
             new_admit = date.fromisoformat(source["admission_date"]) + timedelta(days=gap)
             claim["admission_date"] = new_admit.isoformat()
             claim["discharge_date"] = (new_admit + timedelta(days=claim["length_of_stay"])).isoformat()
@@ -377,25 +443,29 @@ def _generate_split(
     return {"claims": claims, "labels": labels}
 
 
-def generate_synthetic_v2(profile: str = "standard", seed: int = 42) -> dict[str, Any]:
+def generate_synthetic_v2(
+    profile: str = "standard", seed: int = 42, calibration: bool = False
+) -> dict[str, Any]:
     """Return independent time-window splits. Labels are stored outside claim rows."""
     if profile not in PROFILES:
         raise ValueError(f"unsupported synthetic-v2 profile: {profile}")
     if seed < 0:
         raise ValueError("seed must be non-negative")
     splits = {
-        split: _generate_split(profile, split, count, seed)
+        split: _generate_split(profile, split, count, seed, calibration=calibration)
         for split, count in PROFILES[profile]["claims"].items()
     }
     enriched_positive_count = 150 * len(_ANOMALY_TYPES)
     enriched_count = enriched_positive_count * 2
     ood_count = max(1_000, min(10_000, PROFILES[profile]["claims"]["test"] // 10))
     splits["test_enriched"] = _generate_split(
-        profile, "test_enriched", enriched_count, seed, positive_fraction=0.5
+        profile, "test_enriched", enriched_count, seed, positive_fraction=0.5,
+        calibration=calibration,
     )
-    splits["ood"] = _generate_split(profile, "ood", ood_count, seed)
+    splits["ood"] = _generate_split(profile, "ood", ood_count, seed, calibration=calibration)
+    version_label = "calibrated" if calibration else "demonstrator"
     return {
-        "dataset_version": f"synthetic-v{GENERATOR_VERSION}-demonstrator",
+        "dataset_version": f"synthetic-v{GENERATOR_VERSION}-{version_label}",
         "seed": seed,
         "profile": profile,
         "stress_counts": {"test_enriched": enriched_count, "ood": ood_count},

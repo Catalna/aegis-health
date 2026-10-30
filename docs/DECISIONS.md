@@ -1,5 +1,19 @@
 # Engineering Decisions — Synthetic v2 / Risk Evaluation
 
+## Rantai LLM default menjadi local-first (2026-10-27)
+
+- **Decision:** Narasi LLM resmi memakai rantai **local-first: Ollama lokal (`deepseek-r1:7b` sebagai LLM Pelapor) -> Gemini API -> template deterministik**. Gemini diturunkan ke backup + opsi kenyamanan pengembang (data sintetis saja). Sampai integrasi post-1-Nov, `.env.example` masih menetapkan gemini sebagai primary; flip default runtime adalah bagian dari wave integrasi Pelapor - dan memicu benchmark ulang wajib 3x2x6 (`scripts/agent/llm_bench.py`).
+- **Reason:** (1) Privasi/kepatuhan - klaim JKN riil adalah data kesehatan (spesifik) di bawah UU PDP No. 27/2022; self-hosted open-weight MIT menghapus ketergantungan pada pemroses cloud asing; memperluas aturan privasi 2026-10-24/26 dari aturan per-run menjadi default arsitektur. (2) Cost/keberlanjutan - LLM tidak berada di jalur penilaian (skoring tetap deterministik); biaya lokal naik sebagai penurunan skala per laporan, lokal = capex hardware; worst case cascade = template deterministik (Rp0 per klaim). (3) Keandalan offline untuk lingkungan faskes. (4) Audit/repro - model disematkan + seed 42 + temp 0.2; alias model cloud (`gemini-flash-lite-latest`) dapat berganti versi diam-diam - tidak ideal untuk audit pemerintah.
+- **Operations notes:** pengembang tanpa Ollama tetap dapat memakai gemini untuk demo sintetis via `.env` pribadi (nilai per mesin); rantai & kebijakan didokumentasikan di README (Batasan) dan `.env.example` (blok komentar). 
+
+## Real BPJS sample-data usage rules (2026-10-26)
+
+- **Decision:** The licensed BPJS "Data Sampel 2025" (`backend/app/data/2025/`, gitignored) is used ONLY for offline analysis and retraining, through aggregate outputs. Raw rows, row dumps, or participant identifiers (`PSTV01`, `FKL02`, DOB, names) never leave the machine and are never committed. All derived artefacts remain under the gitignored `backend/app/data/analysis/`.
+- **Benchmark training ground truth:** the fully-accepted subset `FKL47 == FKL48` (claims handed over without verification reductions; 99.90% of FKRTL rows). Splits are subject-based (crc32(PSTV01) % 10) so one participant never crosses train→test; the `ina_cbg_base_rate` feature is a train-only median table; feature provenance (real / derivation / constant-gap) is recorded in the model artifact folder. No supervised fraud training exists or is attempted (the dataset carries no fraud labels); candidate classifier metrics remain gated behind the synthetic-label evaluation.
+- **Declared-at-training-time gaps fill with fixed constants, never invented values:** `icu_indicator=0`, `ventilator_used=0`, `num_medications=0` (the Reguler package has no drug item detail and the SA sub-acute component is effectively empty). These gaps are hooks for the A1 intake pathways, not defaults to hide.
+- **Runtime freeze discipline:** everything derived from real data is a candidate artifact; promotion into scoring happens exclusively through the A3 gate after the 1 Nov demo video. Nothing real-data-derived touches runtime code, demo numbers, or tier bands before that gate.
+- **Narration over real data:** force `LLM_PROVIDER=ollama` before any LLM task that reads real BPJS content — extends the 2026-10-24 privacy rule from "processing" to every real-data-touching task (translation, summarization, explanations). Synthetic demonstrator data only for the Gemini path.
+
 ## Curated demo database is presentational, not evaluation truth (2026-10-24)
 
 - **Decision:** The demo database (220 claims, `scripts/demo_seed.py`) is a **presentational seed only**. Its scenario tags and expected tiers exist so the recorded demo stays legible; they are checked offline against the runtime engine via a `--dry-run` mirror before any POST. The seeded corpus is never used as an evaluation, validation, or calibration set for any model, threshold, or tier band.

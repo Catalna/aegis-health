@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make J-ARI's risk score, evidence aggregation, and explanation contract deterministic and domain-consistent.
+**Goal:** Make AEGIS-Health's risk score, evidence aggregation, and explanation contract deterministic and domain-consistent.
 
 **Architecture:** Keep the existing clinical, financial, and fraud agents, but insert a deterministic evidence contract between them and the explanation layer. Tariff deviation belongs to the reimbursement family, ordinary similarity is context only, and the LLM can summarize only validated evidence.
 

@@ -27,7 +27,7 @@ Make the repository approachable for a new Windows developer by documenting one 
 ## Setup flow to document
 
 1. Clone repo and install Python 3.10+, Node 20.19+, PostgreSQL 16.
-2. Copy `.env.example` to `.env`; set a local PostgreSQL password in `DATABASE_URL`; create the `jari_db` database using local PostgreSQL tools.
+2. Copy `.env.example` to `.env`; set a local PostgreSQL password in `DATABASE_URL`; create the `aegis_health_db` database using local PostgreSQL tools.
 3. Create `venv`, activate it, install `backend/requirements.txt`.
 4. Run `npm ci` in `frontend/`.
 5. Confirm runtime model artifacts exist; if absent, run `scripts/train_all.py` as documented recovery.
