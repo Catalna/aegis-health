@@ -35,41 +35,9 @@ Catatan R² dialisis yang tampak "rendah" (0.1019): tarif hemodialisis terkunci 
 | Proxy tarif dari data riil | `ina_cbg_base_rate` = median train-only per (INACBG × severity) — tabel tarif implisit, bukan PMK resmi | turunan riil |
 | Konstanta-gap | icu_indicator, ventilator_used, num_medications = 0 (tak tersedia di sampel FKRTL; slot kontrak dipertahankan bernilai 0) | konstanta 0 |
 
-## 4. Set visualisasi (8 figur, satu model, tanpa pembanding)
+## 4. Visualisasi
 
-Semua figur dibuat oleh `scripts/plot_cost_c_report.py` dari artefak eval ber-paritas; setiap judul diawali label **"Model 1 · Biaya (kandidat C)"**.
-
-Figur 1 — Prediksi vs aktual (80.000 titik dari 340.518, seed 42). Pita vertikal di Rp 2–4 juta = kelompok tarif terkunci dialisis:
-
-![Prediksi vs aktual](figures/cost_c_pred_vs_actual.png)
-
-Figur 2 — Distribusi APE; p50 3,4% / p90 17,3% / p99 93% — ini yang menarik MAPE 8,59%:
-
-![Distribusi APE](figures/cost_c_ape_distribution.png)
-
-Figur 3 — Coverage ±x%:
-
-![Kurva coverage](figures/cost_c_coverage_curve.png)
-
-Figur 4 — MAPE/medAPE/R² per stratum & periode:
-
-![Performa per stratum](figures/cost_c_stratum_metrics.png)
-
-Figur 5 — Sebaran APE p25–p95 per stratum:
-
-![Sebaran APE per stratum](figures/cost_c_ape_by_stratum.png)
-
-Figur 6 — medAPE 8 grup INACBG terbesar:
-
-![medAPE per INACBG](figures/cost_c_ape_by_inacbg.png)
-
-Figur 7 — Feature importance (gain share top 10; base_rate dominan 61,7%):
-
-![Feature importance](figures/cost_c_feature_importance.png)
-
-Figur 8 — Bias per desil biaya aktual (klaim murah: APE % besar; klaim mahal: APE % kecil tapi Rupiah besar):
-
-![Bias per desil](figures/cost_c_bias_by_decile.png)
+Figur kandidat C yang lama telah dipensiunkan agar tidak tertukar dengan audit temporal yang lebih baru. Lihat [visualisasi audit temporal](BPJS_COST_TEMPORAL_VISUAL_REPORT.md); hasil kandidat C di dokumen ini tetap menjadi catatan eksperimen historis dan bukan hasil model terbaru.
 
 ## 5. Batas & disiplin
 

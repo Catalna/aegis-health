@@ -64,39 +64,9 @@ Recall sekarang tersebar lebih merata antar tipe (tidak ada tipe yang praktis bu
 
 OOD tetap ditahan oleh hard-negative desain (duplikat legal & readmisi legit yang berbagi pola relasional dengan cloning/repeat) — batas struktural generator, bukan kegagalan model.
 
-## 6. Set visualisasi (8 figur, satu model, tanpa pembanding)
+## 6. Visualisasi
 
-Semua figur diregenerasi oleh `scripts/plot_classifier_v3_report.py` dari model final + dataset training yang sama (replay deterministik); setiap judul diawali label **"Model 2 · Klasifier anomali (kandidat v3)"**.
-
-### 6.1 Feature importance (gain share, 14 teratas)
-
-![Feature importance klasifier v3](figures/clf_v3_feature_importance.png)
-
-Sinyal identitas salinan dominan (`exact_copy_group_size` 29% gain share dari 14 teratas) — konsisten dengan mekanisme cloning sebagai pola paling mudah dipisahkan.
-
-### 6.2 Distribusi label outcome (train+val+test)
-
-![Distribusi label dataset terkalibrasi](figures/clf_v3_label_distribution.png)
-
-### 6.3–6.5 Confusion matrix (train / validation / test) pada ambang 0.3475
-
-![Confusion train](figures/clf_v3_confusion_train.png)
-
-![Confusion validation](figures/clf_v3_confusion_validation.png)
-
-![Confusion test — replay identik report](figures/clf_v3_confusion_test.png)
-
-### 6.6 Precision–recall curve (test)
-
-![PR curve test](figures/clf_v3_pr_curve_test.png)
-
-### 6.7 ROC curve (test)
-
-![ROC curve test](figures/clf_v3_roc_curve_test.png)
-
-### 6.8 Validation log loss per boosting round
-
-![Validation log loss per round](figures/clf_v3_validation_logloss.png)
+Delapan figur kandidat classifier sintetis v3 telah dipensiunkan dan dihapus dari visual aktif agar tidak tertukar dengan model biaya terbaru. Tabel dan metrik historis di report ini tetap tersedia; classifier tetap eksperimen sintetis dan tidak tervalidasi sebagai fraud pada klaim BPJS nyata.
 
 ## 7. Batas & disiplin
 

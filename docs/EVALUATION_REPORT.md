@@ -1,11 +1,14 @@
 # Indeks Report Model — AEGIS-Health Post-Model
 
-Portofolio ML terdiri atas **tepat 2 model** (+1 model legacy yang masih menjalankan skoring runtime). Masing-masing punya dokumen per-model dengan set 8 figur yang setiap judulnya berlabel model:
+Status portofolio: model biaya legacy masih menjalankan skoring runtime; kandidat biaya BPJS terbaru dievaluasi offline. Kandidat classifier sintetis tetap eksperimen historis tanpa validasi fraud BPJS. Visual aktif terbaru:
+
+[`BPJS_COST_TEMPORAL_VISUAL_REPORT.md`](BPJS_COST_TEMPORAL_VISUAL_REPORT.md) — Actual vs Predicted, Learning Curve, Residual Plot, dan TreeSHAP.
 
 | Model | Fungsi | Dokumen per-model | Generator figur |
 |---|---|---|---|
-| **Model 1 — Regressor Biaya** (kandidat C, v2+context) | Menebak biaya wajar klaim (basis pilar deviation) | [`MODEL1_BIAYA_C_REPORT.md`](MODEL1_BIAYA_C_REPORT.md) | `scripts/plot_cost_c_report.py` |
-| **Model 2 — Klasifier Anomali** (kandidat v3, terkalibrasi) — a.k.a. "fraud model" | Skor klaim normal vs anomali (cloning, repeat, upcoding, dst.) | [`MODEL2_KLASIFIER_V3_REPORT.md`](MODEL2_KLASIFIER_V3_REPORT.md) | `scripts/plot_classifier_v3_report.py` |
+| **Kandidat biaya BPJS — audit temporal** | Estimasi biaya verifikasi; bukan keputusan klinis/fraud | [`BPJS_COST_TEMPORAL_AUDIT_REPORT.md`](BPJS_COST_TEMPORAL_AUDIT_REPORT.md) | `scripts/bpjs/cost_temporal_audit.py` |
+| Kandidat biaya C lama (historis) | Benchmark biaya BPJS pada split subject acak | [`MODEL1_BIAYA_C_REPORT.md`](MODEL1_BIAYA_C_REPORT.md) | Figur lama dipensiunkan |
+| Kandidat classifier sintetis v3 (historis) | Klasifikasi label generator sintetis; bukan fraud BPJS tervalidasi | [`MODEL2_KLASIFIER_V3_REPORT.md`](MODEL2_KLASIFIER_V3_REPORT.md) | Figur lama dipensiunkan |
 
 **Tidak ada model ke-3.** Pilar aturan (deviation + cadence + cek identitas) bersifat *rule-based*, bukan model ML. Kandidat v2.4 klasifier dan varian A/B biaya adalah pembanding eksperimen, bukan model tambahan.
 
