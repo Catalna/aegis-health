@@ -54,14 +54,25 @@ function StatusBadge({ claim }) {
   let label = STATUS_LABELS[status] || status
   if (status === 'verified') label = `Diputuskan: ${formatDecision(claim.human_decision)}`
 
-  return <span className={`ckl-status-badge ${cls}`}>{icons[status]}{label}</span>
+  // Warna badge memakai token kontras WCAG, bukan warna mentah.
+  const isFailed = status === 'failed'
+  const isReview = status === 'review_required'
+  const pendingBadgeStyle = { background: 'var(--bg-card-hover)', color: 'var(--text-secondary)' }
+  const badgeBackground = isFailed ? 'var(--error-text)' : isReview ? 'var(--risk-medium-bg)' : pendingBadgeStyle.background
+  const badgeColor = isFailed ? 'white' : isReview ? 'var(--warning-text)' : 'var(--text-secondary)'
+
+  return (
+    <span className={`ckl-status-badge ${cls}`} style={{ background: badgeBackground, color: badgeColor }}>
+      {icons[status]}{label}
+    </span>
+  )
 }
 
-function StatusSub({ claim, errorMessage }) {
+function StatusSub({ claim, errorMessage, color }) {
   const status = claim.status
   if (errorMessage) {
     return (
-      <div className="ckl-status-sub err" title={errorMessage}>{errorMessage}</div>
+      <div className="ckl-status-sub err" title={errorMessage} style={{ color }}>{errorMessage}</div>
     )
   }
   let text = null
@@ -352,7 +363,7 @@ export default function ClaimsList() {
 
   if (initialLoading) return (
     <div>
-      <div className="ckl-live-status" role="status" aria-live="polite" aria-atomic="true">Memuat data klaim...</div>
+      <div className="claims-list-live-status" role="status" aria-live="polite" aria-atomic="true">Memuat data klaim...</div>
       <ClaimsListSkeleton />
     </div>
   )
@@ -362,8 +373,8 @@ export default function ClaimsList() {
 
   return (
     <div className="ckl-page">
-      <div className="ckl-live-status" role="status" aria-live="polite" aria-atomic="true">
-        {error ? error : `${data.total} klaim tersedia.`}
+      <div className="claims-list-live-status" role="status" aria-live="polite" aria-atomic="true">
+        {error ? error : refreshing ? 'Memperbarui daftar klaim...' : `${data.total} klaim tersedia.`}
       </div>
 
       {/* Topbar */}
@@ -448,7 +459,7 @@ export default function ClaimsList() {
             <div className="ckl-adv-row" id="ckl-advanced">
           <div className="ckl-fld">
             <label className="ckl-fld-label" htmlFor="ckl-tier">Prioritas</label>
-            <select id="ckl-tier" value={tier} onChange={e => updateFilter('tier', e.target.value)}>
+            <select id="ckl-tier" className="claims-filter-control" value={tier} onChange={e => updateFilter('tier', e.target.value)}>
               <option value="">Semua tingkat</option>
               <option value="high">Risiko Tinggi</option>
               <option value="medium">Risiko Sedang</option>
@@ -457,19 +468,19 @@ export default function ClaimsList() {
           </div>
           <div className="ckl-fld">
             <label className="ckl-fld-label" htmlFor="ckl-recd-from">Diterima dari</label>
-            <input id="ckl-recd-from" type="date" value={receivedFrom} onChange={e => updateFilter('received_from', e.target.value)} />
+            <input id="ckl-recd-from" className="claims-filter-control" type="date" value={receivedFrom} onChange={e => updateFilter('received_from', e.target.value)} />
           </div>
           <div className="ckl-fld">
             <label className="ckl-fld-label" htmlFor="ckl-recd-to">s/d</label>
-            <input id="ckl-recd-to" type="date" value={receivedTo} onChange={e => updateFilter('received_to', e.target.value)} />
+            <input id="ckl-recd-to" className="claims-filter-control" type="date" value={receivedTo} onChange={e => updateFilter('received_to', e.target.value)} />
           </div>
           <div className="ckl-fld">
             <label className="ckl-fld-label" htmlFor="ckl-adm-from">Masuk dari</label>
-            <input id="ckl-adm-from" type="date" value={admissionFrom} onChange={e => updateFilter('admission_from', e.target.value)} />
+            <input id="ckl-adm-from" className="claims-filter-control" type="date" value={admissionFrom} onChange={e => updateFilter('admission_from', e.target.value)} />
           </div>
           <div className="ckl-fld">
             <label className="ckl-fld-label" htmlFor="ckl-adm-to">s/d</label>
-            <input id="ckl-adm-to" type="date" value={admissionTo} onChange={e => updateFilter('admission_to', e.target.value)} />
+            <input id="ckl-adm-to" className="claims-filter-control" type="date" value={admissionTo} onChange={e => updateFilter('admission_to', e.target.value)} />
           </div>
           <div style={{ flex: 1 }} />
           <div className="ckl-adv-foot">
@@ -540,6 +551,24 @@ export default function ClaimsList() {
           </div>
         </div>
 
+        {data.items.length === 0 ? (
+          <div className="ckl-empty-state">
+            <EmptyState
+              icon={SearchX}
+              title="Tidak ada klaim yang cocok"
+              hint={activeFilters
+                ? 'Coba longgarkan kata kunci atau hapus sebagian filter yang aktif.'
+                : 'Belum ada klaim yang masuk ke antrian saat ini.'}
+              action={activeFilters
+                ? (
+                  <button type="button" className="ckl-adv-reset" onClick={resetFilters}>
+                    <RotateCw size={12} strokeWidth={2.4} aria-hidden="true" /> Reset filter
+                  </button>
+                )
+                : null}
+            />
+          </div>
+        ) : (
         <div className="table-scroll-x">
           <table className="ckl-table">
             <thead>
@@ -561,22 +590,25 @@ export default function ClaimsList() {
                 const noteError = c.last_analysis_error
                   ? safeErrorMessage({ code: c.last_analysis_error_code, message: c.last_analysis_error })
                   : null
+                const noteErrorColor = c.last_analysis_error ? 'var(--risk-high-text)' : 'var(--text-muted)'
                 return (
                   <tr key={c.claim_id} className={`${tierClass} ckl-row-in`} style={{ '--i': idx }}>
                     <td className="ckl-rail" aria-hidden="true" />
                     <td>
-                      <Link
-                        className="ckl-id-link"
-                        to={`/investigate/${c.claim_id}`}
-                        onClick={openClaim(c)}
-                        aria-label={`Buka klaim ${c.claim_id}`}
-                      >
-                        {c.claim_id}
-                      </Link>
-                      <div className="ckl-cell-sub">{c.provider_id || 'Sumber klaim'}</div>
-                      {c.diagnosis_primary && (
-                        <span className="ckl-dx-chip" title={c.diagnosis_primary}>{c.diagnosis_primary}</span>
-                      )}
+                      <div className="ckl-claim-col">
+                        <Link
+                          className="claim-link"
+                          to={`/investigate/${c.claim_id}`}
+                          onClick={openClaim(c)}
+                          aria-label={`Buka klaim ${c.claim_id}`}
+                        >
+                          {c.claim_id}
+                        </Link>
+                        <div className="ckl-cell-sub">{c.provider_id || 'Sumber klaim'}</div>
+                        {c.diagnosis_primary && (
+                          <span className="ckl-dx-chip" title={c.diagnosis_primary}>{c.diagnosis_primary}</span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <div className="ckl-cost">Rp {c.cost_claimed?.toLocaleString('id-ID')}</div>
@@ -588,7 +620,7 @@ export default function ClaimsList() {
                     <td><RiskCell claim={c} /></td>
                     <td>
                       <StatusBadge claim={c} />
-                      <StatusSub claim={c} errorMessage={noteError} />
+                      <StatusSub claim={c} errorMessage={noteError} color={noteErrorColor} />
                     </td>
                     <td><QueueCell claim={c} now={currentTime} /></td>
                     <td>
@@ -604,29 +636,12 @@ export default function ClaimsList() {
                   </tr>
                 )
               })}
-              {data.items.length === 0 && (
-                <tr className="ckl-empty">
-                  <td colSpan={7}>
-                    <EmptyState
-                      icon={SearchX}
-                      title="Tidak ada klaim yang cocok"
-                      hint={activeFilters
-                        ? 'Coba longgarkan kata kunci atau hapus sebagian filter yang aktif.'
-                        : 'Belum ada klaim yang masuk ke antrian saat ini.'}
-                      action={activeFilters
-                        ? (
-                          <button type="button" className="ckl-adv-reset" onClick={resetFilters}>
-                            <RotateCw size={12} strokeWidth={2.4} aria-hidden="true" /> Reset filter
-                          </button>
-                        )
-                        : null}
-                    />
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
+        )}
+
+        {data.items.length > 0 && <p className="table-scroll-hint">Geser tabel ke samping untuk melihat status dan aksi →</p>}
 
         {/* Pagination */}
         <div className="ckl-table-foot">

@@ -26,6 +26,9 @@ export default function ClaimIntake() {
   const [viewMode, setViewMode] = useState('form')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  // Validasi baru ditampilkan setelah pengguna mencoba menyimpan, supaya form
+  // kosong tidak langsung meneriakkan "6 data wajib belum lengkap".
+  const [showValidation, setShowValidation] = useState(false)
 
   const buildClaimPayload = () => ({
     claim_id: form.claim_id,
@@ -79,7 +82,7 @@ export default function ClaimIntake() {
 
   const handleAnalyze = async () => {
     if (clientErrors.some(e => !e.startsWith('Peringatan'))) {
-      setError('Perbaiki kesalahan pada data terlebih dahulu.')
+      setShowValidation(true)
       return
     }
     setSubmitting(true)
@@ -189,15 +192,18 @@ const highlightJson = (json) => {
                 </div>
                 <div className="form-group int-col-full">
                   <label className="form-label" htmlFor="secondary-diagnosis">Diagnosis Tambahan</label>
-                  <input id="secondary-diagnosis" className="form-input" value={form.diagnosis_secondary} onChange={e => handleChange('diagnosis_secondary', e.target.value)} placeholder="Pisahkan dengan koma, contoh: I10, A41.9" />
+                  <input id="secondary-diagnosis" className="form-input" value={form.diagnosis_secondary} onChange={e => handleChange('diagnosis_secondary', e.target.value)} placeholder="Kode diagnosis tambahan" />
+                  <p className="int-field-help">Pisahkan dengan koma. Contoh: I10, A41.9</p>
                 </div>
                 <div className="form-group int-col-full">
                   <label className="form-label" htmlFor="procedure-codes">Kode Tindakan</label>
-                  <input id="procedure-codes" className="form-input" value={form.procedure_codes} onChange={e => handleChange('procedure_codes', e.target.value)} placeholder="Pisahkan dengan koma, contoh: 36.10, 89.52" />
+                  <input id="procedure-codes" className="form-input" value={form.procedure_codes} onChange={e => handleChange('procedure_codes', e.target.value)} placeholder="Kode tindakan medis" />
+                  <p className="int-field-help">Pisahkan dengan koma. Contoh: 36.10, 89.52</p>
                 </div>
                 <div className="form-group int-col-full">
                   <label className="form-label" htmlFor="medication">Obat dan Jumlah</label>
-                  <input id="medication" className="form-input" value={form.medication} onChange={e => handleChange('medication', e.target.value)} placeholder="Contoh: Aspirin 30, Metformin 30" />
+                  <input id="medication" className="form-input" value={form.medication} onChange={e => handleChange('medication', e.target.value)} placeholder="Nama obat dan jumlah" />
+                  <p className="int-field-help">Pisahkan dengan koma. Contoh: Aspirin 30, Metformin 30</p>
                 </div>
                 <div className="form-group">
                   <label className="form-label" htmlFor="severity">Tingkat Keparahan (1-4)</label>
@@ -243,10 +249,10 @@ const highlightJson = (json) => {
           )}
           </div>
 
-          {/* Validasi klien real-time */}
-          {blockingErrors.length > 0 && (
+          {/* Validasi klien — muncul setelah percobaan simpan pertama. */}
+          {showValidation && blockingErrors.length > 0 && (
             <div role="alert" className="int-alert int-alert-error">
-              <div className="int-alert-title">{blockingErrors.length} data wajib belum lengkap</div>
+              <div className="int-alert-title" style={{ color: 'var(--error-text)' }}>{blockingErrors.length} data wajib belum lengkap</div>
               <ul>
                 {blockingErrors.map((err, i) => <li key={i}>{err}</li>)}
               </ul>
@@ -254,7 +260,7 @@ const highlightJson = (json) => {
           )}
           {warnings.length > 0 && (
             <div role="status" className="int-alert int-alert-warn">
-              <div className="int-alert-title">Perlu diperiksa lagi</div>
+              <div className="int-alert-title" style={{ color: 'var(--warning-text)' }}>Perlu diperiksa lagi</div>
               <ul>
                 {warnings.map((w, i) => <li key={i}>{w.replace(/^Peringatan:\s*/, '')}</li>)}
               </ul>
@@ -270,7 +276,7 @@ const highlightJson = (json) => {
           <button
             className="btn btn-primary int-submit"
             onClick={handleAnalyze}
-            disabled={submitting || blockingErrors.length > 0}
+            disabled={submitting}
           >
             {submitting ? 'Menyimpan klaim…' : 'Simpan dan mulai pemeriksaan'}
           </button>

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Users, Target, ShieldCheck, CheckCircle2, ArrowRight, Timer } from 'lucide-react'
 import { formatQueueAge, formatDuration } from './queueSummaryData'
 
@@ -12,13 +13,37 @@ const formatRemaining = (ms) => {
 
 const pctOf = (count, total) => Math.min(100, Math.max(0, Math.round(((count || 0) / (total || 1)) * 100)))
 
+function useCountUp(target, duration = 1200) {
+  const [display, setDisplay] = useState(0)
+  useEffect(() => {
+    if (target == null || display === target) return undefined
+    const from = display
+    const start = performance.now()
+    let raf
+    const tick = (now) => {
+      const p = Math.min(1, (now - start) / duration)
+      const eased = p * p * (3 - 2 * p)
+      setDisplay(Math.round(from + (target - from) * eased))
+      if (p < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, duration])
+  return display
+}
+
 export default function QueueSummary({ summary, now = Date.now(), totalClaims = 0, verifiedCount = 0 }) {
+  const animPending = useCountUp(summary?.pendingCount ?? 0)
+  const animScanning = useCountUp(summary?.scanningCount ?? 0)
+  const animReview = useCountUp(summary?.reviewRequiredCount ?? 0)
+  const animVerified = useCountUp(verifiedCount ?? 0)
   if (!summary) return null
 
   const queueStats = [
-    { label: 'Menunggu', value: summary.pendingCount ?? 0, sub: 'Antrean masuk' },
-    { label: 'Sedang Diperiksa', value: summary.scanningCount ?? 0, sub: 'Analisis AI & ML' },
-    { label: 'Perlu Review', value: summary.reviewRequiredCount ?? 0, sub: 'Butuh verifier' },
+    { label: 'Menunggu', value: animPending, sub: 'Antrean masuk' },
+    { label: 'Sedang Diperiksa', value: animScanning, sub: 'Analisis AI & ML' },
+    { label: 'Perlu Review', value: animReview, sub: 'Butuh verifier' },
     { label: 'Antrean Tertua', value: formatQueueAge(summary.oldestQueueAt, now), sub: 'Waktu tunggu max' },
     { label: 'Rata-rata waktu pemeriksaan', value: formatDuration(summary.analysisTiming?.averageMs), sub: 'Kecepatan AI' },
     { label: 'Rata-rata waktu verifikasi', value: formatDuration(summary.verificationTiming?.averageMs), sub: 'Keputusan final' },
@@ -52,7 +77,7 @@ export default function QueueSummary({ summary, now = Date.now(), totalClaims = 
     {
       label: 'Keputusan Final',
       icon: <CheckCircle2 size={15} />,
-      value: verifiedCount,
+       value: animVerified,
       remaining: 'Jalur selesai',
       tone: 'tone-slate',
     },
@@ -68,7 +93,7 @@ export default function QueueSummary({ summary, now = Date.now(), totalClaims = 
             </span>
             <div>
               <h2 id="queue-summary-title" className="section-title">Pemantauan Antrean &amp; Kepatuhan SLA</h2>
-              <p className="section-subtitle">Status beban kerja operasional dan kecepatan pemrosesan klaim real-time. Dihitung dari maks. 1.000 klaim terbaru.</p>
+              <p className="section-subtitle">Status beban kerja operasional dan kecepatan pemrosesan klaim real-time. Sampel: maks. 1.000 klaim terbaru.</p>
             </div>
           </div>
         </div>

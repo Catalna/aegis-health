@@ -365,7 +365,7 @@ export default function Assessment() {
 
       {data.partial && (
         <div className="alert-disclaimer mb-3" role="alert">
-          <strong>Pemeriksaan belum lengkap</strong> — sebagian data tidak tersedia.
+          <strong style={{ color: 'var(--warning-text)' }}>Pemeriksaan belum lengkap</strong> — sebagian data tidak tersedia.
         </div>
       )}
 
@@ -459,7 +459,7 @@ export default function Assessment() {
               <button className="btn btn-outline" style={{ marginTop: '0.75rem' }} onClick={handleDecisionRetry}>Muat lagi</button>
             </div>
           ) : (
-            <fieldset className="asm-decision-fieldset" disabled={loadingDecision} aria-busy={loadingDecision}>
+            <fieldset className="assessment-decision-fieldset">
               <legend className="sr-only">Keputusan Petugas Verifier</legend>
               {decisionError && (
                 <div className="status-message error" role="alert" style={{ padding: '0.75rem', marginBottom: '0.75rem' }}>
@@ -468,14 +468,15 @@ export default function Assessment() {
                   <button className="btn btn-outline" style={{ marginTop: '0.5rem' }} onClick={handleSubmitDecision} disabled={savingDecision}>Coba simpan lagi</button>
                 </div>
               )}
-              <div className="asm-options">
+              <div className="asm-options" aria-busy={loadingDecision}>
                 {DECISION_OPTIONS.map(opt => (
-                  <label key={opt.value} className="asm-opt" data-checked={decision === opt.value || undefined}>
+                  <label key={opt.value} className="assessment-decision-option" data-checked={decision === opt.value || undefined}>
                     <input
                       type="radio"
                       name="decision"
                       value={opt.value}
                       checked={decision === opt.value}
+                      disabled={loadingDecision}
                       onChange={e => setDecision(e.target.value)}
                     />
                     <span>{opt.label}</span>
@@ -544,7 +545,7 @@ export default function Assessment() {
                 { label: 'Apakah temuan ini sudah dikonfirmasi?', key: 'is_this_fraud' },
               ].map(q => (
                 <details key={q.key} className="asm-qa-item">
-                  <summary className="asm-qa-summary">
+                  <summary className="assessment-qa-summary">
                     <ChevronRight className="asm-qa-caret" size={13} aria-hidden="true" />
                     {q.label}
                   </summary>
@@ -585,7 +586,7 @@ export default function Assessment() {
                           <td>
                             <button
                               type="button"
-                              className="asm-sim-toggle"
+                              className="similar-claim-toggle"
                               aria-label={`Buka rincian faktor kemiripan untuk klaim ${sc.claim_id}`}
                               aria-expanded={expandedSimilar === sc.claim_id}
                               aria-controls={`similar-claim-${sc.claim_id}`}

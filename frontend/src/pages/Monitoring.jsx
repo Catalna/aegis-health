@@ -42,12 +42,16 @@ const AGENT_INFO = [
   { label: 'Penjelasan Hasil', key: 'llm_ollama', detail: 'Menulis alasan dalam bahasa manusia' },
 ]
 
-const formatRp = (value) => `Rp ${(value || 0).toLocaleString('id-ID')}`
+const formatRp = (value) => value == null ? '—' : `Rp ${value.toLocaleString('id-ID')}`
+
+// Metrik yang belum pernah dimuat tampil sebagai "—", bukan 0 — nol palsu
+// membuat operator mengira tidak ada klaim padahal data gagal dimuat.
+const formatMetric = (value) => value == null ? '—' : value.toLocaleString('id-ID')
 
 // Angka mengalir ke target baru dengan ease-out kubik. Target yang sama tidak
 // mengulang animasi, jadi auto-refresh tiap 5 detik tidak membuat kedip.
-function useCountUp(target, duration = 640) {
-  const [display, setDisplay] = useState(target)
+function useCountUp(target, duration = 1200) {
+  const [display, setDisplay] = useState(0)
   useEffect(() => {
     if (display === target) return undefined
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -59,7 +63,7 @@ function useCountUp(target, duration = 640) {
     let raf
     const tick = (now) => {
       const p = Math.min(1, (now - start) / duration)
-      const eased = 1 - Math.pow(1 - p, 3)
+      const eased = p * p * (3 - 2 * p)
       setDisplay(Math.round(from + (target - from) * eased))
       if (p < 1) raf = requestAnimationFrame(tick)
     }
@@ -101,30 +105,41 @@ export default function Monitoring() {
       // Auto-refresh tiap 5 detik tidak boleh membuat pill berkedip "Memuat".
       if (manual) setRefreshing(true)
       try {
+        const applyIfCurrent = (fn) => {
+          if (generation === requestGenerationRef.current) fn()
+        }
+        // Tiap permintaan langsung dipasang begitu selesai: kartu metrik dan
+        // antrean tampil lebih dulu, bagian kondisi layanan menyusul. Tanpa ini
+        // satu pemeriksaan lambat (health) menahan seluruh halaman di skeleton.
+        const settle = (promise, onFulfilled, onRejected) => promise
+          .then((value) => {
+            applyIfCurrent(() => onFulfilled(value))
+            return value
+          })
+          .catch((error) => {
+            applyIfCurrent(() => onRejected(error))
+            throw error
+          })
+          .finally(() => applyIfCurrent(() => setLoading(false)))
+
         const [statsRes, healthRes, queueRes] = await Promise.allSettled([
-          analyticsApi.dashboard({ signal: controller.signal }),
-          healthApi.check({ signal: controller.signal }),
-          fetchQueueSummary({ signal: controller.signal }),
+          settle(
+            analyticsApi.dashboard({ signal: controller.signal }),
+            (res) => { setStats(res.data); setAnalyticsError(false) },
+            () => setAnalyticsError(true),
+          ),
+          settle(
+            healthApi.check({ signal: controller.signal }),
+            (res) => { setHealth(res.data); setHealthError(false) },
+            () => setHealthError(true),
+          ),
+          settle(
+            fetchQueueSummary({ signal: controller.signal }),
+            (value) => { setQueueSummary(value); setQueueError(null) },
+            () => setQueueError('Ringkasan antrean belum dapat dimuat.'),
+          ),
         ])
         if (generation !== requestGenerationRef.current) return
-        if (statsRes.status === 'fulfilled') {
-          setStats(statsRes.value.data)
-          setAnalyticsError(false)
-        } else {
-          setAnalyticsError(true)
-        }
-        if (healthRes.status === 'fulfilled') {
-          setHealth(healthRes.value.data)
-          setHealthError(false)
-        } else {
-          setHealthError(true)
-        }
-        if (queueRes.status === 'fulfilled') {
-          setQueueSummary(queueRes.value)
-          setQueueError(null)
-        } else {
-          setQueueError('Ringkasan antrean belum dapat dimuat.')
-        }
         const completeRefresh = statsRes.status === 'fulfilled' && healthRes.status === 'fulfilled' && queueRes.status === 'fulfilled'
         setPartialData(!completeRefresh)
         if (completeRefresh) setLastUpdatedAt(Date.now())
@@ -157,11 +172,16 @@ export default function Monitoring() {
   const animVerified = useCountUp(stats?.verified_claims ?? 0)
   const animExposure = useCountUp(stats?.potential_financial_exposure ?? 0)
 
-  const statusBadgeColors = (s) => s === 'ok'
+  const statusBadgeColors = (status) => status === 'ok'
     ? { background: 'var(--risk-low-bg)', color: 'var(--accent-green)' }
-    : s === 'warn' || s === 'degraded'
+    : status === 'warn' || status === 'degraded'
       ? { background: 'var(--risk-medium-bg)', color: 'var(--warning-text)' }
       : { background: 'var(--risk-high-bg)', color: 'var(--error-text)' }
+  // Ikon netral (bukan alert) memakai foreground gelap yang aman kontras.
+  const neutralIconColors = (status) => ({
+    background: status === 'ok' ? 'var(--risk-low-bg)' : 'var(--bg-card-hover)',
+    color: status === 'ok' ? 'var(--accent-green)' : 'var(--text-secondary)',
+  })
   const statusTextColor = (s) => s === 'ok' ? 'var(--success)' : s === 'warn' || s === 'degraded' ? 'var(--warning-text)' : 'var(--error-text)'
   const statusText = (s) => s === 'ok' ? 'Sehat' : s === 'warn' || s === 'degraded' ? 'Perlu perhatian' : 'Gangguan'
   const detailText = (key, comp) => comp?.status === 'ok'
@@ -207,7 +227,9 @@ export default function Monitoring() {
     </header>
   )
 
-  if (loading) {
+  // Skeleton hanya untuk pemuatan pertama yang benar-benar kosong; data
+  // parsial yang sudah tiba langsung ditampilkan.
+  if (loading && !stats && !health && !queueSummary) {
     return (
       <div className="dashboard-container">
         {pageHeader}
@@ -222,7 +244,7 @@ export default function Monitoring() {
   const statCards = [
     {
       label: 'Total Klaim',
-      value: animTotal,
+      value: stats ? animTotal : null,
       sub: 'Seluruh berkas masuk',
       icon: <FileText size={22} />,
       tone: 'tone-slate',
@@ -231,7 +253,7 @@ export default function Monitoring() {
     },
     {
       label: 'Pemeriksaan Selesai',
-      value: animProcessed,
+      value: stats ? animProcessed : null,
       sub: 'Analisis risiko rampung',
       icon: <CheckCircle2 size={22} />,
       tone: 'tone-green',
@@ -240,7 +262,7 @@ export default function Monitoring() {
     },
     {
       label: 'Risiko Tinggi',
-      value: animHighRisk,
+      value: stats ? animHighRisk : null,
       sub: 'Perlu prioritas verifikasi',
       icon: <ShieldAlert size={22} />,
       tone: 'tone-red',
@@ -249,7 +271,7 @@ export default function Monitoring() {
     },
     {
       label: 'Sudah Diputuskan',
-      value: animVerified,
+      value: stats ? animVerified : null,
       sub: 'Keputusan petugas tercatat',
       icon: <BadgeCheck size={22} />,
       tone: 'tone-green',
@@ -284,7 +306,7 @@ export default function Monitoring() {
               <span className="stat-card-label">{card.label}</span>
               <div className={`stat-icon ${card.tone}`}>{card.icon}</div>
             </div>
-            <div className="stat-card-value">{card.value.toLocaleString('id-ID')}</div>
+            <div className="stat-card-value">{formatMetric(card.value)}</div>
             <div className="stat-bottom">
               <span className="stat-card-sub">{card.sub}</span>
               {card.meta != null && (
@@ -317,7 +339,7 @@ export default function Monitoring() {
           </div>
           <span className="badge badge-neutral">Estimasi</span>
         </div>
-        <div className="mon-exposure-value">{formatRp(animExposure)}</div>
+        <div className="mon-exposure-value">{formatRp(stats ? animExposure : null)}</div>
         <p className="mon-exposure-note">
           Dihitung dari klaim berprioritas tinggi atau sedang. Angka ini bukan nilai akhir setelah keputusan petugas.
         </p>
@@ -326,7 +348,7 @@ export default function Monitoring() {
       {/* Kondisi layanan + tahapan — dua daftar berdampingan supaya tidak
           menyisakan rongga kosong selebar kartu. */}
       <div className="mon-pair-grid">
-      <section className="card dash-accent" aria-labelledby="health-title">
+       <section className="card" aria-labelledby="health-title">
         <div className="chart-head-row chart-head-between">
           <div className="chart-head-left">
             <span className="chart-panel-icon" aria-hidden="true"><HeartPulse size={16} /></span>
@@ -355,15 +377,14 @@ export default function Monitoring() {
           </div>
         )}
 
-        <ul className="mon-health-list">
+         {components.length > 0 && <ul className="mon-health-list">
           {components.map(([key, comp]) => (
             <li className="mon-health-row" key={key}>
               <span
                 className="mon-health-icon"
-                style={{
-                  background: comp.status === 'ok' ? 'var(--risk-low-bg)' : comp.status === 'error' ? 'var(--risk-high-bg)' : 'var(--risk-medium-bg)',
-                  color: statusTextColor(comp.status),
-                }}
+                style={comp.status === 'error'
+                  ? { background: 'var(--risk-high-bg)', color: 'var(--error-text)' }
+                  : neutralIconColors(comp.status)}
                 aria-hidden="true"
               >
                 {COMPONENT_ICONS[key] || <Cpu size={16} />}
@@ -377,20 +398,24 @@ export default function Monitoring() {
               </span>
             </li>
           ))}
-        </ul>
+         </ul>}
 
         <div className="monitoring-health-state" role="alert" aria-live="assertive" aria-atomic="true">
           {healthError && (
             <>
-              <div className="text-sm" style={{ color: 'var(--error-text)' }}>Layanan pemeriksaan belum dapat dihubungi.</div>
-              <button className="btn btn-ghost" onClick={() => fetchAll({ manual: true })}>Coba lagi</button>
-            </>
-          )}
+               <div className="mon-health-empty">
+                 <strong>Layanan belum dapat dihubungi</strong>
+                 <span>Periksa koneksi, lalu coba lagi.</span>
+               </div>
+               <button className="btn btn-ghost" onClick={() => fetchAll({ manual: true })}>Coba lagi</button>
+             </>
+           )}
+           {!healthError && components.length === 0 && <div className="mon-health-empty"><strong>Data layanan belum tersedia</strong><span>Status akan tampil setelah pemeriksaan berikutnya.</span></div>}
         </div>
       </section>
 
       {/* Tahapan pemeriksaan — stepper vertikal */}
-      <section className="card dash-accent" aria-labelledby="steps-title">
+       <section className="card" aria-labelledby="steps-title">
         <div className="chart-head-row chart-head-between">
           <div className="chart-head-left">
             <span className="chart-panel-icon" aria-hidden="true"><Workflow size={16} /></span>
@@ -415,7 +440,7 @@ export default function Monitoring() {
                   <span className="mon-step-name">{item.label}</span>
                   <span className="mon-step-detail">{item.detail}</span>
                 </span>
-                <span className="badge" style={statusBadgeColors(status)}>
+                <span className="badge" style={{ background: statusBadgeColors(status).background, color: statusTextColor(status) }}>
                   {statusText(status)}
                 </span>
               </li>

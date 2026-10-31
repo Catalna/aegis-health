@@ -3,6 +3,8 @@ import { useNavigate, Link } from 'react-router-dom'
 import {
   BarChart,
   Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -13,6 +15,7 @@ import {
   Cell,
   LineChart,
   Line,
+  LabelList,
 } from 'recharts'
 import {
   LayoutDashboard,
@@ -43,8 +46,8 @@ const formatRp = (value) => `Rp ${(value || 0).toLocaleString('id-ID')}`
 // Angka mengalir ke target baru dengan ease-out cubik. Data yang stabil
 // (target sama) gak mengulang animasi, jadi auto-refresh tiap 10 detik
 // gak bikin kedip. Menghormati prefers-reduced-motion.
-function useCountUp(target, duration = 640) {
-  const [display, setDisplay] = useState(target)
+function useCountUp(target, duration = 1600) {
+  const [display, setDisplay] = useState(0)
   useEffect(() => {
     if (display === target) return undefined
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -56,7 +59,7 @@ function useCountUp(target, duration = 640) {
     let raf
     const tick = (now) => {
       const p = Math.min(1, (now - start) / duration)
-      const eased = 1 - Math.pow(1 - p, 3)
+      const eased = p * p * (3 - 2 * p)
       setDisplay(Math.round(from + (target - from) * eased))
       if (p < 1) raf = requestAnimationFrame(tick)
     }
@@ -74,10 +77,6 @@ const dayLabel = (isoDate) => {
   if (!y || !m || !d) return isoDate
   return `${d} ${MONTHS_ID[m - 1]}`
 }
-
-// ID klaim panjang dipendekkan ke bagian pembeda di ujung — full ID
-// tetap tersedia lewat title/tooltip.
-const shortClaimId = (id = '') => (id.length > 14 ? `…${id.slice(-11)}` : id)
 
 function CustomChartTooltip({ active, payload, label }) {
   if (active && payload && payload.length) {
@@ -148,6 +147,9 @@ export default function Dashboard() {
   const [currentTime, setCurrentTime] = useState(Date.now())
   const [refreshing, setRefreshing] = useState(false)
   const [partialData, setPartialData] = useState(false)
+  const [hoveredRisk, setHoveredRisk] = useState(null)
+  const [selectedRisk, setSelectedRisk] = useState(null)
+  const activeRisk = hoveredRisk || selectedRisk
   const requestGenerationRef = useRef(0)
   const abortControllerRef = useRef(null)
 
@@ -236,7 +238,7 @@ export default function Dashboard() {
 
   if (error && !stats) {
     return (
-      <div className="error-wrapper">
+      <div className="error-wrapper dashboard-error-wrapper">
         <div className="status-message error" role="alert">
           <AlertTriangle size={24} className="mb-1 text-error" />
           <strong>Ringkasan belum dapat dimuat</strong>
@@ -245,15 +247,6 @@ export default function Dashboard() {
             Coba Lagi
           </button>
         </div>
-        <DataFreshness
-          label="Data dashboard"
-          lastUpdatedAt={lastUpdatedAt}
-          now={currentTime}
-          onRefresh={fetchData}
-          refreshing={refreshing}
-          partial={partialData}
-          error={Boolean(error)}
-        />
       </div>
     )
   }
@@ -270,15 +263,60 @@ export default function Dashboard() {
     { name: 'Risiko Tinggi', value: stats?.high_risk_claims || 0, color: '#ef4444' },
   ].filter((d) => d.value > 0)
   const riskTotal = riskData.reduce((sum, d) => sum + d.value, 0)
+  const analyzedPercent = stats?.total_claims
+    ? Math.round(((stats.analyzed_claims || 0) / stats.total_claims) * 100)
+    : 0
 
-  // Data Status Alur Pemeriksaan
+  // Data Status Alur Pemeriksaan dengan warna semantik & gradien
   const statusData = [
-    { name: 'Menunggu', total: stats?.pending_claims ?? 0, fullLabel: 'Menunggu Pemeriksaan' },
-    { name: 'Scanning', total: stats?.scanning_claims ?? 0, fullLabel: 'Sedang Dianalisis' },
-    { name: 'Review', total: stats?.review_required_claims ?? 0, fullLabel: 'Perlu Review Petugas' },
-    { name: 'Selesai', total: stats?.processed_status_claims ?? 0, fullLabel: 'Analisis Selesai' },
-    { name: 'Verifikasi', total: stats?.verified_claims ?? 0, fullLabel: 'Sudah Diputuskan' },
-    { name: 'Gagal', total: stats?.failed_claims ?? 0, fullLabel: 'Pemeriksaan Gagal' },
+    {
+      name: 'Menunggu',
+      total: stats?.pending_claims ?? 0,
+      fullLabel: 'Menunggu Pemeriksaan',
+      desc: 'Antrean masuk',
+      color: '#94a3b8',
+      gradStart: '#cbd5e1',
+    },
+    {
+      name: 'Scanning',
+      total: stats?.scanning_claims ?? 0,
+      fullLabel: 'Sedang Dianalisis',
+      desc: 'Engine AI aktif',
+      color: '#0284c7',
+      gradStart: '#38bdf8',
+    },
+    {
+      name: 'Review',
+      total: stats?.review_required_claims ?? 0,
+      fullLabel: 'Perlu Review Petugas',
+      desc: 'Perlu keputusan petugas',
+      color: '#f59e0b',
+      gradStart: '#fbbf24',
+    },
+    {
+      name: 'Selesai',
+      total: stats?.processed_status_claims ?? 0,
+      fullLabel: 'Analisis Selesai',
+      desc: 'Pipeline selesai',
+      color: '#10b981',
+      gradStart: '#34d399',
+    },
+    {
+      name: 'Verifikasi',
+      total: stats?.verified_claims ?? 0,
+      fullLabel: 'Sudah Diputuskan',
+      desc: 'Keputusan verifier final',
+      color: '#0d9488',
+      gradStart: '#2dd4bf',
+    },
+    {
+      name: 'Gagal',
+      total: stats?.failed_claims ?? 0,
+      fullLabel: 'Pemeriksaan Gagal',
+      desc: 'Berkas bermasalah / error',
+      color: '#f43f5e',
+      gradStart: '#fb7185',
+    },
   ]
 
   // Delta "vs. kemarin" dari agregasi endpoint trend
@@ -381,15 +419,15 @@ export default function Dashboard() {
                 <span className="fact-value mono">{priority.claim_id}</span>
               </div>
               <i className="fact-sep" aria-hidden="true" />
-              <div className="fact">
-                <span className="fact-label">Skor Risiko</span>
+                <div className="fact fact-score">
+                  <span className="fact-label">Skor Risiko</span>
                 <span className="fact-value">{priority.risk_score ?? '-'}</span>
               </div>
               <i className="fact-sep" aria-hidden="true" />
               {priority.reason && (
                 <div className="fact">
                   <span className="fact-label">Alasan</span>
-                  <span className="fact-value">{priority.reason}</span>
+                  <span className="fact-value" title={priority.reason}>{priority.reason}</span>
                 </div>
               )}
             </div>
@@ -456,43 +494,103 @@ export default function Dashboard() {
                         data={riskData}
                         cx="50%"
                         cy="50%"
-                        innerRadius={53}
+                        innerRadius={60}
                         outerRadius={84}
-                        paddingAngle={1}
+                        paddingAngle={3}
+                        cornerRadius={5}
                         startAngle={90}
                         endAngle={-270}
                         dataKey="value"
                         isAnimationActive={false}
+                        onMouseEnter={(_, index) => setHoveredRisk(riskData[index])}
+                        onMouseLeave={() => setHoveredRisk(null)}
                       >
-                        {riskData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} stroke="transparent" />
-                        ))}
+                        {riskData.map((entry, index) => {
+                          const isSelected = selectedRisk?.name === entry.name
+                          const isActive = activeRisk?.name === entry.name
+                          const isDimmed = activeRisk && !isActive
+                          return (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={entry.color}
+                              stroke={isSelected ? '#ffffff' : 'transparent'}
+                              strokeWidth={isSelected ? 3 : 0}
+                              opacity={isDimmed ? 0.35 : 1}
+                              style={{ transition: 'all 180ms ease', cursor: 'pointer' }}
+                              onClick={() => setSelectedRisk((prev) => (prev?.name === entry.name ? null : entry))}
+                            />
+                          )
+                        })}
                       </Pie>
-                      <Tooltip content={<CustomChartTooltip />} />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="donut-center" aria-hidden="true">
-                    <strong>{riskTotal.toLocaleString('id-ID')}</strong>
-                    <span>klaim</span>
+                  <div
+                    className="donut-center"
+                    aria-hidden="true"
+                    style={{
+                      cursor: selectedRisk ? 'pointer' : 'default',
+                      pointerEvents: selectedRisk ? 'auto' : 'none',
+                    }}
+                    onClick={() => selectedRisk && setSelectedRisk(null)}
+                    title={selectedRisk ? 'Klik untuk mereset tampilan total' : undefined}
+                  >
+                    <span className="donut-center-kicker">
+                      {activeRisk ? activeRisk.name : 'TOTAL KLAIM'}
+                    </span>
+                    <strong style={{ color: activeRisk ? activeRisk.color : 'var(--text-primary)' }}>
+                      {(activeRisk ? activeRisk.value : riskTotal).toLocaleString('id-ID')}
+                    </strong>
+                    <span className="donut-center-sub">
+                      {activeRisk
+                        ? `${riskTotal ? Math.round((activeRisk.value / riskTotal) * 100) : 0}% porsi`
+                        : `${analyzedPercent}% dianalisis`}
+                    </span>
+                    {selectedRisk && (
+                      <span style={{ fontSize: '0.62rem', color: 'var(--accent-green)', fontWeight: 700, marginTop: 2 }}>
+                        ● Terpilih (klik reset)
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="donut-legend">
-                  {riskData.map((entry) => (
-                    <div className="legend-row" key={entry.name}>
-                      <span className="legend-dot" style={{ background: entry.color }} />
-                      <span className="legend-name">{entry.name}</span>
-                      <span className="legend-pct">
-                        {riskTotal ? Math.round((entry.value / riskTotal) * 100) : 0}%
-                      </span>
-                      <span className="legend-count">{(entry.value || 0).toLocaleString('id-ID')} klaim</span>
-                    </div>
-                  ))}
+                  {riskData.map((entry) => {
+                    const pct = riskTotal ? Math.round((entry.value / riskTotal) * 100) : 0
+                    const isHovered = hoveredRisk?.name === entry.name
+                    const isSelected = selectedRisk?.name === entry.name
+                    const isActive = isHovered || isSelected
+                    return (
+                      <div
+                        className={`legend-card-row ${isActive ? 'active' : ''} ${isSelected ? 'selected' : ''}`}
+                        key={entry.name}
+                        onMouseEnter={() => setHoveredRisk(entry)}
+                        onMouseLeave={() => setHoveredRisk(null)}
+                        onClick={() => setSelectedRisk((prev) => (prev?.name === entry.name ? null : entry))}
+                        title="Klik untuk mengunci atau melepas seleksi kategori"
+                      >
+                        <div className="legend-card-top">
+                          <span className="legend-dot" style={{ background: entry.color }} />
+                          <span className="legend-name">{entry.name}</span>
+                          <span className="legend-pct">{pct}%</span>
+                          <span className="legend-count">{(entry.value || 0).toLocaleString('id-ID')} klaim</span>
+                        </div>
+                        <div className="legend-mini-track">
+                          <div
+                            className="legend-mini-bar"
+                            style={{
+                              width: `${pct}%`,
+                              background: entry.color,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </>
             )}
           </div>
           <div className="chart-foot">
-            Total {(stats?.total_claims || 0).toLocaleString('id-ID')} klaim · {(stats?.analyzed_claims || 0).toLocaleString('id-ID')} sudah dianalisis,
+            Total {(stats?.total_claims || 0).toLocaleString('id-ID')} klaim · {(stats?.analyzed_claims || 0).toLocaleString('id-ID')} sudah dianalisis ·{' '}
             {(Math.max(0, (stats?.total_claims || 0) - (stats?.analyzed_claims || 0))).toLocaleString('id-ID')} menunggu antrean
           </div>
         </div>
@@ -508,32 +606,50 @@ export default function Dashboard() {
           </div>
 
           <div className="chart-body">
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={statusData} margin={{ top: 18, right: 6, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+             {statusData.length === 0 ? (
+               <div className="chart-empty">Belum ada status pemeriksaan.</div>
+             ) : (
+             <ResponsiveContainer width="100%" height={250}>
+               <BarChart data={statusData} margin={{ top: 22, right: 10, left: -16, bottom: 0 }}>
+                <defs>
+                  {statusData.map((d) => (
+                    <linearGradient id={`grad-status-${d.name}`} key={d.name} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={d.gradStart} stopOpacity={0.95} />
+                      <stop offset="100%" stopColor={d.color} stopOpacity={0.9} />
+                    </linearGradient>
+                  ))}
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} opacity={0.6} />
                 <XAxis
                   dataKey="name"
                   stroke="var(--text-muted)"
-                  tick={{ fontSize: 11, fontWeight: 500 }}
+                  tick={{ fontSize: 11, fontWeight: 600, fill: 'var(--text-secondary)' }}
                   tickLine={false}
+                  axisLine={{ stroke: 'var(--border)' }}
                 />
                 <YAxis
                   stroke="var(--text-muted)"
-                  tick={{ fontSize: 11 }}
+                  tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
                   tickLine={false}
+                  axisLine={false}
                   allowDecimals={false}
                 />
                 <Tooltip
-                  cursor={{ fill: 'var(--bg-card-hover)', opacity: 0.7 }}
+                  cursor={{ fill: 'var(--bg-card-hover)', opacity: 0.5 }}
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
                       const item = payload[0].payload
                       return (
                         <div className="custom-chart-tooltip">
-                          <div className="tooltip-label">{item.fullLabel}</div>
-                          <div className="tooltip-value">
-                            <span className="tooltip-dot" style={{ background: 'var(--accent-green)' }} />
+                          <div className="tooltip-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span className="legend-dot" style={{ background: item.color }} />
+                            <span>{item.fullLabel}</span>
+                          </div>
+                          <div className="tooltip-value" style={{ marginTop: 4 }}>
                             <strong>{(item.total || 0).toLocaleString('id-ID')}</strong> berkas
+                            <span style={{ fontSize: '0.72rem', color: '#94a3b8', marginLeft: 6 }}>
+                              ({item.desc})
+                            </span>
                           </div>
                         </div>
                       )
@@ -541,9 +657,42 @@ export default function Dashboard() {
                     return null
                   }}
                 />
-                <Bar dataKey="total" fill="var(--accent-green)" radius={[5, 5, 0, 0]} maxBarSize={42} isAnimationActive={false} />
-              </BarChart>
-            </ResponsiveContainer>
+                <Bar
+                  dataKey="total"
+                  radius={[6, 6, 0, 0]}
+                  maxBarSize={44}
+                  background={{ fill: 'rgba(148, 163, 184, 0.08)', radius: [6, 6, 0, 0] }}
+                  isAnimationActive={false}
+                >
+                  {statusData.map((entry) => (
+                    <Cell key={entry.name} fill={`url(#grad-status-${entry.name})`} />
+                  ))}
+                  <LabelList
+                    dataKey="total"
+                    position="top"
+                    content={(props) => {
+                      const { x, y, width, value } = props
+                      if (x === undefined || y === undefined) return null
+                      const isZero = !value || value === 0
+                      return (
+                        <text
+                          x={x + width / 2}
+                          y={isZero ? y - 6 : y - 8}
+                          fill={isZero ? '#94a3b8' : 'var(--text-primary)'}
+                          textAnchor="middle"
+                          fontSize={11}
+                          fontWeight={isZero ? 500 : 700}
+                          fontFamily="Plus Jakarta Sans, sans-serif"
+                        >
+                          {value ?? 0}
+                        </text>
+                      )
+                    }}
+                  />
+                </Bar>
+               </BarChart>
+             </ResponsiveContainer>
+             )}
           </div>
           <div className="chart-foot">
             Sampel {(stats?.total_claims || 0).toLocaleString('id-ID')} klaim terbaru · diperbarui otomatis tiap 10 detik
@@ -582,7 +731,7 @@ export default function Dashboard() {
         <div className="summary-divider" />
 
         <div className="summary-col">
-          <div className="summary-icon-badge primary">
+          <div className="summary-icon-badge green">
             <TrendingUp size={20} />
           </div>
           <div className="w-full">
@@ -628,7 +777,7 @@ export default function Dashboard() {
               <div className="chart-empty">Data tren belum tersedia.</div>
             ) : (
               <ResponsiveContainer width="100%" height={228}>
-                <LineChart data={tDays.map((d) => ({ ...d, label: dayLabel(d.date) }))} margin={{ top: 10, right: 14, left: -18, bottom: 0 }}>
+                <AreaChart data={tDays.map((d) => ({ ...d, label: dayLabel(d.date) }))} margin={{ top: 10, right: 14, left: -18, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                   <XAxis
                     dataKey="label"
@@ -643,10 +792,10 @@ export default function Dashboard() {
                     allowDecimals={false}
                   />
                   <Tooltip content={<MultiLineTooltip />} />
-                  <Line type="monotone" dataKey="total" name="Total" stroke="var(--accent-green)" strokeWidth={2.4} dot={{ r: 3.2, strokeWidth: 0, fill: 'var(--accent-green)' }} activeDot={{ r: 4.5 }} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="high_risk" name="Risiko Tinggi" stroke="var(--risk-high)" strokeWidth={2} dot={{ r: 2.8, strokeWidth: 0, fill: 'var(--risk-high)' }} activeDot={{ r: 4.2 }} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="done" name="Selesai" stroke="#34d399" strokeWidth={2} dot={{ r: 2.8, strokeWidth: 0, fill: '#34d399' }} activeDot={{ r: 4.2 }} isAnimationActive={false} />
-                </LineChart>
+                  <Area type="monotone" dataKey="total" name="Total" stroke="var(--accent-green)" strokeWidth={2.4} fill="var(--accent-green)" fillOpacity={0.12} dot={{ r: 3, strokeWidth: 0, fill: 'var(--accent-green)' }} activeDot={{ r: 4.5 }} isAnimationActive={false} />
+                  <Area type="monotone" dataKey="high_risk" name="Risiko Tinggi" stroke="var(--risk-high)" strokeWidth={2} fill="var(--risk-high)" fillOpacity={0.06} dot={{ r: 2.7, strokeWidth: 0, fill: 'var(--risk-high)' }} activeDot={{ r: 4.2 }} isAnimationActive={false} />
+                  <Area type="monotone" dataKey="done" name="Selesai" stroke="#34d399" strokeWidth={2} fill="#34d399" fillOpacity={0.08} dot={{ r: 2.7, strokeWidth: 0, fill: '#34d399' }} activeDot={{ r: 4.2 }} isAnimationActive={false} />
+                </AreaChart>
               </ResponsiveContainer>
             )}
           </div>
@@ -672,19 +821,16 @@ export default function Dashboard() {
             <table className="recent-table">
               <thead>
                 <tr>
-                  <th>ID Klaim</th>
-                  <th>Fasilitas</th>
-                  <th>Dx</th>
+                  <th>Klaim</th>
                   <th className="cell-right">Biaya</th>
-                  <th className="cell-right">Skor</th>
-                  <th>Prioritas</th>
+                  <th>Risiko</th>
                   <th aria-label="Aksi" />
                 </tr>
               </thead>
               <tbody>
                 {recentClaims.length === 0 ? (
                   <tr>
-                    <td colSpan={7}>
+                    <td colSpan={4}>
                       <EmptyState
                         icon={FileText}
                         title="Belum ada klaim masuk"
@@ -695,16 +841,24 @@ export default function Dashboard() {
                 ) : (
                   recentClaims.map((claim) => (
                     <tr key={claim.claim_id}>
-                      <td><span className="claim-id" title={claim.claim_id}>{shortClaimId(claim.claim_id)}</span></td>
-                      <td className="cell-text" title={claim.provider_id}>{claim.provider_id}</td>
-                      <td className="cell-text" title={claim.diagnosis_primary}>{claim.diagnosis_primary}</td>
-                      <td className="cost">{formatRp(claim.cost_claimed)}</td>
-                      <td className="score">{claim.risk_score ?? '-'}</td>
                       <td>
-                        <span className={`dash-pill dash-pill-${claim.priority_tier || 'none'}`}>
-                          {claim.priority_tier === 'high' ? 'Tinggi'
-                            : claim.priority_tier === 'medium' ? 'Sedang'
-                            : claim.priority_tier === 'low' ? 'Rendah' : '—'}
+                        <span className="claim-id" title={claim.claim_id}>{claim.claim_id}</span>
+                        <span
+                          className="claim-meta"
+                          title={[claim.provider_id, claim.diagnosis_primary].filter(Boolean).join(' · ')}
+                        >
+                          {[claim.provider_id, claim.diagnosis_primary].filter(Boolean).join(' · ')}
+                        </span>
+                      </td>
+                      <td className="cost">{formatRp(claim.cost_claimed)}</td>
+                      <td>
+                        <span className="claim-risk">
+                          <span className="score">{claim.risk_score ?? '—'}</span>
+                          <span className={`dash-pill dash-pill-${claim.priority_tier || 'none'}`}>
+                            {claim.priority_tier === 'high' ? 'Tinggi'
+                              : claim.priority_tier === 'medium' ? 'Sedang'
+                              : claim.priority_tier === 'low' ? 'Rendah' : '—'}
+                          </span>
                         </span>
                       </td>
                       <td className="cell-action">
@@ -727,6 +881,7 @@ export default function Dashboard() {
               </tbody>
             </table>
           </div>
+          <p className="table-scroll-hint">Geser tabel ke samping untuk melihat kolom lain →</p>
         </div>
       </div>
     </div>

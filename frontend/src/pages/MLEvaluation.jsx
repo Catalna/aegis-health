@@ -246,7 +246,7 @@ export default function MLEvaluation() {
             <div className="header-icon-badge">
               <Brain size={20} />
             </div>
-            <h1>Ketepatan Penentuan Prioritas</h1>
+            <h1 className="evaluation-title">Ketepatan Penentuan Prioritas</h1>
           </div>
           <p className="dashboard-subtitle">
             Ringkasan seberapa tepat sistem menempatkan klaim yang perlu perhatian lebih dahulu berdasarkan data uji.
@@ -291,12 +291,12 @@ export default function MLEvaluation() {
       </section>
 
       <div className="mon-pair-grid">
-        <section className="card dash-accent" aria-labelledby="ranking-title">
+        <section className="card dash-accent" aria-labelledby="evaluation-headline">
           <div className="chart-head-row chart-head-between">
             <div className="chart-head-left">
               <span className="chart-panel-icon" aria-hidden="true"><Gauge size={16} /></span>
               <div>
-                <h3 className="chart-title" id="ranking-title">Ukuran Ketepatan Urutan</h3>
+                <h2 id="evaluation-headline" className="chart-title">Ukuran Ketepatan Urutan</h2>
                 <p className="chart-subtitle">Dihitung pada data uji yang tidak dipakai saat pelatihan</p>
               </div>
             </div>
@@ -339,7 +339,7 @@ export default function MLEvaluation() {
             <div className="chart-head-left">
               <span className="chart-panel-icon" aria-hidden="true"><FlaskConical size={16} /></span>
               <div>
-                <h3 className="chart-title" id="ablation-title">Perbandingan Tambahan</h3>
+                <h2 className="chart-title" id="ablation-title">Perbandingan Tambahan</h2>
                 <p className="chart-subtitle">Catatan pola perilaku diuji sebagai pembanding, belum mengubah penilaian utama</p>
               </div>
             </div>
@@ -385,7 +385,7 @@ export default function MLEvaluation() {
           <div className="chart-head-left">
             <span className="chart-panel-icon" aria-hidden="true"><Layers size={16} /></span>
             <div>
-              <h3 className="chart-title" id="slice-title">Hasil Berdasarkan Jenis Temuan</h3>
+              <h2 className="chart-title" id="slice-title">Hasil Berdasarkan Jenis Temuan</h2>
               <p className="chart-subtitle">Temuan terlewat adalah klaim penting yang tidak masuk 50 prioritas teratas</p>
             </div>
           </div>
@@ -439,7 +439,7 @@ export default function MLEvaluation() {
           <div className="chart-head-left">
             <span className="chart-panel-icon" aria-hidden="true"><Info size={16} /></span>
             <div>
-              <h3 className="chart-title" id="limitations-title">Batasan Interpretasi</h3>
+              <h2 className="chart-title" id="limitations-title">Batasan Interpretasi</h2>
               <p className="chart-subtitle">Hal yang perlu dipertimbangkan saat membaca angka di atas</p>
             </div>
           </div>
